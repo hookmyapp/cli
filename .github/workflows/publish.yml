@@ -1,0 +1,29 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install dependencies
+        run: npm install --include=dev
+        env:
+          NODE_ENV: development
+      - name: Build
+        run: node build.mjs
+      - name: Verify build
+        run: node bin/hookmyapp.js --version
+      - name: Publish to npm (OIDC + provenance)
+        run: npm publish --provenance --access public
