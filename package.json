@@ -1,0 +1,60 @@
+{
+  "name": "@gethookmyapp/cli",
+  "version": "0.1.0",
+  "description": "HookMyApp CLI - connect WhatsApp Business API in minutes",
+  "type": "module",
+  "bin": {
+    "hookmyapp": "bin/hookmyapp.js"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run --reporter=verbose",
+    "test:unit": "vitest run --reporter=verbose",
+    "test:integration": "vitest run --config vitest.integration.config.ts --reporter=verbose",
+    "test:integration:nightly": "vitest run --config vitest.nightly.config.ts --reporter=verbose",
+    "prepublishOnly": "node build.mjs"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0",
+    "commander": "^14.0.0",
+    "open": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "execa": "^9.6.1",
+    "playwright": "^1.59.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hookmyapp/cli.git"
+  },
+  "homepage": "https://hookmyapp.com",
+  "bugs": {
+    "url": "https://github.com/hookmyapp/cli/issues"
+  },
+  "keywords": [
+    "whatsapp",
+    "whatsapp-business-api",
+    "webhook",
+    "cli",
+    "hookmyapp"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
