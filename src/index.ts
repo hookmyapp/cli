@@ -8,6 +8,7 @@ import { registerTokenCommand } from './commands/token.js';
 import { registerEnvCommand } from './commands/env.js';
 import { registerBillingCommand } from './commands/billing.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
+import { registerSandboxCommand } from './commands/sandbox.js';
 import { CliError, outputError } from './output/error.js';
 
 const program = new Command();
@@ -57,6 +58,9 @@ registerBillingCommand(program);
 
 // Workspace management
 registerWorkspaceCommand(program);
+
+// Sandbox sessions
+registerSandboxCommand(program);
 
 async function main(): Promise<void> {
   try {
