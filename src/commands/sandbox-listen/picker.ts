@@ -8,7 +8,9 @@
 //     to interactive (CI must be deterministic).
 
 import { select } from '@inquirer/prompts';
-import { CliError } from '../../output/error.js';
+import { CliError, ValidationError } from '../../output/error.js';
+import { renderTable } from '../../output/table.js';
+import { c } from '../../output/color.js';
 
 export interface Session {
   id: string;
@@ -123,4 +125,86 @@ function formatAge(ms: number): string {
   const hr = Math.floor(min / 60);
   if (hr >= 1) return `${hr}h`;
   return `${min}m`;
+}
+
+/**
+ * Lightweight session picker used by `sandbox env` and `sandbox send`.
+ *
+ * Unlike `pickSession` (which drives the full sandbox-listen flow with
+ * --session flag support + workspaceId/workspaceName fields), this helper
+ * only needs the phone shortcut and multi-session select. The callers'
+ * session shape is also looser — we accept any record with `id` + `phone`.
+ */
+export interface MinimalSession {
+  id: string;
+  phone: string | null;
+  status: string;
+}
+
+export async function pickSessionByPhone<T extends MinimalSession>(
+  sessions: T[],
+  phoneFlag?: string,
+): Promise<T> {
+  if (sessions.length === 0) {
+    throw new ValidationError(
+      phoneFlag
+        ? `No active sandbox sessions. Run: hookmyapp sandbox start --phone ${phoneFlag}`
+        : 'No active sandbox sessions. Run: hookmyapp sandbox start --phone +<your-number>',
+    );
+  }
+  if (phoneFlag) {
+    const normalized = phoneFlag.replace(/^\+/, '');
+    const match = sessions.find(
+      (s) => s.phone && s.phone.replace(/^\+/, '') === normalized,
+    );
+    if (!match) {
+      throw new ValidationError(
+        `No sandbox session for ${phoneFlag}. Run: hookmyapp sandbox start --phone ${phoneFlag}`,
+      );
+    }
+    return match;
+  }
+  if (sessions.length === 1) {
+    return sessions[0];
+  }
+  return (await select<T>({
+    message: 'Select a sandbox session',
+    choices: sessions.map((s) => ({
+      name: `+${s.phone ?? ''} (${s.status})`,
+      value: s,
+    })),
+  })) as T;
+}
+
+/**
+ * Render a cli-table3 table of sandbox sessions with a "Listener" state
+ * column derived from `lastHeartbeatAt`:
+ *   live (green, <90s)  → currently being listened to
+ *   idle (dim, ≥90s)    → heartbeat seen but stale
+ *   (empty)             → never listened to
+ *
+ * Used as a preview header above the interactive picker prompt.
+ */
+export function renderSessionTable(
+  sessions: Array<{
+    phone: string | null;
+    status: string;
+    lastHeartbeatAt?: string | null;
+  }>,
+): string {
+  return renderTable(
+    sessions.map((s) => {
+      const ts = s.lastHeartbeatAt ? Date.parse(s.lastHeartbeatAt) : NaN;
+      const live = Number.isFinite(ts) && Date.now() - ts < 90_000;
+      let listener = '';
+      if (s.lastHeartbeatAt) {
+        listener = live ? c.success('live') : c.dim('idle');
+      }
+      return {
+        Phone: s.phone ? `+${s.phone.replace(/^\+/, '')}` : '',
+        Status: s.status,
+        Listener: listener,
+      };
+    }),
+  );
 }

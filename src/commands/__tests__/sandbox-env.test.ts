@@ -24,6 +24,21 @@ vi.mock('../../api/client.js', () => ({
   forceTokenRefresh: vi.fn(),
 }));
 
+// Seed an active workspace so `_helpers.getDefaultWorkspaceId` resolves from
+// config instead of making its own `apiClient('/workspaces')` call. Without
+// this mock, the seedSession mock queue would be consumed by the workspace
+// fetch rather than the session fetch. Mirrors the approach in
+// src/commands/__tests__/wizard.test.ts.
+vi.mock('../workspace.js', () => ({
+  readWorkspaceConfig: () => ({
+    activeWorkspaceId: 'w1',
+    activeWorkspaceSlug: 'acme-corp',
+  }),
+  writeWorkspaceConfig: vi.fn(),
+  registerWorkspaceCommand: vi.fn(),
+  resolveWorkspace: vi.fn(),
+}));
+
 vi.mock('node:fs', async () => {
   const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
   return {

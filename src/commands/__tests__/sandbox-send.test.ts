@@ -17,6 +17,18 @@ vi.mock('../../api/client.js', () => ({
   forceTokenRefresh: vi.fn(),
 }));
 
+// Seed an active workspace so `_helpers.getDefaultWorkspaceId` resolves from
+// config instead of making its own `apiClient('/workspaces')` call.
+vi.mock('../workspace.js', () => ({
+  readWorkspaceConfig: () => ({
+    activeWorkspaceId: 'w1',
+    activeWorkspaceSlug: 'acme-corp',
+  }),
+  writeWorkspaceConfig: vi.fn(),
+  registerWorkspaceCommand: vi.fn(),
+  resolveWorkspace: vi.fn(),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let runSandboxSend: any;
 
