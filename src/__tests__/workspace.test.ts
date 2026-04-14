@@ -156,7 +156,7 @@ describe('workspace commands', () => {
       const fs = await import('node:fs');
       const path = await import('node:path');
       const os = await import('node:os');
-      const configDir = path.join(os.homedir(), '.hookmyapp');
+      const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? path.join(os.homedir(), '.hookmyapp'));
       const configPath = path.join(configDir, 'config.json');
       // Save original
       let originalConfig: string | null = null;
@@ -181,7 +181,7 @@ describe('workspace commands', () => {
       const fs = await import('node:fs');
       const path = await import('node:path');
       const os = await import('node:os');
-      const configDir = path.join(os.homedir(), '.hookmyapp');
+      const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? path.join(os.homedir(), '.hookmyapp'));
       const configPath = path.join(configDir, 'config.json');
       let originalConfig: string | null = null;
       try { originalConfig = fs.readFileSync(configPath, 'utf-8'); } catch { /* noop */ }
@@ -198,7 +198,7 @@ describe('workspace commands', () => {
 
         await expect(
           program.parseAsync(['workspace', 'current'], { from: 'user' }),
-        ).rejects.toThrow('No active workspace');
+        ).rejects.toThrow(/not a member of any workspace/);
       } finally {
         if (originalConfig !== null) {
           fs.writeFileSync(configPath, originalConfig);
@@ -215,7 +215,9 @@ describe('workspace commands', () => {
       const fs = await import('node:fs');
       const pathMod = await import('node:path');
       const os = await import('node:os');
-      const configPath = pathMod.join(os.homedir(), '.hookmyapp', 'config.json');
+      const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? pathMod.join(os.homedir(), '.hookmyapp'));
+      const configPath = pathMod.join(configDir, 'config.json');
+      fs.mkdirSync(configDir, { recursive: true });
       let originalConfig: string | null = null;
       try { originalConfig = fs.readFileSync(configPath, 'utf-8'); } catch { /* noop */ }
       fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }));
@@ -249,7 +251,9 @@ describe('workspace commands', () => {
       const fs = await import('node:fs');
       const pathMod = await import('node:path');
       const os = await import('node:os');
-      const configPath = pathMod.join(os.homedir(), '.hookmyapp', 'config.json');
+      const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? pathMod.join(os.homedir(), '.hookmyapp'));
+      const configPath = pathMod.join(configDir, 'config.json');
+      fs.mkdirSync(configDir, { recursive: true });
       let originalConfig: string | null = null;
       try { originalConfig = fs.readFileSync(configPath, 'utf-8'); } catch { /* noop */ }
 
@@ -276,7 +280,9 @@ describe('workspace commands', () => {
       const fs = await import('node:fs');
       const pathMod = await import('node:path');
       const os = await import('node:os');
-      const configPath = pathMod.join(os.homedir(), '.hookmyapp', 'config.json');
+      const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? pathMod.join(os.homedir(), '.hookmyapp'));
+      const configPath = pathMod.join(configDir, 'config.json');
+      fs.mkdirSync(configDir, { recursive: true });
       let originalConfig: string | null = null;
       try { originalConfig = fs.readFileSync(configPath, 'utf-8'); } catch { /* noop */ }
 
@@ -383,7 +389,7 @@ describe('workspace members commands', () => {
     const fs = await import('node:fs');
     const pathMod = await import('node:path');
     const osMod = await import('node:os');
-    const configDir = pathMod.join(osMod.homedir(), '.hookmyapp');
+    const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? pathMod.join(osMod.homedir(), '.hookmyapp'));
     const configPath = pathMod.join(configDir, 'config.json');
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'ws-1' }));
@@ -530,7 +536,7 @@ describe('workspace invites commands', () => {
     const fs = await import('node:fs');
     const pathMod = await import('node:path');
     const osMod = await import('node:os');
-    const configDir = pathMod.join(osMod.homedir(), '.hookmyapp');
+    const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? pathMod.join(osMod.homedir(), '.hookmyapp'));
     const configPath = pathMod.join(configDir, 'config.json');
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'ws-1' }));
