@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Command, CommanderError } from 'commander';
 import { loginCommand } from './auth/login.js';
 import { logoutCommand } from './auth/logout.js';
@@ -13,12 +15,16 @@ import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { CliError, outputError } from './output/error.js';
 import { addExamples } from './output/help.js';
 
+const pkg = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf-8'),
+) as { version: string };
+
 const program = new Command();
 
 program
   .name('hookmyapp')
   .description('HookMyApp CLI — manage WhatsApp Business accounts')
-  .version('0.1.0');
+  .version(pkg.version);
 
 program.option('--json', 'Machine-readable JSON output (scripts/CI)');
 program.option('--human', 'Human-readable output (default — kept for back-compat)');
