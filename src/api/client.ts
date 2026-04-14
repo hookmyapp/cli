@@ -123,5 +123,17 @@ export async function apiClient(
     throw new ApiError(body.message ?? body.error ?? res.statusText, res.status);
   }
 
-  return res.json();
+  // 204 No Content (and other empty-body 2xx responses) have no JSON to parse.
+  // Returning undefined avoids `Unexpected end of JSON input` in callers that
+  // don't consume the return value (e.g. the heartbeat loop).
+  if (res.status === 204) {
+    return undefined;
+  }
+  try {
+    return await res.json();
+  } catch {
+    // Empty or non-JSON 2xx body — treat as void rather than crashing with
+    // "Unexpected end of JSON input" for callers that don't consume the return.
+    return undefined;
+  }
 }
