@@ -1,20 +1,47 @@
 import { apiClient } from '../api/client.js';
-import { CliError } from '../output/error.js';
+import { ValidationError } from '../output/error.js';
 import { readWorkspaceConfig, writeWorkspaceConfig } from './workspace.js';
 
 /**
  * Resolve the caller's active workspace ID. The resolution order is:
- *   1. Whatever is persisted in ~/.hookmyapp/config.json (`activeWorkspaceId`).
- *   2. Auto-select: if the user has exactly one workspace on the backend,
+ *   1. `--workspace <slug>` flag on the root program (highest precedence —
+ *      per-invocation override for CI/scripts that juggle multiple tenants).
+ *   2. Whatever is persisted in ~/.hookmyapp/config.json (`activeWorkspaceId`).
+ *   3. Auto-select: if the user has exactly one workspace on the backend,
  *      use it AND persist the choice so future calls skip the fetch. This
  *      gives new users a zero-friction first run — the vast majority have
  *      a single auto-provisioned workspace and should never be asked to run
  *      `workspace use <id>`.
- *   3. Ambiguous (2+ workspaces, none active) → user-facing error telling
+ *   4. Ambiguous (2+ workspaces, none active) → user-facing error telling
  *      them to pick one explicitly via `hookmyapp workspace use <name|id>`.
- *   4. None at all → "you aren't a member of any workspace" error.
+ *   5. None at all → "you aren't a member of any workspace" error.
  */
 export async function getDefaultWorkspaceId(): Promise<string> {
+  // Lazy-import program to avoid a module-level cycle with src/index.ts.
+  const { program } = await import('../index.js');
+  const flag = program.opts().workspace as string | undefined;
+  if (flag) {
+    const workspaces = (await apiClient('/workspaces').catch(() => [])) as Array<{
+      id: string;
+      name: string;
+      workosOrganizationId?: string;
+    }>;
+    const match = workspaces.find(
+      (w) =>
+        w.name === flag ||
+        w.name.toLowerCase() === flag.toLowerCase() ||
+        w.workosOrganizationId === flag ||
+        w.id === flag,
+    );
+    if (!match) {
+      const available = workspaces.map((w) => w.name).join(', ') || '(none)';
+      throw new ValidationError(
+        `Unknown workspace: ${flag}. Available: ${available}`,
+      );
+    }
+    return match.id;
+  }
+
   const config = readWorkspaceConfig();
   if (config.activeWorkspaceId) {
     return config.activeWorkspaceId;
@@ -36,14 +63,12 @@ export async function getDefaultWorkspaceId(): Promise<string> {
   }
 
   if (Array.isArray(workspaces) && workspaces.length > 1) {
-    throw new CliError(
+    throw new ValidationError(
       `You're a member of ${workspaces.length} workspaces. Pick one first:\n  hookmyapp workspace use <name|id>`,
-      'WORKSPACE_AMBIGUOUS',
     );
   }
 
-  throw new CliError(
+  throw new ValidationError(
     'You are not a member of any workspace. Contact your workspace admin for an invite.',
-    'NO_WORKSPACE',
   );
 }

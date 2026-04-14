@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { input, confirm, select } from '@inquirer/prompts';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
-import { CliError } from '../output/error.js';
+import { ValidationError } from '../output/error.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
 
 const SANDBOX_WHATSAPP_NUMBER = '972557046276';
@@ -110,7 +110,9 @@ export function registerSandboxCommand(program: Command): void {
       const sessions: SandboxSession[] = await apiClient('/sandbox/sessions', { workspaceId });
 
       if (sessions.length === 0) {
-        throw new CliError('No sandbox sessions found', 'NO_SESSIONS');
+        throw new ValidationError(
+          'No sandbox sessions found. Run: hookmyapp sandbox start',
+        );
       }
 
       let sessionToDelete: SandboxSession;

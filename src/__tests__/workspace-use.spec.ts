@@ -114,13 +114,13 @@ describe('workspace use (RBAC-UX-01/02/03)', () => {
     expect(mockedRefresh).toHaveBeenCalledWith('org_01B');
   });
 
-  it('RBAC-UX-02: no-arg non-TTY throws CliError with exitCode 2', async () => {
+  it('RBAC-UX-02: no-arg non-TTY throws ValidationError with exitCode 2', async () => {
     Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true });
     mockedApi.mockResolvedValue(fakeWorkspaces);
 
     await expect(runWorkspaceUse([])).rejects.toMatchObject({
       exitCode: 2,
-      code: 'USAGE_ERROR',
+      code: 'VALIDATION_ERROR',
     });
   });
 });

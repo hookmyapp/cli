@@ -96,13 +96,13 @@ describe('webhook commands', () => {
     });
   });
 
-  it('setWebhook throws CliError when --url flag is missing', async () => {
+  it('setWebhook throws ValidationError when --url flag is missing', async () => {
     const program = new Command();
     registerWebhookCommand(program);
 
     await expect(
       program.parseAsync(['webhook', 'set', 'waba-1'], { from: 'user' }),
-    ).rejects.toThrow('--url flag is required');
+    ).rejects.toThrow('--url is required');
   });
 });
 

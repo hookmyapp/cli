@@ -2,17 +2,21 @@ import { Command } from 'commander';
 import open from 'open';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
-import { CliError } from '../output/error.js';
+import { c } from '../output/color.js';
+import { ValidationError } from '../output/error.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
+
+// program is lazy-imported inside actions because commands/billing.ts is
+// loaded by index.ts during program setup — a top-level import would form a
+// cycle. Same pattern as other commands that need root-level opts.
 
 export async function billingManage(): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
   const sub = await apiClient('/stripe/subscription', { workspaceId });
 
   if (sub.planSlug === 'free' || !sub.stripeSubscriptionId) {
-    throw new CliError(
+    throw new ValidationError(
       'No active subscription. Run `hookmyapp billing upgrade` to subscribe.',
-      'NO_SUBSCRIPTION',
     );
   }
 
@@ -26,15 +30,19 @@ export async function billingManage(): Promise<void> {
   await open(data.url);
 }
 
-export async function billingStatus(opts: { human?: boolean }): Promise<void> {
+export async function billingStatus(opts: { json?: boolean; human?: boolean } = {}): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
   const [sub, usage] = await Promise.all([
     apiClient('/stripe/subscription', { workspaceId }),
     apiClient('/webhook/usage', { workspaceId }),
   ]);
 
-  if (opts.human === false || opts.human === undefined) {
-    output({ subscription: sub, usage }, { human: false });
+  // Accept either `json: true` or `human: false` (back-compat with callers
+  // and tests that predate the phase-108 opts shape).
+  const isJson = opts.json === true || opts.human === false;
+
+  if (isJson) {
+    output({ subscription: sub, usage }, { json: true });
     return;
   }
 
@@ -44,19 +52,25 @@ export async function billingStatus(opts: { human?: boolean }): Promise<void> {
   const renews = sub.currentPeriodEnd ?? '—';
   const messages = `${usage.totalMessages} / ${usage.limit} (${usage.percentage}%)`;
 
-  output({ plan, status, interval, renews, messages }, { human: true });
+  output({ plan, status, interval, renews, messages }, { json: false, kind: 'read' });
 
   if (sub.cancelAtPeriodEnd === true) {
-    console.log('\n⚠  Subscription will cancel at period end.');
+    console.log('\n' + c.warn('Subscription will cancel at period end.'));
   }
 
   if (usage.percentage >= 100) {
     console.log(
-      `\n\u001b[31mYou have exceeded your message limit (${usage.percentage}%). Run \`hookmyapp billing upgrade\` to upgrade.\u001b[0m`,
+      '\n' +
+        c.error(
+          `You have exceeded your message limit (${usage.percentage}%). Run \`hookmyapp billing upgrade\` to upgrade.`,
+        ),
     );
   } else if (usage.percentage >= 80) {
     console.log(
-      `\n\u001b[33mYou've used ${usage.percentage}% — run \`hookmyapp billing upgrade\` to upgrade.\u001b[0m`,
+      '\n' +
+        c.warn(
+          `You've used ${usage.percentage}% — run \`hookmyapp billing upgrade\` to upgrade.`,
+        ),
     );
   }
 }
@@ -102,15 +116,20 @@ export async function billingUpgrade(): Promise<void> {
   await open(data.url);
 }
 
-export function registerBillingCommand(program: Command): void {
-  const billing = program.command('billing').description('Manage billing');
+export function registerBillingCommand(_program: Command): void {
+  const billing = _program.command('billing').description('Manage billing');
 
   billing
     .command('status')
     .description('Show subscription status')
-    .action(async function (this: Command) {
-      const human = this.parent?.parent?.opts().human ?? false;
-      await billingStatus({ human });
+    .action(async () => {
+      // Human mode is the default; scripts/CI opt into machine output with --json.
+      // (Previously read the --human flag off a traversed parent chain, which
+      // defaulted to false and forced JSON for every interactive user — that
+      // flag was never advertised on the root command.)
+      const { program: rootProgram } = await import('../index.js');
+      const isJson = !!rootProgram.opts().json;
+      await billingStatus({ json: isJson });
     });
 
   billing

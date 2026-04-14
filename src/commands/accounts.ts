@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { output } from '../output/format.js';
-import { CliError, AuthError } from '../output/error.js';
+import { AuthError, ValidationError } from '../output/error.js';
 import { readCredentials } from '../auth/store.js';
 import open from 'open';
 
@@ -25,7 +25,7 @@ export async function resolveAccount(wabaId: string): Promise<any> {
   const accounts = await apiClient('/meta/accounts', { workspaceId });
   const account = accounts.find((a: any) => a.metaWabaId === wabaId);
   if (!account) {
-    throw new CliError(`account not found for WABA ID ${wabaId}`, 'NOT_FOUND');
+    throw new ValidationError(`account not found for WABA ID ${wabaId}`);
   }
   return account;
 }
