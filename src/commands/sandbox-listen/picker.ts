@@ -41,9 +41,14 @@ export async function pickSession(args: PickSessionArgs): Promise<Session> {
 
   // Flag-driven path (CI-friendly). Never falls back to picker on mismatch.
   if (phoneFlag || sessionFlag) {
+    // Normalize phoneFlag: backend strips leading + before persisting, so
+    // exact-match against stored phone must do the same.
+    const normalizedPhone = phoneFlag?.replace(/^\+/, '');
     const match = sessions.find(
       (s) =>
-        (phoneFlag && s.phone === phoneFlag) ||
+        (normalizedPhone &&
+          s.phone &&
+          s.phone.replace(/^\+/, '') === normalizedPhone) ||
         (sessionFlag && s.id === sessionFlag),
     );
     if (!match) {

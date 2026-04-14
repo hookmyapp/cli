@@ -14,6 +14,6 @@ export function registerHealthCommand(program: Command): void {
         method: 'POST',
         workspaceId: account.workspaceId,
       });
-      output(result, { human: program.opts().human });
+      output(result, { human: !program.opts().json });
     });
 }

@@ -14,6 +14,7 @@ import type { Command } from 'commander';
 import { apiClient } from '../../api/client.js';
 import { CliError, AuthError } from '../../output/error.js';
 import { readCredentials } from '../../auth/store.js';
+import { getDefaultWorkspaceId } from '../_helpers.js';
 import { ensureCloudflaredBinary } from './binary.js';
 import { startProxyServer, type LogLine } from './proxy-server.js';
 import { pickSession, type Session } from './picker.js';
@@ -81,7 +82,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       false,
     )
     .action(async (opts: ListenOpts) => {
-      const human = (program.opts().human as boolean) ?? !opts.json;
+      const human = !program.opts().json && !opts.json;
 
       // Step 1 — auth gate. apiClient throws AuthError lazily, but we want
       // a deterministic "not logged in" message + exit(1) at startup.
@@ -108,10 +109,12 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       }
 
       // Step 4 — fetch active sessions (exit 5 on backend unreachable).
+      const workspaceId = await getDefaultWorkspaceId();
       let sessions: Session[];
       try {
         sessions = (await apiClient('/sandbox/sessions?active=true', {
           method: 'GET',
+          workspaceId,
         })) as Session[];
       } catch (err) {
         if (err instanceof AuthError) {
@@ -149,6 +152,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
           {
             method: 'POST',
             body: JSON.stringify({ env }),
+            workspaceId,
           },
         )) as TunnelStartResponse;
       } catch (err) {
@@ -171,6 +175,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
           {
             method: 'POST',
             body: JSON.stringify({ originPort: proxy.port }),
+            workspaceId,
           },
         );
       } catch (err) {
@@ -197,6 +202,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       // Step 9 — heartbeat loop.
       const hb = startHeartbeat({
         sessionId: chosen.id,
+        workspaceId,
         intervalMs: 30_000,
         onError: (err) => {
           process.stderr.write(
@@ -220,7 +226,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
           callBackendStop: () =>
             apiClient(
               `/sandbox/sessions/${chosen.id}/tunnel/stop`,
-              { method: 'POST' },
+              { method: 'POST', workspaceId },
             ).then(() => undefined).catch(() => undefined),
         });
         process.exit(0);

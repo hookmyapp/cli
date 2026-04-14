@@ -91,14 +91,14 @@ export function registerWorkspaceCommand(program: Command): void {
     .action(async (opts: { json?: boolean }) => {
       const data = (await apiClient('/workspaces')) as Workspace[];
       const config = readWorkspaceConfig();
-      if (opts.json || program.opts().human !== true) {
+      if (opts.json || !program.opts().json !== true) {
         // JSON: include raw array with workosOrganizationId when --json or non-human default
         if (opts.json) {
           console.log(JSON.stringify(data, null, 2));
           return;
         }
       }
-      if (program.opts().human) {
+      if (!program.opts().json) {
         const rows = data.map((w) => ({
           ACTIVE: w.id === config.activeWorkspaceId ? '*' : ' ',
           NAME: w.name,
@@ -130,10 +130,10 @@ export function registerWorkspaceCommand(program: Command): void {
       if (result.workosOrganizationId) {
         await forceTokenRefresh(result.workosOrganizationId);
       }
-      if (program.opts().human) {
+      if (!program.opts().json) {
         console.log(`Created workspace "${result.name}" and switched to it`);
       } else {
-        output(result, { human: program.opts().human });
+        output(result, { human: !program.opts().json });
       }
     });
 
@@ -149,7 +149,7 @@ export function registerWorkspaceCommand(program: Command): void {
       ]);
       const listEntry = workspaces.find((w: any) => w.id === workspaceId);
       const merged = { ...detail, role: listEntry?.role };
-      if (program.opts().human) {
+      if (!program.opts().json) {
         console.log(`Name:          ${merged.name}`);
         console.log(`ID:            ${merged.id}`);
         console.log(`Role:          ${merged.role ?? 'unknown'}`);
@@ -170,10 +170,10 @@ export function registerWorkspaceCommand(program: Command): void {
         method: 'PATCH',
         body: JSON.stringify({ name: newName }),
       });
-      if (program.opts().human) {
+      if (!program.opts().json) {
         console.log(`Renamed workspace to "${result.name}"`);
       } else {
-        output(result, { human: program.opts().human });
+        output(result, { human: !program.opts().json });
       }
     });
 
@@ -236,7 +236,7 @@ export function registerWorkspaceCommand(program: Command): void {
           status: 'pending',
         })),
       ];
-      output(rows, { human: program.opts().human });
+      output(rows, { human: !program.opts().json });
     });
 
   members.command('invite')
@@ -251,7 +251,7 @@ export function registerWorkspaceCommand(program: Command): void {
         method: 'POST',
         body: JSON.stringify({ email, role: opts.role }),
       });
-      if (program.opts().human) {
+      if (!program.opts().json) {
         console.log(`Invited ${email} as ${opts.role} to workspace`);
       } else {
         output(result, { human: false });
@@ -273,7 +273,7 @@ export function registerWorkspaceCommand(program: Command): void {
       await apiClient(`/workspaces/${workspaceId}/members/${member.id}`, {
         method: 'DELETE',
       });
-      if (program.opts().human) {
+      if (!program.opts().json) {
         console.log(`Removed ${email} from workspace`);
       } else {
         output({ success: true }, { human: false });
@@ -293,7 +293,7 @@ export function registerWorkspaceCommand(program: Command): void {
         method: 'PATCH',
         body: JSON.stringify({ role: opts.role }),
       });
-      if (program.opts().human) {
+      if (!program.opts().json) {
         console.log(`Updated ${email} role to ${opts.role}`);
       } else {
         output(result, { human: false });
@@ -318,7 +318,7 @@ export function registerWorkspaceCommand(program: Command): void {
       await apiClient(`/workspaces/${workspaceId}/invites/${invite.id}`, {
         method: 'DELETE',
       });
-      if (program.opts().human) {
+      if (!program.opts().json) {
         console.log(`Cancelled invite for ${invite.email}`);
       } else {
         output({ success: true }, { human: false });
