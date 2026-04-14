@@ -20,12 +20,16 @@ export function spawnCloudflared(opts: {
   token: string;
 }): ChildProcess {
   // Pitfall 1 (NO --url): args are intentionally token-only.
+  // NOTE: --no-autoupdate and --loglevel are GLOBAL flags that MUST come BEFORE
+  // the `tunnel` subcommand. Putting them after `tunnel run` makes cloudflared
+  // exit immediately with "flag provided but not defined" — an error format the
+  // stderr filter below does not match, so it fails silently.
   const args = [
-    'tunnel',
-    'run',
     '--no-autoupdate',
     '--loglevel',
     'warn',
+    'tunnel',
+    'run',
     '--token',
     opts.token,
   ];
@@ -39,13 +43,29 @@ export function spawnCloudflared(opts: {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  // Filter cloudflared's chatty stderr — surface only ERR / WRN lines.
+  // Filter cloudflared's chatty stderr — surface structured ERR/WRN lines AND
+  // any "Incorrect Usage" / "flag provided but not defined" / "error:" lines
+  // that cloudflared emits when invoked with bad flags (those skip the
+  // structured log format and would otherwise be silently dropped).
   child.stderr?.on('data', (buf: Buffer) => {
     const text = buf.toString();
     for (const line of text.split('\n')) {
-      if (/\bERR\b|\bWRN\b/.test(line)) {
+      if (
+        /\bERR\b|\bWRN\b/.test(line) ||
+        /Incorrect Usage|flag provided but not defined|error:/i.test(line)
+      ) {
         process.stderr.write(line + '\n');
       }
+    }
+  });
+
+  // Also surface if cloudflared exits non-zero — otherwise the process dies and
+  // sandbox listen hangs on heartbeats with no visible failure.
+  child.on('exit', (code, signal) => {
+    if (code !== null && code !== 0) {
+      process.stderr.write(
+        `cloudflared exited with code ${code}${signal ? ` (signal ${signal})` : ''}\n`,
+      );
     }
   });
 
@@ -64,6 +84,7 @@ export interface HeartbeatHandle {
  */
 export function startHeartbeat(opts: {
   sessionId: string;
+  workspaceId: string;
   intervalMs?: number;
   onError: (err: Error) => void;
 }): HeartbeatHandle {
@@ -73,6 +94,7 @@ export function startHeartbeat(opts: {
   const timer = setInterval(() => {
     apiClient(`/sandbox/sessions/${opts.sessionId}/tunnel/heartbeat`, {
       method: 'POST',
+      workspaceId: opts.workspaceId,
     })
       .then(() => {
         consecutiveFailures = 0;
