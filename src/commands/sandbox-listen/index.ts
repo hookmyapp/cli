@@ -13,6 +13,7 @@
 import type { Command } from 'commander';
 import { apiClient } from '../../api/client.js';
 import { CliError, AuthError } from '../../output/error.js';
+import { addExamples } from '../../output/help.js';
 import { readCredentials } from '../../auth/store.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
 import { ensureCloudflaredBinary } from './binary.js';
@@ -60,7 +61,7 @@ export function detectEnv(apiBaseUrl: string): 'local' | 'staging' | 'production
 }
 
 export function registerListenCommand(sandbox: Command, program: Command): void {
-  sandbox
+  const listen = sandbox
     .command('listen')
     .description(
       'Start a sandbox tunnel and stream incoming webhooks to your local app',
@@ -234,6 +235,16 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       process.on('SIGINT', shutdown);
       process.on('SIGTERM', shutdown);
     });
+
+  addExamples(
+    listen,
+    `
+EXAMPLES:
+  $ hookmyapp sandbox listen
+  $ hookmyapp sandbox listen --phone +15551234567 --port 3000
+  $ hookmyapp sandbox listen --path /webhook --verbose
+`,
+  );
 }
 
 function printLogLine(line: LogLine, opts: ListenOpts): void {

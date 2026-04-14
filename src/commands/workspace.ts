@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
+import { addExamples } from '../output/help.js';
 import type { Workspace } from '../types/workspace.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -93,7 +94,7 @@ export async function resolveInviteByIdOrEmail(workspaceId: string, idOrEmail: s
 export function registerWorkspaceCommand(program: Command): void {
   const ws = program.command('workspace').description('Manage workspaces');
 
-  ws.command('list')
+  const wsList = ws.command('list')
     .description('List all workspaces')
     .option('--json', 'Output machine-readable JSON')
     .action(async (opts: { json?: boolean }) => {
@@ -120,7 +121,7 @@ export function registerWorkspaceCommand(program: Command): void {
       console.log(JSON.stringify(data, null, 2));
     });
 
-  ws.command('new')
+  const wsNew = ws.command('new')
     .description('Create a new workspace')
     .argument('<name>', 'Workspace name')
     .action(async (name: string) => {
@@ -145,7 +146,7 @@ export function registerWorkspaceCommand(program: Command): void {
       }
     });
 
-  ws.command('current')
+  const wsCurrent = ws.command('current')
     .description('Show active workspace details')
     .action(async () => {
       const { getDefaultWorkspaceId } = await import('./_helpers.js');
@@ -168,7 +169,7 @@ export function registerWorkspaceCommand(program: Command): void {
       }
     });
 
-  ws.command('rename')
+  const wsRename = ws.command('rename')
     .description('Rename the active workspace')
     .argument('<new-name>', 'New workspace name')
     .action(async (newName: string) => {
@@ -185,7 +186,7 @@ export function registerWorkspaceCommand(program: Command): void {
       }
     });
 
-  ws.command('use')
+  const wsUse = ws.command('use')
     .description('Switch the active workspace')
     .argument('[name-or-id]', 'Workspace name or ID (omit for interactive picker)')
     .action(async (nameOrId?: string) => {
@@ -221,7 +222,7 @@ export function registerWorkspaceCommand(program: Command): void {
   // --- Members subcommand group ---
   const members = ws.command('members').description('Manage workspace members');
 
-  members.command('list')
+  const membersList = members.command('list')
     .description('List workspace members and pending invites')
     .action(async () => {
       const { getDefaultWorkspaceId } = await import('./_helpers.js');
@@ -244,7 +245,7 @@ export function registerWorkspaceCommand(program: Command): void {
       output(rows, { human: !program.opts().json });
     });
 
-  members.command('invite')
+  const membersInvite = members.command('invite')
     .description('Invite a member to the workspace')
     .argument('<email>', 'Email address to invite')
     .option('--role <role>', 'Role (admin or member)', 'member')
@@ -263,7 +264,7 @@ export function registerWorkspaceCommand(program: Command): void {
       }
     });
 
-  members.command('remove')
+  const membersRemove = members.command('remove')
     .description('Remove a member from the workspace')
     .argument('<email>', 'Member email to remove')
     .option('-y, --yes', 'Skip confirmation')
@@ -285,7 +286,7 @@ export function registerWorkspaceCommand(program: Command): void {
       }
     });
 
-  members.command('role')
+  const membersRole = members.command('role')
     .description('Update a member role')
     .argument('<email>', 'Member email')
     .requiredOption('--role <role>', 'New role (admin or member)')
@@ -308,7 +309,7 @@ export function registerWorkspaceCommand(program: Command): void {
   // --- Invites subcommand group ---
   const invites = ws.command('invites').description('Manage workspace invites');
 
-  invites.command('cancel')
+  const invitesCancel = invites.command('cancel')
     .description('Cancel a pending invite')
     .argument('<id-or-email>', 'Invite ID or email')
     .option('-y, --yes', 'Skip confirmation')
@@ -329,4 +330,123 @@ export function registerWorkspaceCommand(program: Command): void {
         output({ success: true }, { human: false });
       }
     });
+
+  addExamples(
+    ws,
+    `
+EXAMPLES:
+  $ hookmyapp workspace list
+  $ hookmyapp workspace use acme-corp
+  $ hookmyapp workspace current
+`,
+  );
+
+  addExamples(
+    wsList,
+    `
+EXAMPLES:
+  $ hookmyapp workspace list
+  $ hookmyapp workspace list --json
+`,
+  );
+
+  addExamples(
+    wsNew,
+    `
+EXAMPLES:
+  $ hookmyapp workspace new "Acme Corp"
+  $ hookmyapp workspace new "Personal"
+`,
+  );
+
+  addExamples(
+    wsCurrent,
+    `
+EXAMPLES:
+  $ hookmyapp workspace current
+  $ hookmyapp workspace current --json
+`,
+  );
+
+  addExamples(
+    wsRename,
+    `
+EXAMPLES:
+  $ hookmyapp workspace rename "New Name"
+  $ hookmyapp workspace rename "Acme Inc."
+`,
+  );
+
+  addExamples(
+    wsUse,
+    `
+EXAMPLES:
+  $ hookmyapp workspace use acme-corp
+  $ hookmyapp workspace use
+`,
+  );
+
+  addExamples(
+    members,
+    `
+EXAMPLES:
+  $ hookmyapp workspace members list
+  $ hookmyapp workspace members invite teammate@acme.com --role admin
+  $ hookmyapp workspace members remove teammate@acme.com --yes
+`,
+  );
+
+  addExamples(
+    membersList,
+    `
+EXAMPLES:
+  $ hookmyapp workspace members list
+  $ hookmyapp workspace members list --json
+`,
+  );
+
+  addExamples(
+    membersInvite,
+    `
+EXAMPLES:
+  $ hookmyapp workspace members invite teammate@acme.com
+  $ hookmyapp workspace members invite teammate@acme.com --role admin
+`,
+  );
+
+  addExamples(
+    membersRemove,
+    `
+EXAMPLES:
+  $ hookmyapp workspace members remove teammate@acme.com
+  $ hookmyapp workspace members remove teammate@acme.com --yes
+`,
+  );
+
+  addExamples(
+    membersRole,
+    `
+EXAMPLES:
+  $ hookmyapp workspace members role teammate@acme.com --role admin
+  $ hookmyapp workspace members role teammate@acme.com --role member
+`,
+  );
+
+  addExamples(
+    invites,
+    `
+EXAMPLES:
+  $ hookmyapp workspace invites cancel teammate@acme.com
+  $ hookmyapp workspace invites cancel teammate@acme.com --yes
+`,
+  );
+
+  addExamples(
+    invitesCancel,
+    `
+EXAMPLES:
+  $ hookmyapp workspace invites cancel teammate@acme.com
+  $ hookmyapp workspace invites cancel 3f4b1c4e-... --yes
+`,
+  );
 }

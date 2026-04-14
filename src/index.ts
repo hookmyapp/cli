@@ -11,6 +11,7 @@ import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerSandboxCommand } from './commands/sandbox.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { CliError, outputError } from './output/error.js';
+import { addExamples } from './output/help.js';
 
 const program = new Command();
 
@@ -25,6 +26,29 @@ program.option('--debug', 'Show full error stack traces');
 program.option(
   '--workspace <slug>',
   'Override default workspace for this invocation (name, slug, or id)',
+);
+
+addExamples(
+  program,
+  `
+USAGE:
+  $ hookmyapp <command> [flags]
+
+COMMON COMMANDS:
+  login             Browser sign-in and post-login wizard (workspace picker + sandbox)
+  sandbox listen    Stream Meta webhooks to your local server through a sandbox tunnel
+  sandbox env       Print or write the .env values for a sandbox session
+  sandbox send      Send a test WhatsApp message via sandbox-proxy
+  accounts connect  Connect a WhatsApp Business account (embedded signup)
+  workspace list    List workspaces you belong to
+  billing           View or change your plan
+
+GLOBAL FLAGS:
+  --json              Emit JSON output (machine-readable; silences colors + spinners)
+  --workspace <slug>  Run in a specific workspace (overrides default)
+  --human             Force human-readable output (default)
+  --debug             Full HTTP request/response + stack traces
+`,
 );
 
 program.exitOverride();
