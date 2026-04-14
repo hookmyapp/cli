@@ -1,0 +1,260 @@
+// `hookmyapp sandbox listen` — Commander subcommand wiring the 11-step flow
+// from 107-CONTEXT.md §CLI Flow. Composes the Plan 09a modules (binary,
+// proxy-server, summarizer, version-check) with Plan 09b's picker + lifecycle.
+//
+// Exit code contract (CONTEXT.md §CLI Flow Exit codes):
+//   0  clean
+//   1  not authenticated
+//   2  no active sessions / --phone|--session mismatch
+//   3  tunnel provisioning failed (backend /tunnel/start or /configure)
+//   4  cloudflared download/checksum failed
+//   5  backend unreachable
+
+import type { Command } from 'commander';
+import { apiClient } from '../../api/client.js';
+import { CliError, AuthError } from '../../output/error.js';
+import { readCredentials } from '../../auth/store.js';
+import { ensureCloudflaredBinary } from './binary.js';
+import { startProxyServer, type LogLine } from './proxy-server.js';
+import { pickSession, type Session } from './picker.js';
+import {
+  spawnCloudflared,
+  startHeartbeat,
+  gracefulShutdown,
+} from './lifecycle.js';
+import { checkForNewerCli } from './version-check.js';
+
+export interface ListenOpts {
+  port: number;
+  path: string;
+  phone?: string;
+  session?: string;
+  verbose: boolean;
+  json: boolean;
+  reinstallTunnelBinary: boolean;
+}
+
+export interface TunnelStartResponse {
+  cloudflareTunnelToken: string;
+  hostname: string;
+  webhookPath?: string;
+}
+
+/** Resolve the effective HookMyApp API base URL (mirrors api/client.ts). */
+function getApiBaseUrl(): string {
+  return (
+    process.env.HOOKMYAPP_API_URL ?? 'https://uninked-robbi-boughless.ngrok-free.dev'
+  );
+}
+
+/** Derive tunnel env from the API host the CLI is pointed at. */
+export function detectEnv(apiBaseUrl: string): 'local' | 'staging' | 'production' {
+  if (apiBaseUrl.includes('localhost') || apiBaseUrl.includes('127.0.0.1')) {
+    return 'local';
+  }
+  if (apiBaseUrl.includes('staging')) {
+    return 'staging';
+  }
+  return 'production';
+}
+
+export function registerListenCommand(sandbox: Command, program: Command): void {
+  sandbox
+    .command('listen')
+    .description(
+      'Start a sandbox tunnel and stream incoming webhooks to your local app',
+    )
+    .option(
+      '--port <n>',
+      'Local port your app listens on',
+      (v: string) => parseInt(v, 10),
+      3000,
+    )
+    .option('--path <p>', 'Webhook path on your app', '/webhook')
+    .option('--phone <e164>', 'Skip session picker by test phone')
+    .option('--session <id>', 'Skip session picker by session id')
+    .option('--verbose', 'Print full request/response bodies', false)
+    .option('--json', 'Machine-readable event log', false)
+    .option(
+      '--reinstall-tunnel-binary',
+      'Force re-download of cloudflared',
+      false,
+    )
+    .action(async (opts: ListenOpts) => {
+      const human = (program.opts().human as boolean) ?? !opts.json;
+
+      // Step 1 — auth gate. apiClient throws AuthError lazily, but we want
+      // a deterministic "not logged in" message + exit(1) at startup.
+      if (!readCredentials()) {
+        console.error('Not logged in. Run: hookmyapp login');
+        process.exit(1);
+      }
+
+      // Step 2 — version nudge (non-blocking, silent-on-error per 09a).
+      await checkForNewerCli();
+
+      // Step 3 — ensure cloudflared binary (exit 4 on download/checksum failure).
+      let binaryPath: string;
+      try {
+        binaryPath = await ensureCloudflaredBinary({
+          force: opts.reinstallTunnelBinary,
+        });
+      } catch (err) {
+        if (err instanceof CliError) {
+          console.error(`cloudflared: ${err.userMessage}`);
+          process.exit(4);
+        }
+        throw err;
+      }
+
+      // Step 4 — fetch active sessions (exit 5 on backend unreachable).
+      let sessions: Session[];
+      try {
+        sessions = (await apiClient('/sandbox/sessions?active=true', {
+          method: 'GET',
+        })) as Session[];
+      } catch (err) {
+        if (err instanceof AuthError) {
+          console.error('Not logged in. Run: hookmyapp login');
+          process.exit(1);
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`Backend unreachable: ${msg}`);
+        process.exit(5);
+      }
+
+      // Step 5 — pick (exit 2 on 0 sessions or flag mismatch).
+      let chosen: Session;
+      try {
+        chosen = await pickSession({
+          sessions,
+          phoneFlag: opts.phone,
+          sessionFlag: opts.session,
+          isHuman: human,
+        });
+      } catch (err) {
+        if (err instanceof CliError) {
+          console.error(err.userMessage);
+          process.exit(err.exitCode || 2);
+        }
+        throw err;
+      }
+
+      // Step 6 — start tunnel (exit 3 on provisioning failure).
+      const env = detectEnv(getApiBaseUrl());
+      let tunnel: TunnelStartResponse;
+      try {
+        tunnel = (await apiClient(
+          `/sandbox/sessions/${chosen.id}/tunnel/start`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ env }),
+          },
+        )) as TunnelStartResponse;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`Tunnel provisioning failed: ${msg}`);
+        process.exit(3);
+      }
+
+      // Step 7 — bind local proxy first (so we have the OS-assigned port),
+      // then tell backend to configure ingress against that port, then spawn.
+      const proxy = await startProxyServer({
+        upstreamPort: opts.port,
+        upstreamPath: opts.path,
+        onRequest: (line) => printLogLine(line, opts),
+      });
+
+      try {
+        await apiClient(
+          `/sandbox/sessions/${chosen.id}/tunnel/configure`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ originPort: proxy.port }),
+          },
+        );
+      } catch (err) {
+        await proxy.close();
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`Tunnel configure failed: ${msg}`);
+        process.exit(3);
+      }
+
+      const child = spawnCloudflared({
+        binaryPath,
+        token: tunnel.cloudflareTunnelToken,
+      });
+
+      // Step 8 — ready banner.
+      printBanner({
+        hostname: tunnel.hostname,
+        localPort: opts.port,
+        path: opts.path,
+        session: chosen,
+        json: opts.json,
+      });
+
+      // Step 9 — heartbeat loop.
+      const hb = startHeartbeat({
+        sessionId: chosen.id,
+        intervalMs: 30_000,
+        onError: (err) => {
+          process.stderr.write(
+            `heartbeat: repeated failures (${err.message}) — tunnel may be reconciled\n`,
+          );
+        },
+      });
+
+      // Step 11 — SIGINT/SIGTERM handlers.
+      let shuttingDown = false;
+      const shutdown = async (): Promise<void> => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        if (!opts.json) {
+          process.stderr.write('\nShutting down…\n');
+        }
+        await gracefulShutdown({
+          cloudflaredChild: child,
+          proxyClose: () => proxy.close(),
+          stopHeartbeat: hb.stop,
+          callBackendStop: () =>
+            apiClient(
+              `/sandbox/sessions/${chosen.id}/tunnel/stop`,
+              { method: 'POST' },
+            ).then(() => undefined).catch(() => undefined),
+        });
+        process.exit(0);
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+    });
+}
+
+function printLogLine(line: LogLine, opts: ListenOpts): void {
+  if (opts.json) {
+    process.stdout.write(JSON.stringify(line) + '\n');
+    return;
+  }
+  process.stdout.write(
+    `${line.ts}  ${line.method} ${line.path}  →  ${line.status}  (${line.ms}ms)   ${line.summary}\n`,
+  );
+}
+
+function printBanner(args: {
+  hostname: string;
+  localPort: number;
+  path: string;
+  session: Session;
+  json: boolean;
+}): void {
+  if (args.json) return;
+  const workspace = args.session.workspaceName ?? args.session.workspaceId;
+  process.stdout.write(`\n✓ Tunnel active:    https://${args.hostname}\n`);
+  process.stdout.write(
+    `✓ Forwarding to:    http://localhost:${args.localPort}${args.path}\n`,
+  );
+  process.stdout.write(
+    `  Test phone: ${args.session.phone ?? '(no phone)'} · Workspace: ${workspace}\n`,
+  );
+  process.stdout.write(`  Press Ctrl-C to stop.\n\n`);
+}
