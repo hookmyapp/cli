@@ -9,10 +9,6 @@
 //       Linux   → standalone binary
 //       Windows → standalone .exe
 //
-// TODO(107-09a): Run scripts/generate-cf-manifest.ts to populate real SHA-256s
-// before cutting a release. The PENDING sentinels below deliberately fail the
-// checksum gate so smoke tests in Plan 09b catch a missing manifest update.
-
 import { mkdir, writeFile, chmod, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
@@ -26,11 +22,11 @@ export const CLOUDFLARED_VERSION = '2026.3.0';
 // `manifestKey`. Cloudflare does not publish per-asset checksums, so these MUST be
 // regenerated at each version bump via scripts/generate-cf-manifest.ts.
 export const CLOUDFLARED_SHA256: Record<string, string> = {
-  'darwin-arm64.tgz': 'PENDING_2026.3.0_DARWIN_ARM64',
-  'darwin-amd64.tgz': 'PENDING_2026.3.0_DARWIN_AMD64',
-  'linux-arm64': 'PENDING_2026.3.0_LINUX_ARM64',
-  'linux-amd64': 'PENDING_2026.3.0_LINUX_AMD64',
-  'windows-amd64.exe': 'PENDING_2026.3.0_WIN_AMD64',
+  'darwin-arm64.tgz':    '2aae4f69b0fc1c671b8353b4f594cbd902cd1e360c8eed2b8cad4602cb1546fb',
+  'darwin-amd64.tgz':    '0f30140c4a5e213d22f951ef4c964cac5fb6a5f061ba6eba5ea932999f7c0394',
+  'linux-arm64':         '0755ba4cbab59980e6148367fcf53a8f3ec85a97deefd63c2420cf7850769bee',
+  'linux-amd64':         '4a9e50e6d6d798e90fcd01933151a90bf7edd99a0a55c28ad18f2e16263a5c30',
+  'windows-amd64.exe':   '59b12880b24af581cf5b1013db601c7d843b9b097e9c78aa5957c7f39f741885',
 };
 
 /** Test-only escape hatch: override a manifest entry for a single test case. */
