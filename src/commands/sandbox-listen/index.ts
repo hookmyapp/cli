@@ -12,7 +12,7 @@
 
 import type { Command } from 'commander';
 import { apiClient } from '../../api/client.js';
-import { CliError, AuthError } from '../../output/error.js';
+import { CliError, AuthError, ConflictError } from '../../output/error.js';
 import { addExamples } from '../../output/help.js';
 import { readCredentials } from '../../auth/store.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
@@ -97,7 +97,11 @@ export async function runSandboxListenFlow(
     throw err;
   }
 
-  // Step 6 — start tunnel (exit 3 on provisioning failure).
+  // Step 6 — start tunnel. The backend already returns enforcement-matrix
+  // copy verbatim (phase-108 plan 03) for 409 LISTENER_ACTIVE_SAME /
+  // LISTENER_ACTIVE / PHONE_TAKEN_ANOTHER — let those propagate as
+  // ConflictError (exit 6) so users see the remediation text. Non-conflict
+  // provisioning failures (5xx, timeouts) still map to exit 3.
   const env = detectEnv(getApiBaseUrl());
   let tunnel: TunnelStartResponse;
   try {
@@ -110,6 +114,9 @@ export async function runSandboxListenFlow(
       },
     )) as TunnelStartResponse;
   } catch (err) {
+    if (err instanceof ConflictError || err instanceof AuthError) {
+      throw err;
+    }
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`Tunnel provisioning failed: ${msg}`);
     process.exit(3);
@@ -213,50 +220,33 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
     .action(async (opts: ListenOpts) => {
       const human = !program.opts().json && !opts.json;
 
-      // Step 1 — auth gate. apiClient throws AuthError lazily, but we want
-      // a deterministic "not logged in" message + exit(1) at startup.
+      // Step 1 — auth gate. Throw AuthError so main() maps it to exit 4
+      // (auth-required) rather than a blanket exit 1 that masks the real
+      // condition from CI scripts.
       if (!readCredentials()) {
-        console.error('Not logged in. Run: hookmyapp login');
-        process.exit(1);
+        throw new AuthError('Not logged in. Run: hookmyapp login');
       }
 
       // Step 2 — version nudge (non-blocking, silent-on-error per 09a).
       await checkForNewerCli();
 
-      // Step 4 — fetch active sessions (exit 5 on backend unreachable).
+      // Step 4 — fetch active sessions. apiClient's own mapApiError already
+      // produces typed subclasses (AuthError/NetworkError/ConflictError/...)
+      // with the correct exit codes — let them propagate to main().
       const workspaceId = await getDefaultWorkspaceId();
-      let sessions: Session[];
-      try {
-        sessions = (await apiClient('/sandbox/sessions?active=true', {
-          method: 'GET',
-          workspaceId,
-        })) as Session[];
-      } catch (err) {
-        if (err instanceof AuthError) {
-          console.error('Not logged in. Run: hookmyapp login');
-          process.exit(1);
-        }
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`Backend unreachable: ${msg}`);
-        process.exit(5);
-      }
+      const sessions = (await apiClient('/sandbox/sessions?active=true', {
+        method: 'GET',
+        workspaceId,
+      })) as Session[];
 
-      // Step 5 — pick (exit 2 on 0 sessions or flag mismatch).
-      let chosen: Session;
-      try {
-        chosen = await pickSession({
-          sessions,
-          phoneFlag: opts.phone,
-          sessionFlag: opts.session,
-          isHuman: human,
-        });
-      } catch (err) {
-        if (err instanceof CliError) {
-          console.error(err.userMessage);
-          process.exit(err.exitCode || 2);
-        }
-        throw err;
-      }
+      // Step 5 — pick. pickSession throws CliError (exit 2) for
+      // NO_ACTIVE_SESSIONS / SESSION_MISMATCH — let main() format + exit.
+      const chosen = await pickSession({
+        sessions,
+        phoneFlag: opts.phone,
+        sessionFlag: opts.session,
+        isHuman: human,
+      });
 
       // Ensure the session carries the correct workspaceId (listen picker
       // sessions come from a workspace-scoped list, but the type allows null).
