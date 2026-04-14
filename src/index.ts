@@ -19,15 +19,21 @@ program
   .description('HookMyApp CLI — manage WhatsApp Business accounts')
   .version('0.1.0');
 
-program.option('--human', 'Human-readable output instead of JSON');
+program.option('--json', 'Machine-readable JSON output (scripts/CI)');
+program.option('--human', 'Human-readable output (default — kept for back-compat)');
 program.option('--debug', 'Show full error stack traces');
 
 program.exitOverride();
 
+// Human output is the DEFAULT. --json flips to JSON for scripts/CI.
+function resolveHuman(): boolean {
+  if (process.argv.includes('--json')) return false;
+  return true;
+}
+
 program.configureOutput({
   writeErr: (str) => {
-    const human = process.argv.includes('--human');
-    if (human) {
+    if (resolveHuman()) {
       process.stderr.write(str);
     } else {
       process.stderr.write(JSON.stringify({ error: str.trim(), code: 'CLI_ERROR' }) + '\n');
@@ -73,7 +79,7 @@ async function main(): Promise<void> {
   try {
     await program.parseAsync();
   } catch (err) {
-    const human = program.opts().human ?? process.argv.includes('--human');
+    const human = resolveHuman();
     const debug = program.opts().debug ?? process.argv.includes('--debug');
     if (err instanceof CliError) {
       outputError(err, { human });
@@ -96,7 +102,7 @@ async function main(): Promise<void> {
 }
 
 process.on('unhandledRejection', (reason) => {
-  const human = process.argv.includes('--human');
+  const human = resolveHuman();
   const msg = 'Something went wrong. Try again later.';
   outputError(new CliError(msg, 'UNKNOWN_ERROR'), { human });
   process.exit(1);

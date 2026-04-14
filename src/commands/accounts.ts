@@ -41,7 +41,7 @@ export function registerAccountsCommand(program: Command): void {
       const workspaceId = await getDefaultWorkspaceId();
       const data = await apiClient('/meta/accounts', { workspaceId });
       const connectedAccounts = data.filter((a: any) => a.metaConnected !== false);
-      output(connectedAccounts.map(pickDisplayFields), { human: program.opts().human });
+      output(connectedAccounts.map(pickDisplayFields), { human: !program.opts().json });
     });
 
   accounts
@@ -51,7 +51,7 @@ export function registerAccountsCommand(program: Command): void {
     .action(async (wabaId: string) => {
       const account = await resolveAccount(wabaId);
       const detail = await apiClient(`/meta/accounts/${account.id}`);
-      output(pickDisplayFields(detail), { human: program.opts().human });
+      output(pickDisplayFields(detail), { human: !program.opts().json });
     });
 
   accounts
@@ -155,7 +155,7 @@ export function registerAccountsCommand(program: Command): void {
         method: 'POST',
         workspaceId: account.workspaceId,
       });
-      output(result, { human: program.opts().human });
+      output(result, { human: !program.opts().json });
     });
 
   accounts
@@ -168,7 +168,7 @@ export function registerAccountsCommand(program: Command): void {
         method: 'POST',
         workspaceId: account.workspaceId,
       });
-      output(result, { human: program.opts().human });
+      output(result, { human: !program.opts().json });
     });
 
   accounts
@@ -181,6 +181,6 @@ export function registerAccountsCommand(program: Command): void {
         method: 'POST',
         workspaceId: account.workspaceId,
       });
-      output(result, { human: program.opts().human });
+      output(result, { human: !program.opts().json });
     });
 }

@@ -15,7 +15,7 @@ export function registerWebhookCommand(program: Command): void {
     .action(async (wabaId: string) => {
       const account = await resolveAccount(wabaId);
       const data = await apiClient(`/webhook-config/${account.id}`);
-      output(data, { human: program.opts().human });
+      output(data, { human: !program.opts().json });
     });
 
   webhook

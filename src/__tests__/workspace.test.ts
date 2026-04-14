@@ -121,17 +121,18 @@ describe('workspace commands', () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('New WS'));
     });
 
-    it('outputs JSON in non-human mode', async () => {
+    it('outputs JSON under --json', async () => {
       const created = { id: 'dddddddd-dddd-dddd-dddd-dddddddddddd', name: 'New WS', createdAt: '2026-04-01', updatedAt: '2026-04-01' };
       mockedApiClient.mockResolvedValue(created);
 
       const program = new Command();
       program.option('--human');
+      program.option('--json');
       registerWorkspaceCommand(program);
-      await program.parseAsync(['workspace', 'new', 'New WS'], { from: 'user' });
+      await program.parseAsync(['workspace', 'new', 'New WS', '--json'], { from: 'user' });
 
-      // Default is non-human (JSON) mode — output should be called
-      expect(mockedOutput).toHaveBeenCalledWith(created, { human: undefined });
+      // With --json flipped on, output should be called with human:false.
+      expect(mockedOutput).toHaveBeenCalledWith(created, { human: false });
     });
   });
 

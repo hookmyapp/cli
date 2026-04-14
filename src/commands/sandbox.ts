@@ -48,7 +48,7 @@ export function registerSandboxCommand(program: Command): void {
         workspaceId,
       });
 
-      const human = program.opts().human;
+      const human = !program.opts().json;
       if (!human) {
         output(session, { human: false });
         return;
@@ -75,7 +75,7 @@ export function registerSandboxCommand(program: Command): void {
       const workspaceId = await getDefaultWorkspaceId();
       const sessions: SandboxSession[] = await apiClient('/sandbox/sessions', { workspaceId });
 
-      const human = program.opts().human;
+      const human = !program.opts().json;
       if (!human) {
         output(sessions, { human: false });
         return;
@@ -147,7 +147,7 @@ export function registerSandboxCommand(program: Command): void {
         workspaceId,
       });
 
-      const human = program.opts().human;
+      const human = !program.opts().json;
       if (human) {
         console.log(`\nSandbox session ${sessionToDelete.id} deleted.\n`);
       } else {

@@ -89,12 +89,13 @@ describe('sandbox commands', () => {
     registerSandboxCommand = mod.registerSandboxCommand;
   });
 
-  it('sandbox start with --phone creates session', async () => {
+  it('sandbox start with --phone creates session and outputs JSON under --json', async () => {
     mockedApiClient.mockResolvedValueOnce(fakeSession);
 
     const program = new Command();
+    program.option('--json', 'JSON output');
     registerSandboxCommand(program);
-    await program.parseAsync(['sandbox', 'start', '--phone', '+1234567890'], { from: 'user' });
+    await program.parseAsync(['sandbox', 'start', '--phone', '+1234567890', '--json'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/sandbox/sessions', {
       method: 'POST',
@@ -122,12 +123,13 @@ describe('sandbox commands', () => {
     });
   });
 
-  it('sandbox status lists sessions', async () => {
+  it('sandbox status lists sessions (JSON branch under --json)', async () => {
     mockedApiClient.mockResolvedValueOnce([fakeSession, fakeActiveSession]);
 
     const program = new Command();
+    program.option('--json', 'JSON output');
     registerSandboxCommand(program);
-    await program.parseAsync(['sandbox', 'status'], { from: 'user' });
+    await program.parseAsync(['sandbox', 'status', '--json'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/sandbox/sessions', { workspaceId: 'ws-123' });
     expect(mockedOutput).toHaveBeenCalledWith([fakeSession, fakeActiveSession], { human: false });
