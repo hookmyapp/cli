@@ -3,8 +3,13 @@ import { mkdirSync, writeFileSync, readFileSync, statSync, unlinkSync, rmSync } 
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-// Override homedir so tests use a temp directory
+// Override homedir so tests use a temp directory. vitest.setup.ts normally
+// redirects via HOOKMYAPP_CONFIG_DIR, but this file specifically exercises
+// the homedir() fallback path — scoped to this file only (saved/restored
+// per-test via beforeEach/afterEach so sibling test files keep their
+// setup-file-provided override).
 const TEST_HOME = join(tmpdir(), `hookmyapp-test-${process.pid}`);
+const SAVED_CONFIG_DIR = process.env.HOOKMYAPP_CONFIG_DIR;
 
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os');
@@ -16,11 +21,15 @@ const { saveCredentials, readCredentials, deleteCredentials } = await import('..
 
 describe('credential store', () => {
   beforeEach(() => {
+    delete process.env.HOOKMYAPP_CONFIG_DIR;
     mkdirSync(TEST_HOME, { recursive: true });
   });
 
   afterEach(() => {
     rmSync(TEST_HOME, { recursive: true, force: true });
+    if (SAVED_CONFIG_DIR !== undefined) {
+      process.env.HOOKMYAPP_CONFIG_DIR = SAVED_CONFIG_DIR;
+    }
   });
 
   it('saveCredentials writes JSON to ~/.hookmyapp/credentials.json with 0o600 permissions', () => {

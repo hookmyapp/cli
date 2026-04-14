@@ -3,10 +3,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-// Isolate HOME so we don't clobber real ~/.hookmyapp/config.json (or other specs)
+// Isolate CLI config so we don't clobber real ~/.hookmyapp/config.json (or
+// other specs running in the same vitest process). Override both HOME and
+// HOOKMYAPP_CONFIG_DIR — the CLI reads CONFIG_DIR first, other specs/vitest
+// setup may have seeded it.
 const TMP_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'hookmyapp-use-'));
+const CONFIG_DIR = path.join(TMP_HOME, '.hookmyapp');
+fs.mkdirSync(CONFIG_DIR, { recursive: true });
 const ORIGINAL_HOME = process.env.HOME;
+const ORIGINAL_CONFIG_DIR = process.env.HOOKMYAPP_CONFIG_DIR;
 process.env.HOME = TMP_HOME;
+process.env.HOOKMYAPP_CONFIG_DIR = CONFIG_DIR;
 
 vi.mock('../api/client.js', () => ({
   apiClient: vi.fn(),
@@ -53,6 +60,11 @@ afterEach(() => {
 
 afterAll(() => {
   process.env.HOME = ORIGINAL_HOME;
+  if (ORIGINAL_CONFIG_DIR !== undefined) {
+    process.env.HOOKMYAPP_CONFIG_DIR = ORIGINAL_CONFIG_DIR;
+  } else {
+    delete process.env.HOOKMYAPP_CONFIG_DIR;
+  }
   try { fs.rmSync(TMP_HOME, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 

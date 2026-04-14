@@ -7,8 +7,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-const CONFIG_DIR = path.join(os.homedir(), '.hookmyapp');
-const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
+// HOOKMYAPP_CONFIG_DIR lets tests (and power users) redirect config away from
+// the real $HOME/.hookmyapp dir. Resolved per-call so vitest setup files that
+// set the env var at process start are honored even if this module was
+// imported first. See src/auth/store.ts for the full rationale.
+function configDir(): string {
+  return process.env.HOOKMYAPP_CONFIG_DIR ?? path.join(os.homedir(), '.hookmyapp');
+}
+function configPath(): string {
+  return path.join(configDir(), 'config.json');
+}
 
 export interface WorkspaceConfig {
   activeWorkspaceId?: string;
@@ -17,15 +25,15 @@ export interface WorkspaceConfig {
 
 export function readWorkspaceConfig(): WorkspaceConfig {
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    return JSON.parse(fs.readFileSync(configPath(), 'utf-8'));
   } catch {
     return {};
   }
 }
 
 export function writeWorkspaceConfig(config: WorkspaceConfig): void {
-  fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n');
+  fs.mkdirSync(configDir(), { recursive: true });
+  fs.writeFileSync(configPath(), JSON.stringify(config, null, 2) + '\n');
 }
 
 export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; name: string; role: string }> {

@@ -2,8 +2,16 @@ import { readFileSync, writeFileSync, mkdirSync, chmodSync, unlinkSync } from 'n
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-const CONFIG_DIR = join(homedir(), '.hookmyapp');
-const CREDS_FILE = join(CONFIG_DIR, 'credentials.json');
+// HOOKMYAPP_CONFIG_DIR lets tests (and power users) redirect config away from
+// the real $HOME/.hookmyapp dir. Resolved on each call so vitest setup files
+// that set the env var at process start are honored even if this module was
+// imported first.
+function configDir(): string {
+  return process.env.HOOKMYAPP_CONFIG_DIR ?? join(homedir(), '.hookmyapp');
+}
+function credsFile(): string {
+  return join(configDir(), 'credentials.json');
+}
 
 export interface Credentials {
   accessToken: string;
@@ -12,14 +20,14 @@ export interface Credentials {
 }
 
 export function saveCredentials(creds: Credentials): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(CREDS_FILE, JSON.stringify(creds, null, 2));
-  chmodSync(CREDS_FILE, 0o600);
+  mkdirSync(configDir(), { recursive: true });
+  writeFileSync(credsFile(), JSON.stringify(creds, null, 2));
+  chmodSync(credsFile(), 0o600);
 }
 
 export function readCredentials(): Credentials | null {
   try {
-    return JSON.parse(readFileSync(CREDS_FILE, 'utf-8'));
+    return JSON.parse(readFileSync(credsFile(), 'utf-8'));
   } catch {
     return null;
   }
@@ -27,7 +35,7 @@ export function readCredentials(): Credentials | null {
 
 export function deleteCredentials(): void {
   try {
-    unlinkSync(CREDS_FILE);
+    unlinkSync(credsFile());
   } catch {
     // Ignore if file doesn't exist
   }
