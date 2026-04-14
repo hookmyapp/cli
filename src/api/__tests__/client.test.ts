@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   AuthError,
   PermissionError,
@@ -33,11 +33,13 @@ function mkRes(status: number, body: any): Response {
   } as unknown as Response;
 }
 
-describe('mapApiError — Wave 0 RED', () => {
-  beforeEach(async () => {
-    vi.resetModules();
-  });
+// Note: we intentionally do NOT call vi.resetModules() between tests.
+// Both this file and client.ts import the same error-class module graph; a
+// reset would mint fresh class identities and break `instanceof` across the
+// boundary (client.ts returns instances from its copy of error.js, while this
+// file's `AuthError` reference would still point at the original copy).
 
+describe('mapApiError — Wave 0 RED', () => {
   it('401 → AuthError', async () => {
     const { mapApiError } = await import('../client.js');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

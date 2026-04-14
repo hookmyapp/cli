@@ -4,31 +4,28 @@ const mockLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
 import { output } from '../output/format.js';
 
-describe('output formatter', () => {
+// NOTE: The canonical output() contract moved to src/output/__tests__/format.test.ts
+// as of phase 108-04. Those tests exercise the new { json, nudge, kind } shape
+// against cli-table3 rendering. The cases below cover the back-compat `human`
+// flag that existing callers (workspace.ts, billing.ts) still pass.
+describe('output formatter back-compat', () => {
   beforeEach(() => {
     mockLog.mockClear();
   });
 
-  it('prints JSON.stringify with indent 2 by default', () => {
+  it('human=false forces JSON output', () => {
     const data = { id: 1, name: 'test' };
-    output(data, {});
+    output(data, { human: false });
     expect(mockLog).toHaveBeenCalledWith(JSON.stringify(data, null, 2));
   });
 
-  it('with human=true prints tab-separated table for arrays', () => {
-    const data = [
-      { id: 1, name: 'alice' },
-      { id: 2, name: 'bob' },
-    ];
-    output(data, { human: true });
-
-    const calls = mockLog.mock.calls.map((c) => c[0]);
-    expect(calls[0]).toBe('id\tname');
-    expect(calls[1]).toBe('1\talice');
-    expect(calls[2]).toBe('2\tbob');
+  it('json=true forces JSON output even without human flag', () => {
+    const data = { id: 1, name: 'test' };
+    output(data, { json: true });
+    expect(mockLog).toHaveBeenCalledWith(JSON.stringify(data, null, 2));
   });
 
-  it('with human=true prints key: value lines for objects', () => {
+  it('human=true prints key: value lines for flat objects', () => {
     const data = { id: 1, name: 'test' };
     output(data, { human: true });
 
