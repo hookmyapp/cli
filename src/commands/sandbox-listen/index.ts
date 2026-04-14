@@ -60,6 +60,134 @@ export function detectEnv(apiBaseUrl: string): 'local' | 'staging' | 'production
   return 'production';
 }
 
+/**
+ * Execute the sandbox-listen flow against an already-resolved session.
+ *
+ * The wizard (src/auth/login.ts runSandboxFlow) has already picked or created
+ * the session, so this entry point skips Steps 1-5 (auth gate, version check,
+ * session picker) and drives Steps 6-11 directly. Imported by the wizard via
+ * a direct function call — never subprocess spawn.
+ */
+export async function runSandboxListenFlow(
+  session: Session,
+  opts: Partial<ListenOpts> = {},
+): Promise<void> {
+  const human = !opts.json;
+  const listenOpts: ListenOpts = {
+    port: opts.port ?? 3000,
+    path: opts.path ?? '/webhook',
+    phone: opts.phone,
+    session: opts.session,
+    verbose: opts.verbose ?? false,
+    json: opts.json ?? false,
+    reinstallTunnelBinary: opts.reinstallTunnelBinary ?? false,
+  };
+
+  // Step 3 — ensure cloudflared binary (exit 4 on download/checksum failure).
+  let binaryPath: string;
+  try {
+    binaryPath = await ensureCloudflaredBinary({
+      force: listenOpts.reinstallTunnelBinary,
+    });
+  } catch (err) {
+    if (err instanceof CliError) {
+      console.error(`cloudflared: ${err.userMessage}`);
+      process.exit(4);
+    }
+    throw err;
+  }
+
+  // Step 6 — start tunnel (exit 3 on provisioning failure).
+  const env = detectEnv(getApiBaseUrl());
+  let tunnel: TunnelStartResponse;
+  try {
+    tunnel = (await apiClient(
+      `/sandbox/sessions/${session.id}/tunnel/start`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ env }),
+        workspaceId: session.workspaceId,
+      },
+    )) as TunnelStartResponse;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Tunnel provisioning failed: ${msg}`);
+    process.exit(3);
+  }
+
+  // Step 7 — bind local proxy; configure ingress; spawn cloudflared.
+  const proxy = await startProxyServer({
+    upstreamPort: listenOpts.port,
+    upstreamPath: listenOpts.path,
+    onRequest: (line) => printLogLine(line, listenOpts),
+  });
+
+  try {
+    await apiClient(
+      `/sandbox/sessions/${session.id}/tunnel/configure`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ originPort: proxy.port }),
+        workspaceId: session.workspaceId,
+      },
+    );
+  } catch (err) {
+    await proxy.close();
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Tunnel configure failed: ${msg}`);
+    process.exit(3);
+  }
+
+  const child = spawnCloudflared({
+    binaryPath,
+    token: tunnel.cloudflareTunnelToken,
+  });
+
+  // Step 8 — ready banner.
+  printBanner({
+    hostname: tunnel.hostname,
+    localPort: listenOpts.port,
+    path: listenOpts.path,
+    session,
+    json: listenOpts.json,
+  });
+
+  // Step 9 — heartbeat loop.
+  const hb = startHeartbeat({
+    sessionId: session.id,
+    workspaceId: session.workspaceId,
+    intervalMs: 30_000,
+    onError: (err) => {
+      process.stderr.write(
+        `heartbeat: repeated failures (${err.message}) — tunnel may be reconciled\n`,
+      );
+    },
+  });
+
+  // Step 11 — SIGINT/SIGTERM handlers.
+  let shuttingDown = false;
+  const shutdown = async (): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    if (human) {
+      process.stderr.write('\nShutting down…\n');
+    }
+    await gracefulShutdown({
+      cloudflaredChild: child,
+      proxyClose: () => proxy.close(),
+      stopHeartbeat: hb.stop,
+      callBackendStop: () =>
+        apiClient(
+          `/sandbox/sessions/${session.id}/tunnel/stop`,
+          { method: 'POST', workspaceId: session.workspaceId },
+        ).then(() => undefined).catch(() => undefined),
+    });
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
 export function registerListenCommand(sandbox: Command, program: Command): void {
   const listen = sandbox
     .command('listen')
@@ -94,20 +222,6 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
 
       // Step 2 — version nudge (non-blocking, silent-on-error per 09a).
       await checkForNewerCli();
-
-      // Step 3 — ensure cloudflared binary (exit 4 on download/checksum failure).
-      let binaryPath: string;
-      try {
-        binaryPath = await ensureCloudflaredBinary({
-          force: opts.reinstallTunnelBinary,
-        });
-      } catch (err) {
-        if (err instanceof CliError) {
-          console.error(`cloudflared: ${err.userMessage}`);
-          process.exit(4);
-        }
-        throw err;
-      }
 
       // Step 4 — fetch active sessions (exit 5 on backend unreachable).
       const workspaceId = await getDefaultWorkspaceId();
@@ -144,96 +258,16 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
         throw err;
       }
 
-      // Step 6 — start tunnel (exit 3 on provisioning failure).
-      const env = detectEnv(getApiBaseUrl());
-      let tunnel: TunnelStartResponse;
-      try {
-        tunnel = (await apiClient(
-          `/sandbox/sessions/${chosen.id}/tunnel/start`,
-          {
-            method: 'POST',
-            body: JSON.stringify({ env }),
-            workspaceId,
-          },
-        )) as TunnelStartResponse;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`Tunnel provisioning failed: ${msg}`);
-        process.exit(3);
-      }
-
-      // Step 7 — bind local proxy first (so we have the OS-assigned port),
-      // then tell backend to configure ingress against that port, then spawn.
-      const proxy = await startProxyServer({
-        upstreamPort: opts.port,
-        upstreamPath: opts.path,
-        onRequest: (line) => printLogLine(line, opts),
-      });
-
-      try {
-        await apiClient(
-          `/sandbox/sessions/${chosen.id}/tunnel/configure`,
-          {
-            method: 'POST',
-            body: JSON.stringify({ originPort: proxy.port }),
-            workspaceId,
-          },
-        );
-      } catch (err) {
-        await proxy.close();
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`Tunnel configure failed: ${msg}`);
-        process.exit(3);
-      }
-
-      const child = spawnCloudflared({
-        binaryPath,
-        token: tunnel.cloudflareTunnelToken,
-      });
-
-      // Step 8 — ready banner.
-      printBanner({
-        hostname: tunnel.hostname,
-        localPort: opts.port,
-        path: opts.path,
-        session: chosen,
-        json: opts.json,
-      });
-
-      // Step 9 — heartbeat loop.
-      const hb = startHeartbeat({
-        sessionId: chosen.id,
-        workspaceId,
-        intervalMs: 30_000,
-        onError: (err) => {
-          process.stderr.write(
-            `heartbeat: repeated failures (${err.message}) — tunnel may be reconciled\n`,
-          );
-        },
-      });
-
-      // Step 11 — SIGINT/SIGTERM handlers.
-      let shuttingDown = false;
-      const shutdown = async (): Promise<void> => {
-        if (shuttingDown) return;
-        shuttingDown = true;
-        if (!opts.json) {
-          process.stderr.write('\nShutting down…\n');
-        }
-        await gracefulShutdown({
-          cloudflaredChild: child,
-          proxyClose: () => proxy.close(),
-          stopHeartbeat: hb.stop,
-          callBackendStop: () =>
-            apiClient(
-              `/sandbox/sessions/${chosen.id}/tunnel/stop`,
-              { method: 'POST', workspaceId },
-            ).then(() => undefined).catch(() => undefined),
-        });
-        process.exit(0);
+      // Ensure the session carries the correct workspaceId (listen picker
+      // sessions come from a workspace-scoped list, but the type allows null).
+      const sessionWithWorkspace: Session = {
+        ...chosen,
+        workspaceId: chosen.workspaceId ?? workspaceId,
       };
-      process.on('SIGINT', shutdown);
-      process.on('SIGTERM', shutdown);
+
+      // Steps 3 + 6-11: cloudflared binary, tunnel provision, local proxy,
+      // banner, heartbeat, signal handlers. Shared with the post-login wizard.
+      await runSandboxListenFlow(sessionWithWorkspace, opts);
     });
 
   addExamples(

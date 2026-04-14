@@ -53,7 +53,7 @@ export async function seedSession(opts?: {
     // This mirrors what a real user does after `hookmyapp login` and ensures
     // the seeded JWT is scoped to a real WorkOS org so commands that require
     // X-Workspace-Id (token, env, accounts, etc.) work end-to-end.
-    const list = await runCli(['workspace', 'list'], { home });
+    const list = await runCli(['workspace', 'list', '--json'], { home });
     if (list.exitCode !== 0) {
       throw new Error(
         `[seedSession] failed to list workspaces with seeded credentials: ` +
