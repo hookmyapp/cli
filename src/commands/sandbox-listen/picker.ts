@@ -83,7 +83,10 @@ export async function pickSession(args: PickSessionArgs): Promise<Session> {
     throw err;
   }
 
-  // Interactive picker.
+  // Interactive picker. Preview the sessions as a cli-table3 table above
+  // the select prompt so users see phone + status + Listener state at a
+  // glance (the one-line choice strings are harder to scan).
+  process.stdout.write(renderSessionTable(sessions) + '\n');
   return select<Session>({
     message: 'Choose session',
     choices: sessions.map((s) => ({
