@@ -15,6 +15,20 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import { apiClient } from '../../api/client.js';
 
+// Exported so gracefulShutdown can flip it before sending SIGTERM. Once true,
+// cloudflared's stderr filter stops writing — otherwise every Ctrl-C surfaces
+// ~16 "ERR Connection terminated" / "context canceled" / "no more connections
+// active" lines that are just the closure log.
+let shuttingDown = false;
+export function markShuttingDown(): void {
+  shuttingDown = true;
+}
+
+// Shutdown-noise pattern — cloudflared logs each connection closure as ERR.
+// These are strictly expected during normal Ctrl-C and MUST stay hidden.
+const SHUTDOWN_NOISE =
+  /context canceled|Connection terminated|no more connections active|accept stream listener encountered a failure while serving|control stream encountered a failure while serving|failed to run the datagram handler|Serve tunnel error|failed to serve tunnel connection|Application error 0x0 \(remote\)/;
+
 export function spawnCloudflared(opts: {
   binaryPath: string;
   token: string;
@@ -47,9 +61,16 @@ export function spawnCloudflared(opts: {
   // any "Incorrect Usage" / "flag provided but not defined" / "error:" lines
   // that cloudflared emits when invoked with bad flags (those skip the
   // structured log format and would otherwise be silently dropped).
+  //
+  // During graceful shutdown (shuttingDown=true), suppress ALL further stderr —
+  // cloudflared emits a stream of "ERR Connection terminated" / "context
+  // canceled" / "no more connections active" lines that are purely closure
+  // noise and not actionable for the user.
   child.stderr?.on('data', (buf: Buffer) => {
+    if (shuttingDown) return;
     const text = buf.toString();
     for (const line of text.split('\n')) {
+      if (SHUTDOWN_NOISE.test(line)) continue;
       if (
         /\bERR\b|\bWRN\b/.test(line) ||
         /Incorrect Usage|flag provided but not defined|error:/i.test(line)
@@ -60,8 +81,10 @@ export function spawnCloudflared(opts: {
   });
 
   // Also surface if cloudflared exits non-zero — otherwise the process dies and
-  // sandbox listen hangs on heartbeats with no visible failure.
+  // sandbox listen hangs on heartbeats with no visible failure. Suppress during
+  // graceful shutdown (SIGTERM from us → expected non-zero exit).
   child.on('exit', (code, signal) => {
+    if (shuttingDown) return;
     if (code !== null && code !== 0) {
       process.stderr.write(
         `cloudflared exited with code ${code}${signal ? ` (signal ${signal})` : ''}\n`,
@@ -135,6 +158,11 @@ export interface GracefulShutdownArgs {
  * doesn't leave the user stuck in the terminal.
  */
 export async function gracefulShutdown(args: GracefulShutdownArgs): Promise<void> {
+  // Flip before any teardown — silences cloudflared's closure-noise stderr
+  // (context canceled, Connection terminated, no more connections active, etc.)
+  // which would otherwise spam ~16 ERR lines on every Ctrl-C.
+  markShuttingDown();
+
   args.stopHeartbeat();
   try {
     await args.proxyClose();
