@@ -14,10 +14,12 @@ interface SandboxSession {
   activationCode: string;
   status: 'pending_activation' | 'active' | 'replaced' | 'expired';
   webhookUrl: string | null;
-  ngrokDomainId: string | null;
-  ngrokDomain: string | null;
-  ngrokCredentialId: string | null;
-  ngrokAuthToken: string | null;
+  // Cloudflare tunnel fields (populated only while a tunnel is live via
+  // `hookmyapp sandbox listen`; see Phase 107 for the full lifecycle).
+  cloudflareTunnelId: string | null;
+  cloudflareTunnelToken: string | null;
+  hostname: string | null;
+  lastHeartbeatAt: string | null;
   hmacSecret: string;
   activatedAt: string | null;
   createdAt: string;
@@ -56,7 +58,7 @@ export function registerSandboxCommand(program: Command): void {
       console.log(`  1. Send your activation code via WhatsApp:`);
       console.log(`     Open: https://wa.me/${SANDBOX_WHATSAPP_NUMBER}?text=${session.activationCode}\n`);
 
-      if (session.status === 'active' && session.ngrokDomain && session.ngrokAuthToken) {
+      if (session.status === 'active') {
         printActiveSteps(session);
       } else {
         console.log(`  Your session is pending activation.`);
@@ -89,11 +91,11 @@ export function registerSandboxCommand(program: Command): void {
         console.log(`  Phone:           ${session.phone ?? '(none)'}`);
         console.log(`  Status:          ${session.status}`);
         console.log(`  Activation Code: ${session.activationCode}`);
-        console.log(`  Ngrok Domain:    ${session.ngrokDomain ?? '(pending activation)'}`);
-        console.log(`  Webhook URL:     ${session.webhookUrl ?? '(pending activation)'}`);
+        console.log(`  Tunnel Host:     ${session.hostname ?? '(no live tunnel)'}`);
+        console.log(`  Webhook URL:     ${session.webhookUrl ?? '(not set — run sandbox listen)'}`);
         console.log(`  Activated At:    ${session.activatedAt ?? '(not yet)'}`);
 
-        if (session.status === 'active' && session.ngrokDomain && session.ngrokAuthToken) {
+        if (session.status === 'active') {
           console.log('');
           printActiveSteps(session);
         }
@@ -156,7 +158,7 @@ export function registerSandboxCommand(program: Command): void {
 
 function printActiveSteps(session: SandboxSession): void {
   console.log(`  2. Start your tunnel:`);
-  console.log(`     ngrok http --url=${session.ngrokDomain} --authtoken=${session.ngrokAuthToken} 3000\n`);
+  console.log(`     hookmyapp sandbox listen --phone ${session.phone ?? '<your-test-phone>'}\n`);
   console.log(`  3. Clone the starter kit:`);
   console.log(`     npx degit hookmyapp/webhook-starter-kit my-app`);
   console.log(`     cd my-app && npm install\n`);

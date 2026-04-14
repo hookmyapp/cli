@@ -52,10 +52,10 @@ const fakeSession = {
   activationCode: 'SANDBOX-ABC123',
   status: 'pending_activation' as const,
   webhookUrl: null,
-  ngrokDomainId: null,
-  ngrokDomain: null,
-  ngrokCredentialId: null,
-  ngrokAuthToken: null,
+  cloudflareTunnelId: null,
+  cloudflareTunnelToken: null,
+  hostname: null,
+  lastHeartbeatAt: null,
   hmacSecret: 'hmac-secret',
   activatedAt: null,
   createdAt: '2026-01-01T00:00:00Z',
@@ -65,9 +65,8 @@ const fakeSession = {
 const fakeActiveSession = {
   ...fakeSession,
   status: 'active' as const,
-  ngrokDomain: 'my-tunnel.ngrok.dev',
-  ngrokAuthToken: 'ngrok-token-123',
-  webhookUrl: 'https://my-tunnel.ngrok.dev/webhook',
+  hostname: 'staging-abc123.hookmyapp-sandbox.com',
+  webhookUrl: 'https://staging-abc123.hookmyapp-sandbox.com/webhook',
   activatedAt: '2026-01-01T00:01:00Z',
 };
 
