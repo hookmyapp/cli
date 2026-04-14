@@ -37,6 +37,7 @@ export class NetworkError extends CliError {
   constructor(message: string = 'Could not connect to HookMyApp API. Check your internet connection or try again later.') {
     super(message, 'NETWORK_ERROR');
     this.name = 'NetworkError';
+    this.exitCode = 5;
   }
 }
 
@@ -45,6 +46,22 @@ export class ApiError extends CliError {
     const code = statusCode >= 500 ? 'SERVER_ERROR' : 'API_ERROR';
     super(message, code, statusCode);
     this.name = 'ApiError';
+  }
+}
+
+export class ValidationError extends CliError {
+  constructor(message: string) {
+    super(message, 'VALIDATION_ERROR');
+    this.name = 'ValidationError';
+    this.exitCode = 2;
+  }
+}
+
+export class ConflictError extends CliError {
+  constructor(message: string, code: string = 'CONFLICT') {
+    super(message, code, 409);
+    this.name = 'ConflictError';
+    this.exitCode = 6;
   }
 }
 

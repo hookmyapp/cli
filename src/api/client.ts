@@ -1,5 +1,12 @@
 import { readCredentials, saveCredentials } from '../auth/store.js';
-import { AuthError, ApiError, NetworkError, PermissionError } from '../output/error.js';
+import {
+  AuthError,
+  ApiError,
+  NetworkError,
+  PermissionError,
+  ConflictError,
+  CliError,
+} from '../output/error.js';
 
 const WORKOS_CLIENT_ID = process.env.HOOKMYAPP_WORKOS_CLIENT_ID ?? 'client_01KM5S4CGX9M2M2P63JTA6AFEH';
 
@@ -56,6 +63,43 @@ export async function forceTokenRefresh(organizationId?: string): Promise<void> 
   }
 }
 
+// Centralized HTTP-status → CliError subclass mapping. Every non-ok response
+// from apiClient funnels through here so that error shape/exit codes stay
+// consistent across commands. Keep this in sync with the error-hierarchy
+// contract in output/error.ts (exit codes: 2 / 3 / 4 / 5 / 6).
+export async function mapApiError(res: Response): Promise<CliError> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body: any = await res.json().catch(() => ({ message: res.statusText }));
+  const msg: string = body?.message ?? body?.error ?? res.statusText;
+  const code: string | undefined = body?.code;
+
+  if (res.status === 401) return new AuthError();
+  if (res.status === 403) {
+    // Lazy-import to avoid a cycle with commands/workspace.ts
+    const { readWorkspaceConfig } = await import('../commands/workspace.js');
+    const cfg = readWorkspaceConfig();
+    return new PermissionError(cfg.activeWorkspaceSlug ?? '<unknown>');
+  }
+  if (res.status === 409) return new ConflictError(msg, code ?? 'CONFLICT');
+  if (res.status >= 500) {
+    return new ApiError('Something went wrong on our end. Try again later.', res.status);
+  }
+  return new ApiError(msg, res.status);
+}
+
+function isNetworkFailure(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const code = (err as any)?.code;
+  if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ECONNRESET' || code === 'ETIMEDOUT') {
+    return true;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const message = (err as any)?.message;
+  if (typeof message === 'string' && /fetch failed/i.test(message)) return true;
+  return false;
+}
+
 export async function apiClient(
   path: string,
   options?: RequestInit & { workspaceId?: string },
@@ -100,27 +144,14 @@ export async function apiClient(
       headers,
     });
   } catch (err) {
-    if (err instanceof TypeError) {
+    if (isNetworkFailure(err)) {
       throw new NetworkError();
     }
     throw err;
   }
 
   if (!res.ok) {
-    if (res.status === 401) {
-      throw new AuthError();
-    }
-    if (res.status === 403) {
-      // Lazy-import to avoid a cycle with commands/workspace.ts
-      const { readWorkspaceConfig } = await import('../commands/workspace.js');
-      const cfg = readWorkspaceConfig();
-      throw new PermissionError(cfg.activeWorkspaceSlug ?? '<unknown>');
-    }
-    const body = await res.json().catch(() => ({ message: res.statusText }));
-    if (res.status >= 500) {
-      throw new ApiError('Something went wrong on our end. Try again later.', res.status);
-    }
-    throw new ApiError(body.message ?? body.error ?? res.statusText, res.status);
+    throw await mapApiError(res);
   }
 
   // 204 No Content (and other empty-body 2xx responses) have no JSON to parse.

@@ -75,8 +75,10 @@ describe('workspace list (RBAC-UX-04)', () => {
     expect(logs).toContain('NAME');
     expect(logs).toContain('SLUG');
     expect(logs).toContain('ROLE');
-    // Active marker on w1 row
-    expect(logs).toMatch(/\*\s*\tAcme/);
+    // Active marker on Acme row — cli-table3 renders with box-drawing
+    // separators between cells, so we no longer assert a tab character.
+    expect(logs).toContain('Acme');
+    expect(logs).toMatch(/\*[^\n]*Acme/);
   });
 
   it('--json flag emits JSON array containing workosOrganizationId', async () => {
