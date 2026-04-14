@@ -4,15 +4,24 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { tmpHome } from './tmpHome.js';
 import { runCli } from './runCli.js';
+import { HOOKMYAPP_API_URL } from './env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Path where the post-login spec stashes a reusable credentials.json. */
 export const SHARED_CREDS_PATH = path.resolve(__dirname, '../.cache/credentials.json');
 
+export interface SeededSandbox {
+  sessionId: string;
+  phone: string;
+  activationCode: string;
+  hmacSecret: string;
+}
+
 export interface SeededSession {
   home: string;
   workspaceId?: string;
+  sandbox?: SeededSandbox;
   cleanup: () => Promise<void>;
 }
 
@@ -30,6 +39,13 @@ export interface SeededSession {
 export async function seedSession(opts?: {
   workspaceId?: string;
   skipActiveWorkspace?: boolean;
+  /**
+   * When set, also provisions an active sandbox_session row in the shared
+   * test DB for the given phone (via POST /internal/e2e/sandbox-session) so
+   * the CLI's `sandbox send` / `sandbox env` subcommands can be exercised
+   * end-to-end without a real WhatsApp activation round-trip.
+   */
+  includeSandboxSession?: { phone: string };
 }): Promise<SeededSession> {
   if (!existsSync(SHARED_CREDS_PATH)) {
     throw new Error(
@@ -78,9 +94,56 @@ export async function seedSession(opts?: {
     activeWorkspaceId = target.id;
   }
 
+  let sandbox: SeededSandbox | undefined;
+  if (opts?.includeSandboxSession) {
+    if (!activeWorkspaceId) {
+      throw new Error(
+        '[seedSession] includeSandboxSession requires an active workspace ' +
+          '(skipActiveWorkspace was set OR workspace lookup returned none).',
+      );
+    }
+    const secret = process.env.E2E_PROVISION_SECRET;
+    if (!secret) {
+      throw new Error(
+        '[seedSession] includeSandboxSession requires E2E_PROVISION_SECRET in the env',
+      );
+    }
+    const url = `${HOOKMYAPP_API_URL.replace(/\/$/, '')}/internal/e2e/sandbox-session`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-e2e-secret': secret,
+      },
+      body: JSON.stringify({
+        workspaceId: activeWorkspaceId,
+        phone: opts.includeSandboxSession.phone,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(
+        `[seedSession] /internal/e2e/sandbox-session failed ${res.status}: ${text}`,
+      );
+    }
+    const created = (await res.json()) as {
+      id: string;
+      phone: string;
+      activationCode: string;
+      hmacSecret: string;
+    };
+    sandbox = {
+      sessionId: created.id,
+      phone: created.phone,
+      activationCode: created.activationCode,
+      hmacSecret: created.hmacSecret,
+    };
+  }
+
   return {
     home,
     workspaceId: activeWorkspaceId,
+    sandbox,
     cleanup: async () => {
       /* tmpdir is auto-cleaned by OS; no-op */
     },

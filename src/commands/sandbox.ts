@@ -134,7 +134,12 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
     }));
 
   const toStripped = to.replace(/^\+/, '');
-  const url = `https://sandbox.hookmyapp.com/v22.0/${session.phone}/messages`;
+  // Base URL is overridable via HOOKMYAPP_SANDBOX_PROXY_URL so the CLI
+  // integration suite can point at the local sandbox-proxy container
+  // (http://localhost:4315) instead of the production sandbox host.
+  const proxyBase =
+    process.env.HOOKMYAPP_SANDBOX_PROXY_URL ?? 'https://sandbox.hookmyapp.com';
+  const url = `${proxyBase.replace(/\/$/, '')}/v22.0/${session.phone}/messages`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {

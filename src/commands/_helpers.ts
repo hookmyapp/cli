@@ -1,6 +1,32 @@
 import { apiClient } from '../api/client.js';
-import { ValidationError } from '../output/error.js';
+import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { readWorkspaceConfig, writeWorkspaceConfig } from './workspace.js';
+
+/**
+ * Fetch /workspaces while propagating auth + network errors (so callers bubble
+ * up AUTH_REQUIRED/NETWORK_ERROR with the right exit codes) and swallowing
+ * only the benign "I don't care, return empty" cases.
+ *
+ * We cannot blanket `.catch(() => [])` because that would downgrade a 401 to
+ * the "not a member of any workspace" ValidationError — hiding the real
+ * authentication failure from CI scripts that check exit codes.
+ */
+async function listWorkspacesOrEmpty(): Promise<
+  Array<{ id: string; name: string; workosOrganizationId?: string }>
+> {
+  try {
+    return (await apiClient('/workspaces')) as Array<{
+      id: string;
+      name: string;
+      workosOrganizationId?: string;
+    }>;
+  } catch (err) {
+    if (err instanceof AuthError || err instanceof NetworkError) {
+      throw err;
+    }
+    return [];
+  }
+}
 
 /**
  * Resolve the caller's active workspace ID. The resolution order is:
@@ -21,11 +47,7 @@ export async function getDefaultWorkspaceId(): Promise<string> {
   const { program } = await import('../index.js');
   const flag = program.opts().workspace as string | undefined;
   if (flag) {
-    const workspaces = (await apiClient('/workspaces').catch(() => [])) as Array<{
-      id: string;
-      name: string;
-      workosOrganizationId?: string;
-    }>;
+    const workspaces = await listWorkspacesOrEmpty();
     const match = workspaces.find(
       (w) =>
         w.name === flag ||
@@ -48,10 +70,7 @@ export async function getDefaultWorkspaceId(): Promise<string> {
   }
 
   // No active workspace in config — resolve it.
-  const workspaces = (await apiClient('/workspaces').catch(() => [])) as Array<{
-    id: string;
-    name: string;
-  }>;
+  const workspaces = await listWorkspacesOrEmpty();
 
   if (Array.isArray(workspaces) && workspaces.length === 1) {
     const only = workspaces[0];
