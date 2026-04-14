@@ -87,8 +87,8 @@ export function registerSandboxCommand(program: Command): void {
       }
 
       for (const session of sessions) {
-        console.log(`\nSession: ${session.id}`);
-        console.log(`  Phone:           ${session.phone ?? '(none)'}`);
+        const phone = session.phone ? `+${session.phone.replace(/^\+/, '')}` : '(none)';
+        console.log(`\nSandbox session for ${phone}`);
         console.log(`  Status:          ${session.status}`);
         console.log(`  Activation Code: ${session.activationCode}`);
         console.log(`  Tunnel Host:     ${session.hostname ?? '(no live tunnel)'}`);
@@ -115,10 +115,13 @@ export function registerSandboxCommand(program: Command): void {
 
       let sessionToDelete: SandboxSession;
 
+      const phoneLabel = (s: SandboxSession): string =>
+        s.phone ? `+${s.phone.replace(/^\+/, '')}` : 'no phone';
+
       if (sessions.length === 1) {
         sessionToDelete = sessions[0];
         const proceed = await confirm({
-          message: `Delete sandbox session ${sessionToDelete.id} (${sessionToDelete.phone ?? 'no phone'})? This will tear down your tunnel.`,
+          message: `Delete sandbox session for ${phoneLabel(sessionToDelete)}? This will tear down your tunnel.`,
         });
         if (!proceed) {
           console.log('Cancelled.');
@@ -128,13 +131,13 @@ export function registerSandboxCommand(program: Command): void {
         const choice = await select({
           message: 'Which session do you want to delete?',
           choices: sessions.map((s) => ({
-            name: `${s.id} — ${s.phone ?? 'no phone'} (${s.status})`,
+            name: `${phoneLabel(s)} (${s.status})`,
             value: s.id,
           })),
         });
         sessionToDelete = sessions.find((s) => s.id === choice)!;
         const proceed = await confirm({
-          message: `Delete sandbox session ${sessionToDelete.id}? This will tear down your tunnel.`,
+          message: `Delete sandbox session for ${phoneLabel(sessionToDelete)}? This will tear down your tunnel.`,
         });
         if (!proceed) {
           console.log('Cancelled.');
@@ -149,7 +152,7 @@ export function registerSandboxCommand(program: Command): void {
 
       const human = !program.opts().json;
       if (human) {
-        console.log(`\nSandbox session ${sessionToDelete.id} deleted.\n`);
+        console.log(`\nSandbox session for ${phoneLabel(sessionToDelete)} deleted.\n`);
       } else {
         output({ deleted: true, id: sessionToDelete.id }, { human: false });
       }
