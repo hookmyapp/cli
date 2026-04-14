@@ -100,10 +100,11 @@ describe('pickSession', () => {
     const a = makeSession({ id: 'sess-a', lastHeartbeatAt: fiveSecAgo });
     const b = makeSession({ id: 'sess-b' });
     let capturedChoices: any[] | undefined;
-    mockedSelect.mockImplementationOnce(async (args: any) => {
-      capturedChoices = args.choices;
-      return a;
-    });
+    (mockedSelect as unknown as { mockImplementationOnce: (fn: (args: any) => Promise<any>) => void })
+      .mockImplementationOnce(async (args: any) => {
+        capturedChoices = args.choices;
+        return a;
+      });
     await pickSession({ sessions: [a, b], isHuman: true });
     expect(capturedChoices).toBeDefined();
     const firstChoiceName = capturedChoices?.[0]?.name as string;
@@ -114,10 +115,11 @@ describe('pickSession', () => {
     const a = makeSession({ id: 'sess-a', lastHeartbeatAt: null });
     const b = makeSession({ id: 'sess-b', lastHeartbeatAt: null });
     let capturedChoices: any[] | undefined;
-    mockedSelect.mockImplementationOnce(async (args: any) => {
-      capturedChoices = args.choices;
-      return a;
-    });
+    (mockedSelect as unknown as { mockImplementationOnce: (fn: (args: any) => Promise<any>) => void })
+      .mockImplementationOnce(async (args: any) => {
+        capturedChoices = args.choices;
+        return a;
+      });
     await pickSession({ sessions: [a, b], isHuman: true });
     const firstName = capturedChoices?.[0]?.name as string;
     expect(firstName).toContain('idle');
@@ -130,10 +132,11 @@ describe('pickSession', () => {
     const a = makeSession({ id: 'sess-a', lastHeartbeatAt: threeHoursAgo });
     const b = makeSession({ id: 'sess-b' });
     let capturedChoices: any[] | undefined;
-    mockedSelect.mockImplementationOnce(async (args: any) => {
-      capturedChoices = args.choices;
-      return a;
-    });
+    (mockedSelect as unknown as { mockImplementationOnce: (fn: (args: any) => Promise<any>) => void })
+      .mockImplementationOnce(async (args: any) => {
+        capturedChoices = args.choices;
+        return a;
+      });
     await pickSession({ sessions: [a, b], isHuman: true });
     const firstName = capturedChoices?.[0]?.name as string;
     expect(firstName).toMatch(/idle \(last tunnel \dh ago\)/);
