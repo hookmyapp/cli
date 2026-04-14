@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { output } from '../output/format.js';
 import { AuthError, ValidationError } from '../output/error.js';
+import { addExamples } from '../output/help.js';
 import { readCredentials } from '../auth/store.js';
 import open from 'open';
 
@@ -33,7 +34,7 @@ export async function resolveAccount(wabaId: string): Promise<any> {
 export function registerAccountsCommand(program: Command): void {
   const accounts = program.command('accounts').description('Manage WhatsApp accounts');
 
-  accounts
+  const accountsList = accounts
     .command('list')
     .description('List all accounts')
     .action(async () => {
@@ -44,7 +45,7 @@ export function registerAccountsCommand(program: Command): void {
       output(connectedAccounts.map(pickDisplayFields), { human: !program.opts().json });
     });
 
-  accounts
+  const accountsShow = accounts
     .command('show')
     .description('Show account details')
     .argument('<waba-id>', 'WABA ID')
@@ -54,7 +55,7 @@ export function registerAccountsCommand(program: Command): void {
       output(pickDisplayFields(detail), { human: !program.opts().json });
     });
 
-  accounts
+  const accountsConnect = accounts
     .command('connect')
     .description('Connect a WhatsApp account via Embedded Signup')
     .action(async () => {
@@ -145,7 +146,7 @@ export function registerAccountsCommand(program: Command): void {
       }
     });
 
-  accounts
+  const accountsDisconnect = accounts
     .command('disconnect')
     .description('Disconnect an account')
     .argument('<waba-id>', 'WABA ID')
@@ -158,7 +159,7 @@ export function registerAccountsCommand(program: Command): void {
       output(result, { human: !program.opts().json });
     });
 
-  accounts
+  const accountsEnable = accounts
     .command('enable')
     .description('Enable forwarding for an account')
     .argument('<waba-id>', 'WABA ID')
@@ -171,7 +172,7 @@ export function registerAccountsCommand(program: Command): void {
       output(result, { human: !program.opts().json });
     });
 
-  accounts
+  const accountsDisable = accounts
     .command('disable')
     .description('Disable forwarding for an account')
     .argument('<waba-id>', 'WABA ID')
@@ -183,4 +184,68 @@ export function registerAccountsCommand(program: Command): void {
       });
       output(result, { human: !program.opts().json });
     });
+
+  addExamples(
+    accounts,
+    `
+EXAMPLES:
+  $ hookmyapp accounts list
+  $ hookmyapp accounts connect
+  $ hookmyapp accounts disconnect 1234567890
+`,
+  );
+
+  addExamples(
+    accountsList,
+    `
+EXAMPLES:
+  $ hookmyapp accounts list
+  $ hookmyapp accounts list --json
+`,
+  );
+
+  addExamples(
+    accountsShow,
+    `
+EXAMPLES:
+  $ hookmyapp accounts show 1234567890
+  $ hookmyapp accounts show 1234567890 --json
+`,
+  );
+
+  addExamples(
+    accountsConnect,
+    `
+EXAMPLES:
+  $ hookmyapp accounts connect
+  $ hookmyapp accounts connect --workspace acme-corp
+`,
+  );
+
+  addExamples(
+    accountsDisconnect,
+    `
+EXAMPLES:
+  $ hookmyapp accounts disconnect 1234567890
+  $ hookmyapp accounts disconnect 1234567890 --workspace acme-corp
+`,
+  );
+
+  addExamples(
+    accountsEnable,
+    `
+EXAMPLES:
+  $ hookmyapp accounts enable 1234567890
+  $ hookmyapp accounts enable 1234567890 --workspace acme-corp
+`,
+  );
+
+  addExamples(
+    accountsDisable,
+    `
+EXAMPLES:
+  $ hookmyapp accounts disable 1234567890
+  $ hookmyapp accounts disable 1234567890 --workspace acme-corp
+`,
+  );
 }

@@ -2,13 +2,14 @@ import type { Command } from 'commander';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
+import { addExamples } from '../output/help.js';
 import { resolveAccount } from './accounts.js';
 import { readCredentials } from '../auth/store.js';
 
 export function registerWebhookCommand(program: Command): void {
   const webhook = program.command('webhook').description('Manage webhook configuration');
 
-  webhook
+  const webhookShow = webhook
     .command('show')
     .description('Show webhook config')
     .argument('<waba-id>', 'WABA ID')
@@ -18,7 +19,7 @@ export function registerWebhookCommand(program: Command): void {
       output(data, { json: !!program.opts().json, kind: 'read' });
     });
 
-  webhook
+  const webhookSet = webhook
     .command('set')
     .description('Set webhook URL and verify token')
     .argument('<waba-id>', 'WABA ID')
@@ -63,4 +64,31 @@ export function registerWebhookCommand(program: Command): void {
         nudge: `Next: hookmyapp env ${wabaId}`,
       });
     });
+
+  addExamples(
+    webhook,
+    `
+EXAMPLES:
+  $ hookmyapp webhook show 1234567890
+  $ hookmyapp webhook set 1234567890 --url https://example.com/hook
+`,
+  );
+
+  addExamples(
+    webhookShow,
+    `
+EXAMPLES:
+  $ hookmyapp webhook show 1234567890
+  $ hookmyapp webhook show 1234567890 --json
+`,
+  );
+
+  addExamples(
+    webhookSet,
+    `
+EXAMPLES:
+  $ hookmyapp webhook set 1234567890 --url https://example.com/hook
+  $ hookmyapp webhook set 1234567890 --url https://example.com/hook --verify-token my-secret
+`,
+  );
 }

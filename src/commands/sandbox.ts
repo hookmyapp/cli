@@ -3,6 +3,7 @@ import { input, confirm, select } from '@inquirer/prompts';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
+import { addExamples } from '../output/help.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
 
 const SANDBOX_WHATSAPP_NUMBER = '972557046276';
@@ -29,7 +30,7 @@ interface SandboxSession {
 export function registerSandboxCommand(program: Command): void {
   const sandbox = program.command('sandbox').description('Manage sandbox sessions for local development');
 
-  sandbox
+  const sandboxStart = sandbox
     .command('start')
     .description('Create a new sandbox session')
     .option('--phone <phone>', 'Phone number for WhatsApp activation')
@@ -68,7 +69,7 @@ export function registerSandboxCommand(program: Command): void {
       }
     });
 
-  sandbox
+  const sandboxStatus = sandbox
     .command('status')
     .description('Show active sandbox sessions')
     .action(async () => {
@@ -102,7 +103,7 @@ export function registerSandboxCommand(program: Command): void {
       }
     });
 
-  sandbox
+  const sandboxStop = sandbox
     .command('stop')
     .description('Delete a sandbox session')
     .action(async () => {
@@ -159,6 +160,43 @@ export function registerSandboxCommand(program: Command): void {
         output({ deleted: true, id: sessionToDelete.id }, { human: false });
       }
     });
+
+  addExamples(
+    sandbox,
+    `
+EXAMPLES:
+  $ hookmyapp sandbox start --phone +15551234567
+  $ hookmyapp sandbox listen
+  $ hookmyapp sandbox status
+`,
+  );
+
+  addExamples(
+    sandboxStart,
+    `
+EXAMPLES:
+  $ hookmyapp sandbox start --phone +15551234567
+  $ hookmyapp sandbox start
+`,
+  );
+
+  addExamples(
+    sandboxStatus,
+    `
+EXAMPLES:
+  $ hookmyapp sandbox status
+  $ hookmyapp sandbox status --json
+`,
+  );
+
+  addExamples(
+    sandboxStop,
+    `
+EXAMPLES:
+  $ hookmyapp sandbox stop
+  $ hookmyapp sandbox stop --workspace acme-corp
+`,
+  );
 }
 
 function printActiveSteps(session: SandboxSession): void {

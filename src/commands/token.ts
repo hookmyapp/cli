@@ -1,9 +1,10 @@
 import type { Command } from 'commander';
 import { apiClient } from '../api/client.js';
+import { addExamples } from '../output/help.js';
 import { resolveAccount } from './accounts.js';
 
 export function registerTokenCommand(program: Command): void {
-  program
+  const token = program
     .command('token')
     .description('Reveal access token')
     .argument('<waba-id>', 'WABA ID')
@@ -12,4 +13,13 @@ export function registerTokenCommand(program: Command): void {
       const data = await apiClient(`/meta/accounts/${account.id}/token`);
       process.stdout.write(data.accessToken + '\n');
     });
+
+  addExamples(
+    token,
+    `
+EXAMPLES:
+  $ hookmyapp token 1234567890
+  $ hookmyapp token 1234567890 --workspace acme-corp
+`,
+  );
 }

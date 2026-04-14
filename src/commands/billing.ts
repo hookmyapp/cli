@@ -4,6 +4,7 @@ import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
 import { c } from '../output/color.js';
 import { ValidationError } from '../output/error.js';
+import { addExamples } from '../output/help.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
 
 // program is lazy-imported inside actions because commands/billing.ts is
@@ -119,7 +120,7 @@ export async function billingUpgrade(): Promise<void> {
 export function registerBillingCommand(_program: Command): void {
   const billing = _program.command('billing').description('Manage billing');
 
-  billing
+  const billingStatusCmd = billing
     .command('status')
     .description('Show subscription status')
     .action(async () => {
@@ -132,17 +133,54 @@ export function registerBillingCommand(_program: Command): void {
       await billingStatus({ json: isJson });
     });
 
-  billing
+  const billingManageCmd = billing
     .command('manage')
     .description('Open Stripe Customer Portal')
     .action(async () => {
       await billingManage();
     });
 
-  billing
+  const billingUpgradeCmd = billing
     .command('upgrade')
     .description('Upgrade plan (interactive for free users, opens portal for subscribers)')
     .action(async () => {
       await billingUpgrade();
     });
+
+  addExamples(
+    billing,
+    `
+EXAMPLES:
+  $ hookmyapp billing status
+  $ hookmyapp billing upgrade
+  $ hookmyapp billing manage
+`,
+  );
+
+  addExamples(
+    billingStatusCmd,
+    `
+EXAMPLES:
+  $ hookmyapp billing status
+  $ hookmyapp billing status --json
+`,
+  );
+
+  addExamples(
+    billingManageCmd,
+    `
+EXAMPLES:
+  $ hookmyapp billing manage
+  $ hookmyapp billing manage --workspace acme-corp
+`,
+  );
+
+  addExamples(
+    billingUpgradeCmd,
+    `
+EXAMPLES:
+  $ hookmyapp billing upgrade
+  $ hookmyapp billing upgrade --workspace acme-corp
+`,
+  );
 }

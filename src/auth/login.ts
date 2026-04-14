@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { saveCredentials } from './store.js';
 import { AuthError, NetworkError } from '../output/error.js';
+import { addExamples } from '../output/help.js';
 
 const WORKOS_CLIENT_ID = process.env.HOOKMYAPP_WORKOS_CLIENT_ID ?? 'client_01KM5S4CGX9M2M2P63JTA6AFEH';
 
@@ -53,7 +54,7 @@ async function pollForTokens(opts: {
 }
 
 export function loginCommand(program: Command): void {
-  program
+  const login = program
     .command('login')
     .description('Authenticate with HookMyApp via browser')
     .action(async () => {
@@ -95,4 +96,19 @@ export function loginCommand(program: Command): void {
         interval,
       });
     });
+
+  addExamples(
+    login,
+    `
+EXAMPLES:
+  $ hookmyapp login
+  $ hookmyapp login --workspace acme-corp
+
+This runs the post-login wizard:
+  1. Browser sign-in
+  2. Workspace picker (if you belong to more than one)
+  3. Next-action picker (Start sandbox session / Connect WhatsApp / Exit)
+  4. If you pick sandbox, it auto-chains into \`hookmyapp sandbox listen\`
+`,
+  );
 }
