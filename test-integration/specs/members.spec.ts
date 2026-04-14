@@ -21,7 +21,7 @@ describe('workspace members commands', () => {
   describe('happy path (logged in)', () => {
     it('list returns JSON array containing the seeded admin', async () => {
       const { exitCode, stdout } = await runCli(
-        ['workspace', 'members', 'list'],
+        ['--json', 'workspace', 'members', 'list'],
         { home: session.home },
       );
       expect(exitCode).toBe(0);

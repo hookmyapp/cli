@@ -13,7 +13,9 @@ describe('workspace commands', () => {
   describe('happy path (logged in)', () => {
     it('list returns a non-empty JSON array', async () => {
       const session = await seedSession();
-      const { exitCode, stdout } = await runCli(['workspace', 'list'], { home: session.home });
+      const { exitCode, stdout } = await runCli(['workspace', 'list', '--json'], {
+        home: session.home,
+      });
       expect(exitCode).toBe(0);
       const data = JSON.parse(stdout);
       expect(Array.isArray(data)).toBe(true);
@@ -35,7 +37,9 @@ describe('workspace commands', () => {
       expect(cfg.activeWorkspaceId).toBeTruthy();
 
       // The workspace should now appear in `workspace list`.
-      const { stdout } = await runCli(['workspace', 'list'], { home: session.home });
+      const { stdout } = await runCli(['workspace', 'list', '--json'], {
+        home: session.home,
+      });
       const data = JSON.parse(stdout) as Array<{ id: string; name: string }>;
       const found = data.find((w) => w.name === name);
       expect(found, `expected to find workspace "${name}" in list`).toBeTruthy();

@@ -7,7 +7,9 @@ describe('accounts commands', () => {
   describe('happy path (logged in)', () => {
     it('list returns JSON array (possibly empty) for seeded admin workspace', async () => {
       const session = await seedSession();
-      const { exitCode, stdout } = await runCli(['accounts', 'list'], { home: session.home });
+      const { exitCode, stdout } = await runCli(['--json', 'accounts', 'list'], {
+        home: session.home,
+      });
       expect(exitCode).toBe(0);
       const data = JSON.parse(stdout);
       expect(Array.isArray(data)).toBe(true);

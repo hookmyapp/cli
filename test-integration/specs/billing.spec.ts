@@ -7,7 +7,9 @@ describe('billing commands', () => {
   describe('happy path (logged in)', () => {
     it('status returns subscription + usage JSON for seeded workspace', async () => {
       const session = await seedSession();
-      const { exitCode, stdout } = await runCli(['billing', 'status'], { home: session.home });
+      const { exitCode, stdout } = await runCli(['--json', 'billing', 'status'], {
+        home: session.home,
+      });
       expect(exitCode).toBe(0);
       const data = JSON.parse(stdout);
       // billingStatus default JSON shape: { subscription, usage }
