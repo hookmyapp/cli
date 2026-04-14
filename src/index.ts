@@ -9,6 +9,7 @@ import { registerEnvCommand } from './commands/env.js';
 import { registerBillingCommand } from './commands/billing.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerSandboxCommand } from './commands/sandbox.js';
+import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { CliError, outputError } from './output/error.js';
 
 const program = new Command();
@@ -59,8 +60,14 @@ registerBillingCommand(program);
 // Workspace management
 registerWorkspaceCommand(program);
 
-// Sandbox sessions
+// Sandbox sessions (start/status/stop)
 registerSandboxCommand(program);
+
+// Sandbox listen — CF tunnel + streaming webhook log
+const sandboxCmd = program.commands.find((c) => c.name() === 'sandbox');
+if (sandboxCmd) {
+  registerListenCommand(sandboxCmd, program);
+}
 
 async function main(): Promise<void> {
   try {
