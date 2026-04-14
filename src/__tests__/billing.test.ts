@@ -197,7 +197,7 @@ describe('billing commands', () => {
       expect(mockedOpen).not.toHaveBeenCalled();
     });
 
-    it('free preflight error has code NO_SUBSCRIPTION', async () => {
+    it('free preflight error is a ValidationError with exit code 2', async () => {
       mockedApiClient.mockImplementation(async (path: string) => {
         if (path === '/stripe/subscription') return freeSub;
         throw new Error(`unexpected path: ${path}`);
@@ -210,7 +210,10 @@ describe('billing commands', () => {
         caught = e;
       }
       expect(caught).toBeDefined();
-      expect(caught.code).toBe('NO_SUBSCRIPTION');
+      // Post-phase-108 every command throws a CliError subclass; the specific
+      // old 'NO_SUBSCRIPTION' code was replaced by ValidationError (exit 2).
+      expect(caught.code).toBe('VALIDATION_ERROR');
+      expect(caught.exitCode).toBe(2);
     });
   });
 

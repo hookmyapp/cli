@@ -22,6 +22,10 @@ program
 program.option('--json', 'Machine-readable JSON output (scripts/CI)');
 program.option('--human', 'Human-readable output (default — kept for back-compat)');
 program.option('--debug', 'Show full error stack traces');
+program.option(
+  '--workspace <slug>',
+  'Override default workspace for this invocation (name, slug, or id)',
+);
 
 program.exitOverride();
 

@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { output } from '../output/format.js';
-import { CliError } from '../output/error.js';
+import { ValidationError } from '../output/error.js';
 import type { Workspace } from '../types/workspace.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,7 +47,7 @@ export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; 
   const matches = workspaces.filter((w: any) => w.name.toLowerCase() === nameOrId.toLowerCase());
   if (matches.length === 1) return matches[0];
   if (matches.length === 0) {
-    throw new CliError(`workspace "${nameOrId}" not found`, 'NOT_FOUND');
+    throw new ValidationError(`workspace "${nameOrId}" not found`);
   }
   // Ambiguous
   const lines = [`multiple workspaces named "${nameOrId}":`];
@@ -55,14 +55,14 @@ export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; 
     lines.push(`  ${w.id}  (role: ${w.role})`);
   }
   lines.push('', 'Use the workspace ID instead: hookmyapp workspace use <id>');
-  throw new CliError(lines.join('\n'), 'AMBIGUOUS_WORKSPACE');
+  throw new ValidationError(lines.join('\n'));
 }
 
 const VALID_ASSIGNABLE_ROLES = ['admin', 'member'];
 
 function validateAssignableRole(role: string): void {
   if (!VALID_ASSIGNABLE_ROLES.includes(role)) {
-    throw new CliError(`invalid role "${role}". Use: admin, member`, 'VALIDATION_ERROR');
+    throw new ValidationError(`invalid role "${role}". Use: admin, member`);
   }
 }
 
@@ -70,7 +70,7 @@ export async function resolveMemberByEmail(workspaceId: string, email: string): 
   const data = await apiClient(`/workspaces/${workspaceId}/members`);
   const member = data.members.find((m: any) => m.user.email.toLowerCase() === email.toLowerCase());
   if (!member) {
-    throw new CliError(`member "${email}" not found in workspace`, 'NOT_FOUND');
+    throw new ValidationError(`member "${email}" not found in workspace`);
   }
   return member;
 }
@@ -85,7 +85,7 @@ export async function resolveInviteByIdOrEmail(workspaceId: string, idOrEmail: s
     invite = data.invites.find((i: any) => i.email.toLowerCase() === idOrEmail.toLowerCase());
   }
   if (!invite) {
-    throw new CliError(`invite "${idOrEmail}" not found in workspace`, 'NOT_FOUND');
+    throw new ValidationError(`invite "${idOrEmail}" not found in workspace`);
   }
   return invite;
 }
@@ -194,12 +194,9 @@ export function registerWorkspaceCommand(program: Command): void {
         workspace = (await resolveWorkspace(nameOrId)) as unknown as Workspace;
       } else {
         if (!process.stdout.isTTY) {
-          const err = new CliError(
+          throw new ValidationError(
             'Workspace identifier required (non-TTY). Usage: hookmyapp workspace use <slug-or-id>',
-            'USAGE_ERROR',
           );
-          err.exitCode = 2;
-          throw err;
         }
         const { select } = await import('@inquirer/prompts');
         const workspaces = (await apiClient('/workspaces')) as Workspace[];

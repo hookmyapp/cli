@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
-import { CliError } from '../output/error.js';
+import { ValidationError } from '../output/error.js';
 import { resolveAccount } from './accounts.js';
 import { readCredentials } from '../auth/store.js';
 
@@ -15,7 +15,7 @@ export function registerWebhookCommand(program: Command): void {
     .action(async (wabaId: string) => {
       const account = await resolveAccount(wabaId);
       const data = await apiClient(`/webhook-config/${account.id}`);
-      output(data, { human: !program.opts().json });
+      output(data, { json: !!program.opts().json, kind: 'read' });
     });
 
   webhook
@@ -26,7 +26,9 @@ export function registerWebhookCommand(program: Command): void {
     .option('--verify-token <token>', 'Verify token')
     .action(async (wabaId: string, opts: { url?: string; verifyToken?: string }) => {
       if (!opts.url) {
-        throw new CliError('--url flag is required', 'VALIDATION_ERROR');
+        throw new ValidationError(
+          '--url is required. Example: hookmyapp webhook set --url https://example.com/hook',
+        );
       }
 
       const account = await resolveAccount(wabaId);
@@ -51,10 +53,14 @@ export function registerWebhookCommand(program: Command): void {
         });
       }
 
-      console.log(`\n✓ Webhook configured`);
-      console.log(`  url:   ${opts.url}`);
-      if (opts.verifyToken) console.log(`  token: ${opts.verifyToken}`);
-      console.log(`\n→ Get your credentials:`);
-      console.log(`  hookmyapp env ${wabaId}\n`);
+      const isJson = !!program.opts().json;
+      const result: Record<string, string> = { status: 'configured', url: opts.url };
+      if (opts.verifyToken) result.verifyToken = opts.verifyToken;
+
+      output(result, {
+        json: isJson,
+        kind: 'mutation',
+        nudge: `Next: hookmyapp env ${wabaId}`,
+      });
     });
 }
