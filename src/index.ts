@@ -63,7 +63,10 @@ USAGE:
   $ hookmyapp <command> [flags]
 
 COMMON COMMANDS:
-  login             Browser sign-in and post-login wizard (workspace picker + sandbox)
+  login             Browser sign-in + workspace picker and next-steps guide
+  sandbox start     Create or resume a sandbox session (tunnel + credentials)
+  sandbox status    Show the active sandbox session for this workspace
+  sandbox stop      End the active sandbox session
   sandbox listen    Stream Meta webhooks to your local server through a sandbox tunnel
   sandbox env       Print or write the .env values for a sandbox session
   sandbox send      Send a test WhatsApp message via sandbox-proxy
