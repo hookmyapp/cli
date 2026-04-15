@@ -398,10 +398,8 @@ function printActiveSteps(session: SandboxSession): void {
   console.log(`  3. Clone the starter kit:`);
   console.log(`     npx degit hookmyapp/webhook-starter-kit my-app`);
   console.log(`     cd my-app && npm install\n`);
-  console.log(`  4. Copy these values to your .env:`);
-  console.log(`     VERIFY_TOKEN=hookmyapp-verify`);
-  console.log(`     WHATSAPP_API_URL=https://sandbox.hookmyapp.com/v22.0`);
-  console.log(`     WHATSAPP_ACCESS_TOKEN=${session.activationCode}\n`);
+  console.log(`  4. Write your .env (canonical values from this session):`);
+  console.log(`     hookmyapp sandbox env --write .env\n`);
   console.log(`  5. Start your server:`);
   console.log(`     npm run dev\n`);
 }
