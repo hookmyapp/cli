@@ -155,13 +155,16 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
       activeWorkspaceId,
       activeWorkspaceSlug: activeWorkspaceName,
     });
-    // Refresh JWT so subsequent calls are scoped to the picked org.
-    if (activeWorkspaceOrg) {
-      try {
-        await forceTokenRefresh(activeWorkspaceOrg);
-      } catch {
-        // non-fatal: next apiClient call will surface auth errors
-      }
+  }
+
+  // Refresh JWT so it carries the picked org's context (role + org_id
+  // claims). Device-code grant issues a user-scoped token; without this
+  // step, workspace-admin endpoints 403 even for actual admins.
+  if (activeWorkspaceOrg) {
+    try {
+      await forceTokenRefresh(activeWorkspaceOrg);
+    } catch {
+      // non-fatal: next apiClient call will surface auth errors
     }
   }
 
@@ -185,11 +188,18 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
   }
 
   // Default path: a printed next-steps guide. No interactive prompt.
-  const nextSteps = [
-    'hookmyapp sandbox start     — create a sandbox session and get a WhatsApp test number',
-    'hookmyapp accounts connect  — connect a real WhatsApp Business account',
-    'hookmyapp help              — see all commands',
+  // When invoked via `npx` (npm >= 7 sets npm_command=exec), the bare
+  // `hookmyapp` binary isn't on PATH, so prefix suggestions with `npx `.
+  const cmd = process.env.npm_command === 'exec' ? 'npx hookmyapp' : 'hookmyapp';
+  const entries: ReadonlyArray<readonly [string, string]> = [
+    ['sandbox start', 'create a sandbox session and get a WhatsApp test number'],
+    ['accounts connect', 'connect a real WhatsApp Business account'],
+    ['help', 'see all commands'],
   ];
+  const col = cmd.length + 1 + Math.max(...entries.map(([s]) => s.length)) + 4;
+  const nextSteps = entries.map(
+    ([sub, desc]) => `${cmd} ${sub}`.padEnd(col) + `— ${desc}`,
+  );
 
   if (opts.json) {
     // Structured payload for scripts. Keep the existing top-level shape
