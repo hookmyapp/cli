@@ -6,3 +6,6 @@ test-integration/.cache/
 .env.*
 .DS_Store
 *.log
+
+# npm pack output
+*.tgz

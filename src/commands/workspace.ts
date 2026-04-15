@@ -24,7 +24,19 @@ export interface WorkspaceConfig {
   activeWorkspaceSlug?: string;
 }
 
-export function readWorkspaceConfig(): WorkspaceConfig {
+/**
+ * The on-disk shape of `~/.hookmyapp/config.json`. This is shared with
+ * `src/config/env-profiles.ts`, which owns the `env` field. Both modules
+ * MUST merge-read-then-write (see writeWorkspaceConfig / setPersistedEnv)
+ * rather than overwrite, or they'll clobber each other's fields.
+ */
+interface FullPersistedConfig {
+  activeWorkspaceId?: string;
+  activeWorkspaceSlug?: string;
+  env?: string;
+}
+
+function readFullConfig(): FullPersistedConfig {
   try {
     return JSON.parse(fs.readFileSync(configPath(), 'utf-8'));
   } catch {
@@ -32,9 +44,25 @@ export function readWorkspaceConfig(): WorkspaceConfig {
   }
 }
 
+export function readWorkspaceConfig(): WorkspaceConfig {
+  const full = readFullConfig();
+  return {
+    activeWorkspaceId: full.activeWorkspaceId,
+    activeWorkspaceSlug: full.activeWorkspaceSlug,
+  };
+}
+
 export function writeWorkspaceConfig(config: WorkspaceConfig): void {
   fs.mkdirSync(configDir(), { recursive: true });
-  fs.writeFileSync(configPath(), JSON.stringify(config, null, 2) + '\n');
+  // Merge with existing config so we never clobber env-profiles fields
+  // (specifically `env`). See env-profiles.ts for the other half.
+  const existing = readFullConfig();
+  const merged: FullPersistedConfig = {
+    ...existing,
+    activeWorkspaceId: config.activeWorkspaceId,
+    activeWorkspaceSlug: config.activeWorkspaceSlug,
+  };
+  fs.writeFileSync(configPath(), JSON.stringify(merged, null, 2) + '\n');
 }
 
 export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; name: string; role: string }> {
