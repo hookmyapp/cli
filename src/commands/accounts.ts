@@ -46,7 +46,7 @@ export async function runAccountsConnect(): Promise<void> {
   }
 
   const config = await fetchAppConfig();
-  const appUrl = process.env.HOOKMYAPP_APP_URL ?? 'https://uninked-robbi-boughless.ngrok-free.dev';
+  const appUrl = process.env.HOOKMYAPP_APP_URL ?? 'https://app.hookmyapp.com';
   const redirectUri = `${appUrl}/cli/callback`;
 
   const extras = JSON.stringify({
@@ -75,7 +75,7 @@ export async function runAccountsConnect(): Promise<void> {
   const pollInterval = 5000;
   const start = Date.now();
   let newAccount: any = null;
-  const baseUrl = process.env.HOOKMYAPP_API_URL ?? 'https://uninked-robbi-boughless.ngrok-free.dev';
+  const baseUrl = process.env.HOOKMYAPP_API_URL ?? 'https://api.hookmyapp.com';
 
   while (Date.now() - start < maxWait) {
     await new Promise((r) => setTimeout(r, pollInterval));

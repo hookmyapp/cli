@@ -120,7 +120,7 @@ describe('apiClient', () => {
     );
   });
 
-  it('uses HOOKMYAPP_API_URL env var when set, defaults to ngrok dev URL', async () => {
+  it('uses HOOKMYAPP_API_URL env var when set, defaults to production api.hookmyapp.com', async () => {
     const futureExp = Math.floor(Date.now() / 1000) + 3600;
     const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
     const fakeJwt = `header.${payload}.sig`;
@@ -136,16 +136,16 @@ describe('apiClient', () => {
       json: async () => ({}),
     });
 
-    // Test default URL (ngrok dev URL)
+    // Default: production API (anyone installing @gethookmyapp/cli from npm).
     await apiClient('/foo');
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://uninked-robbi-boughless.ngrok-free.dev/foo',
+      'https://api.hookmyapp.com/foo',
       expect.anything(),
     );
 
     mockFetch.mockClear();
 
-    // Test env override
+    // Env override: internal dev / staging.
     process.env.HOOKMYAPP_API_URL = 'http://localhost:4312';
     await apiClient('/bar');
     expect(mockFetch).toHaveBeenCalledWith(
