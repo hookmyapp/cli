@@ -22,9 +22,12 @@ export class AuthError extends CliError {
 export class PermissionError extends CliError {
   constructor(activeWorkspaceSlug: string) {
     super(
-      `Admin access required for this workspace.\n\n` +
-        `Active workspace: ${activeWorkspaceSlug} (role: member)\n` +
-        'Run `hookmyapp workspace use <admin-workspace>` to switch, or contact your workspace admin.',
+      `This action requires workspace admin permission.\n\n` +
+        `Active workspace: ${activeWorkspaceSlug}\n\n` +
+        `If you should have admin access, try:\n` +
+        `  hookmyapp login          # refresh your session\n` +
+        `  hookmyapp workspace list # see all your workspaces and roles\n\n` +
+        `Otherwise contact your workspace admin.`,
       'PERMISSION_DENIED',
       403,
     );

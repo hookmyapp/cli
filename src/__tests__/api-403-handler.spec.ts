@@ -26,7 +26,9 @@ describe('apiClient permission handling (RBAC-UX-05/06/07)', () => {
       exitCode: 3,
       code: 'PERMISSION_DENIED',
     });
-    await expect(apiClient('/workspaces')).rejects.toThrow(/Admin access required/);
+    await expect(apiClient('/workspaces')).rejects.toThrow(/workspace admin permission/);
+    // Regression: must not claim a role we don't actually know.
+    await expect(apiClient('/workspaces')).rejects.not.toThrow(/role:\s*member/);
   });
 
   it('RBAC-UX-06: 401 response throws AuthError with exitCode 4', async () => {
