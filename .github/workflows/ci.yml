@@ -18,6 +18,7 @@ jobs:
           node-version-file: '.node-version'
           cache: 'npm'
       - run: npm ci
+      - run: npx tsc --noEmit
       - run: npm test
       - run: node build.mjs
       - run: node bin/hookmyapp.js --version
