@@ -141,6 +141,11 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
   // customer who activated it. Sending to any other number would defeat the
   // activation handshake and silently burn Meta quota. Enforced server-side
   // in sandbox-proxy too; no CLI flag can override.
+  if (!session.phone) {
+    throw new ValidationError(
+      'Selected session has no phone on record — cannot send. Run `sandbox start` to create a fresh session.',
+    );
+  }
   const toStripped = session.phone.replace(/^\+/, '');
   const message =
     opts.message ??
