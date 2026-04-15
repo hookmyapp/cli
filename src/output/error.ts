@@ -70,6 +70,22 @@ export class ConflictError extends CliError {
   }
 }
 
+/**
+ * 403 from sandbox-proxy when the recipient hasn't sent an inbound message
+ * within the WhatsApp 24h reply window. Surfaces the proxy's friendly
+ * `body.message` verbatim so the developer sees actionable guidance instead
+ * of a generic "Something went wrong".
+ *
+ * exitCode = 1 (real API rejection, not a local validation error).
+ */
+export class SessionWindowError extends CliError {
+  constructor(message: string) {
+    super(message, 'SESSION_WINDOW_CLOSED', 403);
+    this.name = 'SessionWindowError';
+    this.exitCode = 1;
+  }
+}
+
 export function outputError(error: CliError, opts: { human?: boolean }): void {
   if (opts.human) {
     process.stderr.write(`Error: ${error.userMessage}\n`);
