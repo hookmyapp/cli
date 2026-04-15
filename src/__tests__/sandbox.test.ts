@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock api client
 vi.mock('../api/client.js', () => ({
@@ -180,5 +180,79 @@ describe('sandbox commands', () => {
     await expect(
       program.parseAsync(['sandbox', 'stop'], { from: 'user' }),
     ).rejects.toThrow('No sandbox sessions found');
+  });
+});
+
+describe('sandbox commands — npx prefix roll-out (cliCommandPrefix)', () => {
+  let registerSandboxCommand: typeof import('../commands/sandbox.js').registerSandboxCommand;
+  let Command: typeof import('commander').Command;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mockedApiClient.mockReset();
+    mockedOutput.mockReset();
+    mockedInput.mockReset();
+    mockedConfirm.mockReset();
+    mockedSelect.mockReset();
+    vi.stubEnv('npm_command', 'exec');
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const commander = await import('commander');
+    Command = commander.Command;
+    const mod = await import('../commands/sandbox.js');
+    registerSandboxCommand = mod.registerSandboxCommand;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('sandbox start (pending_activation) prints "npx hookmyapp sandbox status" hint under npm_command=exec', async () => {
+    mockedApiClient.mockResolvedValueOnce(fakeSession); // pending_activation
+
+    const program = new Command();
+    registerSandboxCommand(program);
+    await program.parseAsync(['sandbox', 'start', '--phone', '+1234567890'], { from: 'user' });
+
+    const logged = vi.mocked(console.log).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('npx hookmyapp sandbox status');
+    // No bare-hookmyapp hint at line-start (excluding URL-ish / examples).
+    expect(logged).not.toMatch(/^\s*hookmyapp sandbox status/m);
+  });
+
+  it('sandbox start (active) prints "npx hookmyapp sandbox listen" and "npx hookmyapp sandbox env --write" hints', async () => {
+    mockedApiClient.mockResolvedValueOnce(fakeActiveSession);
+
+    const program = new Command();
+    registerSandboxCommand(program);
+    await program.parseAsync(['sandbox', 'start', '--phone', '+1234567890'], { from: 'user' });
+
+    const logged = vi.mocked(console.log).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('npx hookmyapp sandbox listen --phone');
+    expect(logged).toContain('npx hookmyapp sandbox env --write .env');
+  });
+
+  it('sandbox status with no sessions prints "npx hookmyapp sandbox start" hint', async () => {
+    mockedApiClient.mockResolvedValueOnce([]); // no sessions
+
+    const program = new Command();
+    registerSandboxCommand(program);
+    await program.parseAsync(['sandbox', 'status'], { from: 'user' });
+
+    const logged = vi.mocked(console.log).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('npx hookmyapp sandbox start');
+    expect(logged).not.toMatch(/Run:\s+hookmyapp sandbox start/);
+  });
+
+  it('sandbox stop with no sessions error message prefixes with "npx hookmyapp sandbox start"', async () => {
+    mockedApiClient.mockResolvedValueOnce([]); // empty list
+
+    const program = new Command();
+    program.exitOverride();
+    registerSandboxCommand(program);
+
+    await expect(
+      program.parseAsync(['sandbox', 'stop'], { from: 'user' }),
+    ).rejects.toThrow(/npx hookmyapp sandbox start/);
   });
 });

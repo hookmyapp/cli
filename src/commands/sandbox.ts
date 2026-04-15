@@ -6,6 +6,7 @@ import { output } from '../output/format.js';
 import { ValidationError, ApiError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
+import { cliCommandPrefix } from '../output/cli-self.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
 import { pickSessionByPhone } from './sandbox-listen/picker.js';
 
@@ -209,7 +210,7 @@ export function registerSandboxCommand(program: Command): void {
       } else {
         console.log(`  Your session is pending activation.`);
         console.log(`  After sending the activation code, run:\n`);
-        console.log(`     hookmyapp sandbox status\n`);
+        console.log(`     ${cliCommandPrefix()} sandbox status\n`);
         console.log(`  to see your tunnel credentials and next steps.\n`);
       }
     });
@@ -228,7 +229,7 @@ export function registerSandboxCommand(program: Command): void {
       }
 
       if (sessions.length === 0) {
-        console.log('No sandbox sessions. Run: hookmyapp sandbox start');
+        console.log(`No sandbox sessions. Run: ${cliCommandPrefix()} sandbox start`);
         return;
       }
 
@@ -257,7 +258,7 @@ export function registerSandboxCommand(program: Command): void {
 
       if (sessions.length === 0) {
         throw new ValidationError(
-          'No sandbox sessions found. Run: hookmyapp sandbox start',
+          `No sandbox sessions found. Run: ${cliCommandPrefix()} sandbox start`,
         );
       }
 
@@ -394,12 +395,12 @@ EXAMPLES:
 
 function printActiveSteps(session: SandboxSession): void {
   console.log(`  2. Start your tunnel:`);
-  console.log(`     hookmyapp sandbox listen --phone ${session.phone ?? '<your-test-phone>'}\n`);
+  console.log(`     ${cliCommandPrefix()} sandbox listen --phone ${session.phone ?? '<your-test-phone>'}\n`);
   console.log(`  3. Clone the starter kit:`);
   console.log(`     npx degit hookmyapp/webhook-starter-kit my-app`);
   console.log(`     cd my-app && npm install\n`);
   console.log(`  4. Write your .env (canonical values from this session):`);
-  console.log(`     hookmyapp sandbox env --write .env\n`);
+  console.log(`     ${cliCommandPrefix()} sandbox env --write .env\n`);
   console.log(`  5. Start your server:`);
   console.log(`     npm run dev\n`);
 }

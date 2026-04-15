@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock api client
 vi.mock('../api/client.js', () => ({
@@ -268,4 +268,108 @@ describe('health command', () => {
       expect.objectContaining({}),
     );
   });
+});
+
+describe('accounts connect — npx prefix roll-out (cliCommandPrefix)', () => {
+  let Command: typeof import('commander').Command;
+  let runAccountsConnect: typeof import('../commands/accounts.js').runAccountsConnect;
+  let mockConsoleLog: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mockedApiClient.mockReset();
+    mockedOpen.mockReset();
+    mockConsoleError.mockClear();
+    vi.stubEnv('npm_command', 'exec');
+    mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const commander = await import('commander');
+    Command = commander.Command;
+    const mod = await import('../commands/accounts.js');
+    runAccountsConnect = mod.runAccountsConnect;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+    mockConsoleLog.mockRestore();
+  });
+
+  it('connect flow after account detected without webhook prints "npx hookmyapp webhook set" + "npx hookmyapp env" hints', async () => {
+    // Speed up the 5s poll interval by stubbing setTimeout.
+    vi.useFakeTimers();
+
+    const newAccount = {
+      id: 'new-acc',
+      metaWabaId: 'waba-new',
+      displayPhoneNumber: '+1 555 0000',
+      phoneVerifiedName: 'New Co',
+      webhookUrl: null,
+    };
+
+    // apiClient call order: /config, snapshot /meta/accounts (empty), then inside poll — nothing (uses fetch).
+    mockedApiClient
+      .mockResolvedValueOnce({ metaAppId: '123', metaConfigId: 'cfg-1' }) // /config
+      .mockResolvedValueOnce([]); // initial snapshot
+
+    // Stub global fetch: first polled /meta/accounts returns [newAccount].
+    const origFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => [newAccount],
+    } as any));
+    globalThis.fetch = fetchMock as any;
+
+    try {
+      const p = runAccountsConnect();
+      // Advance fake timers past the 5s poll interval
+      await vi.advanceTimersByTimeAsync(5000);
+      // Let any microtasks run
+      await vi.runAllTimersAsync();
+      await p;
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('npx hookmyapp webhook set waba-new');
+      expect(logged).toContain('npx hookmyapp env waba-new');
+      // No bare-hookmyapp hint at line-start
+      expect(logged).not.toMatch(/^\s{2}hookmyapp (webhook|env) /m);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  }, 10000);
+
+  it('connect flow after account detected WITH webhook prints "npx hookmyapp env" hint', async () => {
+    vi.useFakeTimers();
+
+    const newAccount = {
+      id: 'new-acc-2',
+      metaWabaId: 'waba-hook',
+      displayPhoneNumber: '+1 555 1111',
+      phoneVerifiedName: 'HookCo',
+      webhookUrl: 'https://example.com/hook',
+    };
+
+    mockedApiClient
+      .mockResolvedValueOnce({ metaAppId: '123', metaConfigId: 'cfg-1' })
+      .mockResolvedValueOnce([]);
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => [newAccount],
+    } as any)) as any;
+
+    try {
+      const p = runAccountsConnect();
+      await vi.advanceTimersByTimeAsync(5000);
+      await vi.runAllTimersAsync();
+      await p;
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('npx hookmyapp env waba-hook');
+      expect(logged).not.toContain('hookmyapp webhook set'); // webhook already set
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  }, 10000);
 });

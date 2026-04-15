@@ -3,6 +3,7 @@ import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { output } from '../output/format.js';
 import { AuthError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
+import { cliCommandPrefix } from '../output/cli-self.js';
 import { readCredentials } from '../auth/store.js';
 import { getEffectiveApiUrl, getEffectiveAppUrl } from '../config/env-profiles.js';
 import open from 'open';
@@ -43,7 +44,7 @@ export async function runAccountsConnect(): Promise<void> {
   await forceTokenRefresh();
   const creds = readCredentials();
   if (!creds?.accessToken) {
-    throw new AuthError('Not logged in. Run: hookmyapp login');
+    throw new AuthError(`Not logged in. Run: ${cliCommandPrefix()} login`);
   }
 
   const config = await fetchAppConfig();
@@ -101,7 +102,7 @@ export async function runAccountsConnect(): Promise<void> {
   }
 
   if (!newAccount) {
-    console.log('\nTimed out waiting for account.\nRun "hookmyapp accounts list" to check.\n');
+    console.log(`\nTimed out waiting for account.\nRun "${cliCommandPrefix()} accounts list" to check.\n`);
     return;
   }
 
@@ -116,13 +117,13 @@ export async function runAccountsConnect(): Promise<void> {
     console.log(`\n→ Next, configure your webhook to receive WhatsApp messages.`);
     console.log(`  The webhook URL should be a publicly accessible HTTPS`);
     console.log(`  endpoint that returns 200 OK.\n`);
-    console.log(`  hookmyapp webhook set ${newAccount.metaWabaId} --url <your-webhook-url>\n`);
+    console.log(`  ${cliCommandPrefix()} webhook set ${newAccount.metaWabaId} --url <your-webhook-url>\n`);
     console.log(`→ Then get your credentials:`);
-    console.log(`  hookmyapp env ${newAccount.metaWabaId}\n`);
+    console.log(`  ${cliCommandPrefix()} env ${newAccount.metaWabaId}\n`);
   } else {
     console.log(`\n✓ Webhook configured: ${newAccount.webhookUrl}`);
     console.log(`\n→ Get your credentials:`);
-    console.log(`  hookmyapp env ${newAccount.metaWabaId}\n`);
+    console.log(`  ${cliCommandPrefix()} env ${newAccount.metaWabaId}\n`);
   }
 }
 
