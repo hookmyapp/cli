@@ -1,3 +1,5 @@
+import { cliCommandPrefix } from './cli-self.js';
+
 export class CliError extends Error {
   public exitCode: number = 1;
 
@@ -12,7 +14,7 @@ export class CliError extends Error {
 }
 
 export class AuthError extends CliError {
-  constructor(message: string = 'Session expired. Run: hookmyapp login') {
+  constructor(message: string = `Session expired. Run: ${cliCommandPrefix()} login`) {
     super(message, 'AUTH_REQUIRED', 401);
     this.name = 'AuthError';
     this.exitCode = 4;
@@ -25,8 +27,8 @@ export class PermissionError extends CliError {
       `This action requires workspace admin permission.\n\n` +
         `Active workspace: ${activeWorkspaceSlug}\n\n` +
         `If you should have admin access, try:\n` +
-        `  hookmyapp login          # refresh your session\n` +
-        `  hookmyapp workspace list # see all your workspaces and roles\n\n` +
+        `  ${cliCommandPrefix()} login          # refresh your session\n` +
+        `  ${cliCommandPrefix()} workspace list # see all your workspaces and roles\n\n` +
         `Otherwise contact your workspace admin.`,
       'PERMISSION_DENIED',
       403,

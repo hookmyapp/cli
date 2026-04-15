@@ -5,6 +5,7 @@ import { output } from '../output/format.js';
 import { c } from '../output/color.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
+import { cliCommandPrefix } from '../output/cli-self.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
 
 // program is lazy-imported inside actions because commands/billing.ts is
@@ -17,7 +18,7 @@ export async function billingManage(): Promise<void> {
 
   if (sub.planSlug === 'free' || !sub.stripeSubscriptionId) {
     throw new ValidationError(
-      'No active subscription. Run `hookmyapp billing upgrade` to subscribe.',
+      `No active subscription. Run \`${cliCommandPrefix()} billing upgrade\` to subscribe.`,
     );
   }
 
@@ -63,14 +64,14 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
     console.log(
       '\n' +
         c.error(
-          `You have exceeded your message limit (${usage.percentage}%). Run \`hookmyapp billing upgrade\` to upgrade.`,
+          `You have exceeded your message limit (${usage.percentage}%). Run \`${cliCommandPrefix()} billing upgrade\` to upgrade.`,
         ),
     );
   } else if (usage.percentage >= 80) {
     console.log(
       '\n' +
         c.warn(
-          `You've used ${usage.percentage}% — run \`hookmyapp billing upgrade\` to upgrade.`,
+          `You've used ${usage.percentage}% — run \`${cliCommandPrefix()} billing upgrade\` to upgrade.`,
         ),
     );
   }

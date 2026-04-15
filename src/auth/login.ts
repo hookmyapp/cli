@@ -3,6 +3,7 @@ import { saveCredentials } from './store.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
+import { cliCommandPrefix } from '../output/cli-self.js';
 import { getEffectiveWorkosClientId } from '../config/env-profiles.js';
 
 // --- Types used by the post-login wizard ---
@@ -77,7 +78,7 @@ async function pollForTokens(opts: {
     throw new AuthError('Login failed: ' + (err.error_description ?? err.error ?? 'unknown error'));
   }
 
-  throw new AuthError('Login timed out. Try again: hookmyapp login');
+  throw new AuthError(`Login timed out. Try again: ${cliCommandPrefix()} login`);
 }
 
 /**
@@ -103,7 +104,7 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
   if (workspaces.length === 0) {
     console.log(
       `${c.warn('!')} You aren't a member of any workspace yet. Run: ${c.dim(
-        'hookmyapp workspace new <name>',
+        `${cliCommandPrefix()} workspace new <name>`,
       )}`,
     );
     return;
@@ -189,8 +190,9 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
 
   // Default path: a printed next-steps guide. No interactive prompt.
   // When invoked via `npx` (npm >= 7 sets npm_command=exec), the bare
-  // `hookmyapp` binary isn't on PATH, so prefix suggestions with `npx `.
-  const cmd = process.env.npm_command === 'exec' ? 'npx hookmyapp' : 'hookmyapp';
+  // `hookmyapp` binary isn't on PATH, so cliCommandPrefix() returns
+  // `'npx hookmyapp'` instead. Single source of truth in output/cli-self.ts.
+  const cmd = cliCommandPrefix();
   const entries: ReadonlyArray<readonly [string, string]> = [
     ['sandbox start', 'create a sandbox session and get a WhatsApp test number'],
     ['accounts connect', 'connect a real WhatsApp Business account'],
@@ -250,7 +252,7 @@ export async function runSandboxFlow(
   const workspaceId = config.activeWorkspaceId;
   if (!workspaceId) {
     throw new ValidationError(
-      'No active workspace. Run: hookmyapp workspace use <name>',
+      `No active workspace. Run: ${cliCommandPrefix()} workspace use <name>`,
     );
   }
 

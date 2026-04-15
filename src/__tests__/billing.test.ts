@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock apiClient
 vi.mock('../api/client.js', () => ({
@@ -262,5 +262,55 @@ describe('billing commands', () => {
       }));
       expect(mockedOpen).toHaveBeenCalledWith('https://checkout.stripe.com/x');
     });
+  });
+});
+
+describe('billing commands — npx prefix roll-out (cliCommandPrefix)', () => {
+  let billingStatus: (opts: { human?: boolean }) => Promise<void>;
+  let billingManage: () => Promise<void>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mockedApiClient.mockReset();
+    mockedOpen.mockReset();
+    mockExit.mockClear();
+    mockConsoleError.mockClear();
+    mockConsoleLog.mockClear();
+    vi.stubEnv('npm_command', 'exec');
+
+    const mod = await import('../commands/billing.js');
+    billingStatus = mod.billingStatus;
+    billingManage = mod.billingManage;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('billingManage (free) throws with "npx hookmyapp billing upgrade" in the message', async () => {
+    mockedApiClient.mockImplementation(async (path: string) => {
+      if (path === '/stripe/subscription') return freeSub;
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    await expect(billingManage()).rejects.toThrow(/npx hookmyapp billing upgrade/);
+  });
+
+  it('billingStatus 80% nudge prints "npx hookmyapp billing upgrade" under npm_command=exec', async () => {
+    mockSubAndUsage(activeSub, { totalMessages: 1020, limit: 1200, percentage: 85 });
+
+    await billingStatus({ human: true });
+
+    const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('npx hookmyapp billing upgrade');
+  });
+
+  it('billingStatus 100% over-limit prints "npx hookmyapp billing upgrade"', async () => {
+    mockSubAndUsage(activeSub, { totalMessages: 1260, limit: 1200, percentage: 105 });
+
+    await billingStatus({ human: true });
+
+    const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('npx hookmyapp billing upgrade');
   });
 });
