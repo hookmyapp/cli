@@ -3,10 +3,15 @@ import type { Command } from 'commander';
 import { input, confirm, select } from '@inquirer/prompts';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
-import { ValidationError, ApiError } from '../output/error.js';
+import {
+  ValidationError,
+  ApiError,
+  SessionWindowError,
+} from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
+import { getEffectiveSandboxProxyUrl } from '../config/env-profiles.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
 import { pickSessionByPhone } from './sandbox-listen/picker.js';
 
@@ -29,6 +34,10 @@ interface SandboxSession {
   activatedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  // Shared sandbox WABA phone-number-id (Phase 260415-jmg). Same value on
+  // every session — populated from backend SANDBOX_PHONE_NUMBER_ID env so
+  // the CLI doesn't round-trip through a separate config endpoint.
+  sandboxPhoneNumberId: string | null;
 }
 
 // Canonical 5-line .env block emitted by `hookmyapp sandbox env`. Must stay
@@ -117,7 +126,17 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
   const sessions = (await apiClient('/sandbox/sessions?active=true', {
     workspaceId,
   })) as SandboxSession[];
-  const session = await pickSessionByPhone(sessions, opts.phone);
+
+  // Always-show picker for `sandbox send` (intentionally differs from
+  // `sandbox env` which keeps silent auto-pick to stay pipe-safe).
+  const session = await pickSendSession(sessions, opts.phone);
+
+  if (!session.sandboxPhoneNumberId) {
+    throw new ApiError(
+      'Sandbox phone number id is not configured on the backend. Ask your admin to set SANDBOX_PHONE_NUMBER_ID.',
+      500,
+    );
+  }
 
   const to =
     opts.to ??
@@ -135,12 +154,13 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
     }));
 
   const toStripped = to.replace(/^\+/, '');
-  // Base URL is overridable via HOOKMYAPP_SANDBOX_PROXY_URL so the CLI
-  // integration suite can point at the local sandbox-proxy container
-  // (http://localhost:4315) instead of the production sandbox host.
-  const proxyBase =
-    process.env.HOOKMYAPP_SANDBOX_PROXY_URL ?? 'https://sandbox.hookmyapp.com';
-  const url = `${proxyBase.replace(/\/$/, '')}/v22.0/${session.phone}/messages`;
+  // Env-aware proxy base (Phase 260415-jmg). HOOKMYAPP_SANDBOX_PROXY_URL
+  // still wins as a surgical override.
+  const proxyBase = getEffectiveSandboxProxyUrl();
+  // CRITICAL: route uses the SANDBOX WABA phone_number_id (shared across
+  // workspaces), NOT the customer's test phone — that was the pre-260415-jmg
+  // bug. The proxy rewrites this to the real Meta phone number id at egress.
+  const url = `${proxyBase.replace(/\/$/, '')}/v22.0/${session.sandboxPhoneNumberId}/messages`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -158,6 +178,14 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: any = await res.json().catch(() => ({}));
   if (!res.ok) {
+    // Surface 24h-window 403 verbatim with actionable guidance instead of
+    // a generic "Send failed" — recipient just needs to message first.
+    if (res.status === 403 && body?.code === 'SESSION_WINDOW_CLOSED') {
+      throw new SessionWindowError(
+        body.message ??
+          'Recipient has not sent an inbound message in the last 24 hours.',
+      );
+    }
     const msg: string =
       body?.error?.message ?? body?.message ?? `Send failed (${res.status})`;
     throw new ApiError(msg, res.status);
@@ -171,6 +199,52 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
   console.log(
     `${c.success(icon.success)} Message sent to ${to} (id: ${msgId})`,
   );
+}
+
+/**
+ * Local picker for `sandbox send`. Differs from `pickSessionByPhone` (used
+ * by `sandbox env`) in one key way: when no `--phone` flag is provided, we
+ * ALWAYS show the select picker — even with a single session. This forces
+ * the user to confirm the sender (preventing accidental sends from the
+ * wrong test phone) and matches Phase 260415-jmg's UX requirement.
+ */
+async function pickSendSession(
+  sessions: SandboxSession[],
+  phoneFlag?: string,
+): Promise<SandboxSession> {
+  if (sessions.length === 0) {
+    throw new ValidationError(
+      `No active sandbox sessions. Run: ${cliCommandPrefix()} sandbox start`,
+    );
+  }
+
+  if (phoneFlag) {
+    const normalized = phoneFlag.replace(/^\+/, '');
+    const match = sessions.find(
+      (s) => s.phone && s.phone.replace(/^\+/, '') === normalized,
+    );
+    if (!match) {
+      const avail = sessions
+        .map((s) =>
+          s.phone ? `+${s.phone.replace(/^\+/, '')}` : '(no phone)',
+        )
+        .join(', ');
+      throw new ValidationError(
+        `No sandbox session for ${phoneFlag}. Available: ${avail}. ` +
+          `Run: ${cliCommandPrefix()} sandbox status`,
+      );
+    }
+    return match;
+  }
+
+  // No --phone flag → always show picker (even for 1 session, intentionally).
+  return await select<SandboxSession>({
+    message: 'Select sender session',
+    choices: sessions.map((s) => ({
+      name: `+${(s.phone ?? '').replace(/^\+/, '') || '(no phone)'} (${s.status})`,
+      value: s,
+    })),
+  });
 }
 
 export function registerSandboxCommand(program: Command): void {
