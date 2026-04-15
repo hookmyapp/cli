@@ -20,10 +20,17 @@ vi.mock('../../api/client.js', () => ({
   forceTokenRefresh: vi.fn(),
 }));
 
-const writeWorkspaceConfigMock = vi.fn();
+// Stateful so runSandboxFlow's readWorkspaceConfig reflects what runWizard wrote.
+let workspaceConfigState: { activeWorkspaceId?: string; activeWorkspaceSlug?: string } =
+  {};
+const writeWorkspaceConfigMock = vi.fn(
+  (cfg: { activeWorkspaceId?: string; activeWorkspaceSlug?: string }) => {
+    workspaceConfigState = { ...workspaceConfigState, ...cfg };
+  },
+);
 vi.mock('../../commands/workspace.js', () => ({
   writeWorkspaceConfig: writeWorkspaceConfigMock,
-  readWorkspaceConfig: () => ({}),
+  readWorkspaceConfig: () => workspaceConfigState,
 }));
 
 const runSandboxListenFlowMock = vi.fn();
@@ -46,9 +53,10 @@ beforeEach(async () => {
   inputMock.mockReset();
   confirmMock.mockReset();
   apiClientMock.mockReset();
-  writeWorkspaceConfigMock.mockReset();
+  writeWorkspaceConfigMock.mockClear();
   runSandboxListenFlowMock.mockReset();
   runAccountsConnectMock.mockReset();
+  workspaceConfigState = {};
   vi.resetModules();
   const mod = await import('../login.js');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

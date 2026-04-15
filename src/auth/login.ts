@@ -86,8 +86,11 @@ async function pollForTokens(opts: {
  *
  * 1. Fetch workspaces → single silent-select OR multi-select picker.
  * 2. Persist active workspace + refresh JWT for picked org.
- * 3. Next-action picker (default "sandbox").
- * 4. Auto-chain into the chosen sub-flow via direct function import.
+ * 3. Non-interactive "Next steps" guide (or honor --next/--phone/--json).
+ *
+ * The previous interactive "What next?" picker was removed because picking
+ * "Start sandbox" created a fresh pending_activation session and immediately
+ * tried to listen, which the backend rejects.
  */
 export async function runWizard(opts: WizardOpts = {}): Promise<void> {
   const { apiClient, forceTokenRefresh } = await import('../api/client.js');
@@ -162,38 +165,58 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
     }
   }
 
-  // Step 2 — next-action picker.
-  type NextAction = 'sandbox' | 'accounts' | 'exit';
-  let action: NextAction;
-  if (opts.next) {
-    action = opts.next;
-  } else {
-    action = (await select<NextAction>({
-      message: 'What next?',
-      default: 'sandbox',
-      choices: [
-        { name: 'Start sandbox session (recommended)', value: 'sandbox' },
-        { name: 'Connect a WhatsApp Business account', value: 'accounts' },
-        { name: 'Exit', value: 'exit' },
-      ],
-    })) as NextAction;
-  }
-
-  if (action === 'sandbox') {
+  // Step 2 — non-interactive next steps.
+  //
+  // Explicit escape hatches (scripts / integration tests) take precedence.
+  if (opts.next === 'sandbox') {
     await runSandboxFlow({ phone: opts.phone, json: opts.json });
     return;
   }
-  if (action === 'accounts') {
+  if (opts.next === 'accounts') {
     await runAccountsConnectFlow();
     return;
   }
 
-  // action === 'exit' → emit completion payload for --json callers.
-  if (opts.json) {
-    process.stdout.write(
-      JSON.stringify({ ok: true, workspaceId: activeWorkspaceId, next: 'exit' }) + '\n',
-    );
+  // --phone (without --next) preserves the legacy "auto-sandbox on phone"
+  // behavior some scripts rely on.
+  if (opts.phone) {
+    await runSandboxFlow({ phone: opts.phone, json: opts.json });
+    return;
   }
+
+  // Default path: a printed next-steps guide. No interactive prompt.
+  const nextSteps = [
+    'hookmyapp sandbox start     — create a sandbox session and get a WhatsApp test number',
+    'hookmyapp accounts connect  — connect a real WhatsApp Business account',
+    'hookmyapp help              — see all commands',
+  ];
+
+  if (opts.json) {
+    // Structured payload for scripts. Keep the existing top-level shape
+    // (ok/workspaceId/next) stable — only add nextSteps.
+    process.stdout.write(
+      JSON.stringify({
+        ok: true,
+        workspaceId: activeWorkspaceId,
+        next: 'exit',
+        nextSteps,
+      }) + '\n',
+    );
+    return;
+  }
+
+  if (opts.next === 'exit') {
+    // Silent exit for scripts that opt out of the human block.
+    return;
+  }
+
+  // Human-readable next-steps block.
+  console.log('\nNext steps');
+  console.log('----------');
+  for (const line of nextSteps) {
+    console.log(`  ${line}`);
+  }
+  console.log('');
 }
 
 /**
@@ -407,12 +430,12 @@ export function loginCommand(program: Command): void {
 EXAMPLES:
   $ hookmyapp login
   $ hookmyapp login --workspace acme-corp
+  $ hookmyapp login --next sandbox --phone +15551234567   # scripts / CI
 
 This runs the post-login wizard:
   1. Browser sign-in
   2. Workspace picker (if you belong to more than one)
-  3. Next-action picker (Start sandbox session / Connect WhatsApp / Exit)
-  4. If you pick sandbox, it auto-chains into \`hookmyapp sandbox listen\`
+  3. Prints a "Next steps" guide (or runs --next / --phone non-interactively)
 `,
   );
 }
