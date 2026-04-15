@@ -116,7 +116,7 @@ describe('accounts commands', () => {
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts', { workspaceId: '10101010-1010-1010-1010-101010101010' });
     // Verify output was called with filtered + display-picked accounts
     expect(mockedOutput).toHaveBeenCalledTimes(1);
-    const outputArgs = mockedOutput.mock.calls[0][0];
+    const outputArgs = mockedOutput.mock.calls[0][0] as Record<string, unknown>[];
     // Both accounts are metaConnected=true, so both should be in output
     expect(outputArgs).toHaveLength(2);
     // pickDisplayFields removes id, workspaceId, and qualityRating (re-adds only for non-coexistence with value)
