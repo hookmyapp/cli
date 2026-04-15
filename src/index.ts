@@ -42,8 +42,13 @@ program.option(
 
 // Propagate --env flag into process.env.HOOKMYAPP_ENV so downstream resolvers
 // (src/config/env-profiles.ts, api/client.ts, etc.) pick it up uniformly.
+// Also propagate --debug into HOOKMYAPP_DEBUG=1 so the cloudflared stderr
+// filter in sandbox-listen/lifecycle.ts can bypass its allowlist and surface
+// every line verbatim — whether the user invokes `sandbox listen --debug`
+// directly or reaches it through the wizard (auth/login.ts runSandboxFlow).
 program.hook('preAction', (thisCommand) => {
-  const envFlag = thisCommand.optsWithGlobals().env as string | undefined;
+  const opts = thisCommand.optsWithGlobals();
+  const envFlag = opts.env as string | undefined;
   if (envFlag) {
     if (!isValidEnv(envFlag)) {
       throw new CommanderError(
@@ -53,6 +58,9 @@ program.hook('preAction', (thisCommand) => {
       );
     }
     process.env.HOOKMYAPP_ENV = envFlag;
+  }
+  if (opts.debug) {
+    process.env.HOOKMYAPP_DEBUG = '1';
   }
 });
 
