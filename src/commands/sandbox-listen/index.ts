@@ -13,6 +13,7 @@
 import type { Command } from 'commander';
 import { apiClient } from '../../api/client.js';
 import { CliError, AuthError, ConflictError } from '../../output/error.js';
+import { getEffectiveApiUrl } from '../../config/env-profiles.js';
 import { addExamples } from '../../output/help.js';
 import { readCredentials } from '../../auth/store.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
@@ -45,7 +46,7 @@ export interface TunnelStartResponse {
 /** Resolve the effective HookMyApp API base URL (mirrors api/client.ts). */
 function getApiBaseUrl(): string {
   return (
-    process.env.HOOKMYAPP_API_URL ?? 'https://api.hookmyapp.com'
+    getEffectiveApiUrl()
   );
 }
 
