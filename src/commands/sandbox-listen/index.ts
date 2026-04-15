@@ -45,7 +45,7 @@ export interface TunnelStartResponse {
 /** Resolve the effective HookMyApp API base URL (mirrors api/client.ts). */
 function getApiBaseUrl(): string {
   return (
-    process.env.HOOKMYAPP_API_URL ?? 'https://uninked-robbi-boughless.ngrok-free.dev'
+    process.env.HOOKMYAPP_API_URL ?? 'https://api.hookmyapp.com'
   );
 }
 

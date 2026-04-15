@@ -36,7 +36,7 @@ export function registerWebhookCommand(program: Command): void {
       const payload = { webhookUrl: opts.url, verifyToken: opts.verifyToken ?? undefined };
 
       // Check if webhook config already exists
-      const baseUrl = process.env.HOOKMYAPP_API_URL ?? 'https://uninked-robbi-boughless.ngrok-free.dev';
+      const baseUrl = process.env.HOOKMYAPP_API_URL ?? 'https://api.hookmyapp.com';
       const creds = readCredentials();
       const checkRes = await fetch(`${baseUrl}/webhook-config/${account.id}`, {
         headers: { Authorization: `Bearer ${creds!.accessToken}` },

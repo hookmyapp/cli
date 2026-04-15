@@ -8,7 +8,7 @@ import {
   CliError,
 } from '../output/error.js';
 
-const WORKOS_CLIENT_ID = process.env.HOOKMYAPP_WORKOS_CLIENT_ID ?? 'client_01KM5S4CGX9M2M2P63JTA6AFEH';
+const WORKOS_CLIENT_ID = process.env.HOOKMYAPP_WORKOS_CLIENT_ID ?? 'client_01KM5S4D10TKG4VJEXSCRVAMG7';
 
 function decodeJwtExp(token: string): number {
   try {
@@ -123,7 +123,7 @@ export async function apiClient(
     }
   }
 
-  const baseUrl = process.env.HOOKMYAPP_API_URL ?? 'https://uninked-robbi-boughless.ngrok-free.dev';
+  const baseUrl = process.env.HOOKMYAPP_API_URL ?? 'https://api.hookmyapp.com';
 
   const { workspaceId, ...fetchOptions } = options ?? {};
 
