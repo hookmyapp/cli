@@ -76,7 +76,9 @@ describe('apiClient', () => {
       expect.unreachable('should have thrown');
     } catch (err) {
       expect(err).toBeInstanceOf(AuthError);
-      expect((err as AuthError).userMessage).toContain('Not logged in');
+      expect((err as InstanceType<typeof AuthError>).userMessage).toContain(
+        'Not logged in',
+      );
     }
   });
 
@@ -192,8 +194,10 @@ describe('apiClient', () => {
       expect.unreachable('should have thrown');
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError);
-      expect((err as ApiError).userMessage).toContain('Something went wrong on our end');
-      expect((err as ApiError).statusCode).toBe(500);
+      expect((err as InstanceType<typeof ApiError>).userMessage).toContain(
+        'Something went wrong on our end',
+      );
+      expect((err as InstanceType<typeof ApiError>).statusCode).toBe(500);
     }
   });
 
@@ -220,8 +224,10 @@ describe('apiClient', () => {
       expect.unreachable('should have thrown');
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError);
-      expect((err as ApiError).userMessage).toBe('Not found');
-      expect((err as ApiError).statusCode).toBe(404);
+      expect((err as InstanceType<typeof ApiError>).userMessage).toBe(
+        'Not found',
+      );
+      expect((err as InstanceType<typeof ApiError>).statusCode).toBe(404);
     }
   });
 });

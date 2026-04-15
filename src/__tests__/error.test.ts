@@ -51,7 +51,11 @@ describe('error classes', () => {
 });
 
 describe('outputError', () => {
-  let mockWrite: ReturnType<typeof vi.spyOn>;
+  // process.stderr.write has overloaded signatures; `ReturnType<typeof vi.spyOn>`
+  // collapses to a too-generic shape that fails TS2322. Let TS infer the
+  // concrete MockInstance type from the assignment below.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockWrite: any;
 
   beforeEach(() => {
     mockWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
