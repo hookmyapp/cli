@@ -15,6 +15,7 @@ import { apiClient } from '../../api/client.js';
 import { CliError, AuthError, ConflictError } from '../../output/error.js';
 import { getEffectiveApiUrl } from '../../config/env-profiles.js';
 import { addExamples } from '../../output/help.js';
+import { cliCommandPrefix } from '../../output/cli-self.js';
 import { readCredentials } from '../../auth/store.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
 import { ensureCloudflaredBinary } from './binary.js';
@@ -225,7 +226,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       // (auth-required) rather than a blanket exit 1 that masks the real
       // condition from CI scripts.
       if (!readCredentials()) {
-        throw new AuthError('Not logged in. Run: hookmyapp login');
+        throw new AuthError(`Not logged in. Run: ${cliCommandPrefix()} login`);
       }
 
       // Step 2 — version nudge (non-blocking, silent-on-error per 09a).

@@ -38,6 +38,10 @@ describe('spawnCloudflared', () => {
     mockedSpawn.mockReset();
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('spawns binary with correct args and NO --url flag (Pitfall 1)', () => {
     const child = makeFakeChild();
     mockedSpawn.mockReturnValueOnce(child);
@@ -64,6 +68,73 @@ describe('spawnCloudflared', () => {
 
     const [, , spawnOpts] = mockedSpawn.mock.calls[0] as any[];
     expect(spawnOpts?.env?.TUNNEL_ORIGIN_CERT).toBe('/dev/null');
+  });
+
+  // --- stderr filter tightening (260415-hff Task 3) ---
+
+  function feedStderrAndCapture(line: string): string[] {
+    const child = makeFakeChild();
+    mockedSpawn.mockReturnValueOnce(child);
+    const writes: string[] = [];
+    const spy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation((chunk: any) => {
+        writes.push(String(chunk));
+        return true;
+      });
+    spawnCloudflared({ binaryPath: '/tmp/cf', token: 'tok' });
+    child.stderr.emit('data', Buffer.from(line + '\n'));
+    spy.mockRestore();
+    return writes;
+  }
+
+  it('suppresses DNS local resolver bootstrap line in non-debug mode', () => {
+    vi.stubEnv('HOOKMYAPP_DEBUG', '');
+    const line =
+      '2026-04-15T09:29:34Z ERR Failed to initialize DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"';
+    const writes = feedStderrAndCapture(line);
+    expect(writes.join('')).not.toContain('DNS local resolver');
+  });
+
+  it('surfaces DNS local resolver line verbatim under HOOKMYAPP_DEBUG=1', () => {
+    vi.stubEnv('HOOKMYAPP_DEBUG', '1');
+    const line =
+      '2026-04-15T09:29:34Z ERR Failed to initialize DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"';
+    const writes = feedStderrAndCapture(line);
+    expect(writes.join('')).toContain('DNS local resolver');
+  });
+
+  it('surfaces real tunnel registration failure in non-debug mode', () => {
+    vi.stubEnv('HOOKMYAPP_DEBUG', '');
+    const line =
+      '2026-04-15T09:30:00Z ERR Tunnel registration failed: unauthorized';
+    const writes = feedStderrAndCapture(line);
+    expect(writes.join('')).toContain('Tunnel registration failed');
+    expect(writes.join('')).toContain('unauthorized');
+  });
+
+  it('suppresses INF connection-registered line in non-debug mode', () => {
+    vi.stubEnv('HOOKMYAPP_DEBUG', '');
+    const line =
+      '2026-04-15T09:30:01Z INF Connection registered connIndex=0';
+    const writes = feedStderrAndCapture(line);
+    expect(writes.join('')).not.toContain('Connection registered');
+  });
+
+  it('suppresses WRN fallback-DNS switch noise in non-debug mode', () => {
+    vi.stubEnv('HOOKMYAPP_DEBUG', '');
+    const line =
+      '2026-04-15T09:29:35Z WRN Switching to fallback DNS resolver';
+    const writes = feedStderrAndCapture(line);
+    expect(writes.join('')).not.toContain('fallback DNS');
+  });
+
+  it('surfaces connection-lost line in non-debug mode', () => {
+    vi.stubEnv('HOOKMYAPP_DEBUG', '');
+    const line =
+      '2026-04-15T09:31:00Z ERR Connection lost: tunnel connection refused';
+    const writes = feedStderrAndCapture(line);
+    expect(writes.join('')).toContain('Connection lost');
   });
 });
 
