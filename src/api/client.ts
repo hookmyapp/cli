@@ -5,6 +5,7 @@ import {
   NetworkError,
   PermissionError,
   ConflictError,
+  SessionWindowError,
   CliError,
 } from '../output/error.js';
 import {
@@ -77,6 +78,12 @@ export async function mapApiError(res: Response): Promise<CliError> {
 
   if (res.status === 401) return new AuthError();
   if (res.status === 403) {
+    // Sandbox-proxy 24h-window rejections surface verbatim — not a permission
+    // problem, the developer needs the actionable "ask the recipient to
+    // message first" guidance.
+    if (code === 'SESSION_WINDOW_CLOSED') {
+      return new SessionWindowError(msg);
+    }
     // Lazy-import to avoid a cycle with commands/workspace.ts
     const { readWorkspaceConfig } = await import('../commands/workspace.js');
     const cfg = readWorkspaceConfig();

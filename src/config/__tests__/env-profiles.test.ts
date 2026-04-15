@@ -15,6 +15,7 @@ import {
   getEffectiveApiUrl,
   getEffectiveAppUrl,
   getEffectiveWorkosClientId,
+  getEffectiveSandboxProxyUrl,
 } from '../env-profiles.js';
 
 describe('env-profiles: built-in profiles', () => {
@@ -62,11 +63,13 @@ function withTempConfig<T>(fn: (dir: string) => T): T {
   const origApi = process.env.HOOKMYAPP_API_URL;
   const origApp = process.env.HOOKMYAPP_APP_URL;
   const origWorkos = process.env.HOOKMYAPP_WORKOS_CLIENT_ID;
+  const origSandbox = process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
   process.env.HOOKMYAPP_CONFIG_DIR = dir;
   delete process.env.HOOKMYAPP_ENV;
   delete process.env.HOOKMYAPP_API_URL;
   delete process.env.HOOKMYAPP_APP_URL;
   delete process.env.HOOKMYAPP_WORKOS_CLIENT_ID;
+  delete process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
   try {
     return fn(dir);
   } finally {
@@ -80,6 +83,8 @@ function withTempConfig<T>(fn: (dir: string) => T): T {
     else process.env.HOOKMYAPP_APP_URL = origApp;
     if (origWorkos === undefined) delete process.env.HOOKMYAPP_WORKOS_CLIENT_ID;
     else process.env.HOOKMYAPP_WORKOS_CLIENT_ID = origWorkos;
+    if (origSandbox === undefined) delete process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
+    else process.env.HOOKMYAPP_SANDBOX_PROXY_URL = origSandbox;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -172,6 +177,41 @@ describe('env-profiles: effective URLs + WorkOS id', () => {
     withTempConfig(() => {
       setPersistedEnv('local');
       expect(resolveEnvProfile()).toEqual(ENV_PROFILES.local);
+    });
+  });
+});
+
+describe('env-profiles: getEffectiveSandboxProxyUrl', () => {
+  // E1 — local → http://localhost:4315
+  it('env=local, no env var → returns http://localhost:4315', () => {
+    withTempConfig(() => {
+      setPersistedEnv('local');
+      expect(getEffectiveSandboxProxyUrl()).toBe('http://localhost:4315');
+    });
+  });
+
+  // E2 — production → https://sandbox.hookmyapp.com
+  it('env=production, no env var → returns https://sandbox.hookmyapp.com', () => {
+    withTempConfig(() => {
+      setPersistedEnv('production');
+      expect(getEffectiveSandboxProxyUrl()).toBe('https://sandbox.hookmyapp.com');
+    });
+  });
+
+  // E3 — env override wins over env-profile default
+  it('env=local, HOOKMYAPP_SANDBOX_PROXY_URL=https://override.example → returns override (trailing slash trimmed)', () => {
+    withTempConfig(() => {
+      setPersistedEnv('local');
+      process.env.HOOKMYAPP_SANDBOX_PROXY_URL = 'https://override.example/';
+      expect(getEffectiveSandboxProxyUrl()).toBe('https://override.example');
+    });
+  });
+
+  // E4 — staging shares prod sandbox-proxy until a dedicated staging box ships
+  it('env=staging, no env var → returns https://sandbox.hookmyapp.com (shared with prod)', () => {
+    withTempConfig(() => {
+      setPersistedEnv('staging');
+      expect(getEffectiveSandboxProxyUrl()).toBe('https://sandbox.hookmyapp.com');
     });
   });
 });

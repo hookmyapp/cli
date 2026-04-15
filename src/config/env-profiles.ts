@@ -128,3 +128,26 @@ export function getEffectiveAppUrl(): string {
 export function getEffectiveWorkosClientId(): string {
   return process.env.HOOKMYAPP_WORKOS_CLIENT_ID ?? resolveEnvProfile().workosClientId;
 }
+
+/**
+ * Resolve the sandbox-proxy base URL. Mirrors getEffectiveApiUrl() precedence:
+ *   1. HOOKMYAPP_SANDBOX_PROXY_URL env var (surgical override for local/CI).
+ *   2. Env-profile default:
+ *        - local      → http://localhost:4315 (docker-compose sandbox-proxy)
+ *        - staging    → https://sandbox.hookmyapp.com (shared with prod today)
+ *        - production → https://sandbox.hookmyapp.com
+ *
+ * NOTE: staging reuses the prod sandbox-proxy until a dedicated staging
+ * sandbox-proxy is deployed. If that changes, update the `byEnv` map below.
+ */
+export function getEffectiveSandboxProxyUrl(): string {
+  const override = process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
+  if (override) return override.replace(/\/$/, '');
+  const env = resolveEnv();
+  const byEnv: Record<EnvName, string> = {
+    local: 'http://localhost:4315',
+    staging: 'https://sandbox.hookmyapp.com',
+    production: 'https://sandbox.hookmyapp.com',
+  };
+  return byEnv[env];
+}
