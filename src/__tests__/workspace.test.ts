@@ -84,6 +84,70 @@ describe('resolveWorkspace', () => {
   });
 });
 
+// Regression: config.json is a shared file — workspace.ts and
+// env-profiles.ts each persist a slice of it. writeWorkspaceConfig must NOT
+// clobber the env-profiles slice (specifically the `env` field), or the
+// post-login wizard silently drops the user's `config set env local`
+// choice and subsequent calls hit production. See debug session
+// cli-sandbox-sessions-404.
+describe('writeWorkspaceConfig config-file merge', () => {
+  let writeWorkspaceConfig: typeof import('../commands/workspace.js').writeWorkspaceConfig;
+  let readWorkspaceConfig: typeof import('../commands/workspace.js').readWorkspaceConfig;
+  let setPersistedEnv: typeof import('../config/env-profiles.js').setPersistedEnv;
+  let getPersistedEnv: typeof import('../config/env-profiles.js').getPersistedEnv;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const wsMod = await import('../commands/workspace.js');
+    writeWorkspaceConfig = wsMod.writeWorkspaceConfig;
+    readWorkspaceConfig = wsMod.readWorkspaceConfig;
+    const envMod = await import('../config/env-profiles.js');
+    setPersistedEnv = envMod.setPersistedEnv;
+    getPersistedEnv = envMod.getPersistedEnv;
+
+    // Clean slate between tests — delete the shared config file.
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const os = await import('node:os');
+    const configDir = process.env.HOOKMYAPP_CONFIG_DIR ?? path.join(os.homedir(), '.hookmyapp');
+    const configPath = path.join(configDir, 'config.json');
+    try { fs.unlinkSync(configPath); } catch { /* noop */ }
+  });
+
+  it('preserves env field when writing workspace fields after config set env', () => {
+    // Simulate: hookmyapp config set env local
+    setPersistedEnv('local');
+    expect(getPersistedEnv()).toBe('local');
+
+    // Simulate: hookmyapp login → wizard persists active workspace
+    writeWorkspaceConfig({
+      activeWorkspaceId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      activeWorkspaceSlug: 'Test Workspace',
+    });
+
+    // env MUST still be local — otherwise subsequent apiClient calls
+    // fall back to DEFAULT_ENV='production' and hit the wrong backend.
+    expect(getPersistedEnv()).toBe('local');
+    const ws = readWorkspaceConfig();
+    expect(ws.activeWorkspaceId).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    expect(ws.activeWorkspaceSlug).toBe('Test Workspace');
+  });
+
+  it('preserves workspace fields when env-profiles rewrites env', () => {
+    writeWorkspaceConfig({
+      activeWorkspaceId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      activeWorkspaceSlug: 'Another Workspace',
+    });
+
+    setPersistedEnv('staging');
+
+    expect(getPersistedEnv()).toBe('staging');
+    const ws = readWorkspaceConfig();
+    expect(ws.activeWorkspaceId).toBe('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+    expect(ws.activeWorkspaceSlug).toBe('Another Workspace');
+  });
+});
+
 describe('workspace commands', () => {
   let registerWorkspaceCommand: typeof import('../commands/workspace.js').registerWorkspaceCommand;
   let writeWorkspaceConfig: typeof import('../commands/workspace.js').writeWorkspaceConfig;
