@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Wave 0 RED: the `sandbox send` subcommand does not exist yet in
-// src/commands/sandbox.ts. Importing `runSandboxSend` fails RED.
+// `sandbox send` policy: the recipient is ALWAYS the session's own phone.
+// No `--to` flag, no "To:" prompt. Sandbox cannot message any other number.
+// Server-side enforced in sandbox-proxy too (SANDBOX_RECIPIENT_MISMATCH 403).
 
 const inputMock = vi.fn();
 const selectMock = vi.fn();
@@ -17,8 +18,6 @@ vi.mock('../../api/client.js', () => ({
   forceTokenRefresh: vi.fn(),
 }));
 
-// Seed an active workspace so `_helpers.getDefaultWorkspaceId` resolves from
-// config instead of making its own `apiClient('/workspaces')` call.
 vi.mock('../workspace.js', () => ({
   readWorkspaceConfig: () => ({
     activeWorkspaceId: 'w1',
@@ -55,22 +54,19 @@ function seedOneSession() {
       hmacSecret: 'HMAC_yyy',
       status: 'active',
       workspaceId: 'w1',
-      // Phase 260415-jmg: backend now exposes the shared sandbox WABA
-      // phone-number-id on every session, and `sandbox send` MUST route
-      // through it (not the customer phone).
       sandboxPhoneNumberId: '1080996501762047',
     },
   ]);
 }
 
-describe('sandbox send — Wave 0 RED', () => {
-  it('fully-flagged path: no prompts, correct POST to sandbox-proxy', async () => {
+describe('sandbox send', () => {
+  it('fully-flagged path: no prompts, POSTs with recipient = session.phone', async () => {
     seedOneSession();
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           messaging_product: 'whatsapp',
-          contacts: [{ input: '15550000000', wa_id: '15550000000' }],
+          contacts: [{ input: '15551234567', wa_id: '15551234567' }],
           messages: [{ id: 'wamid.ABC' }],
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -78,7 +74,6 @@ describe('sandbox send — Wave 0 RED', () => {
     );
     await runSandboxSend({
       phone: '+15551234567',
-      to: '+15550000000',
       message: 'hello',
     });
     expect(inputMock).not.toHaveBeenCalled();
@@ -95,13 +90,13 @@ describe('sandbox send — Wave 0 RED', () => {
     const body = JSON.parse(String(init?.body ?? '{}'));
     expect(body).toEqual({
       messaging_product: 'whatsapp',
-      to: '15550000000',
+      to: '15551234567',
       type: 'text',
       text: { body: 'hello' },
     });
   });
 
-  it('partial flags: only --to given → prompts message, uses picker for phone', async () => {
+  it('no flags, multi-session: picker selects session, prompt only for message', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
         id: 'sess-1',
@@ -135,13 +130,15 @@ describe('sandbox send — Wave 0 RED', () => {
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
     );
-    await runSandboxSend({ to: '+15550000000' });
+    await runSandboxSend({});
     expect(selectMock).toHaveBeenCalled();
-    expect(inputMock).toHaveBeenCalled();
+    expect(inputMock).toHaveBeenCalledTimes(1); // message only, no "To:" prompt
     expect(fetchSpy).toHaveBeenCalled();
+    const body = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body ?? '{}'));
+    expect(body.to).toBe('15551234567');
   });
 
-  it('success output (human): `✓ Message sent to +15550000000 (id: wamid.ABC)`', async () => {
+  it('success output: prints recipient = session.phone (with leading +)', async () => {
     seedOneSession();
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -152,11 +149,10 @@ describe('sandbox send — Wave 0 RED', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await runSandboxSend({
       phone: '+15551234567',
-      to: '+15550000000',
       message: 'hello',
     });
     const out = logSpy.mock.calls.flat().join('\n');
-    expect(out).toContain('Message sent to +15550000000');
+    expect(out).toContain('Message sent to +15551234567');
     expect(out).toContain('wamid.ABC');
   });
 
@@ -177,15 +173,25 @@ describe('sandbox send — Wave 0 RED', () => {
     await expect(
       runSandboxSend({
         phone: '+15551234567',
-        to: '+15550000000',
         message: '[[template:foo]]',
       }),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ).rejects.toBeInstanceOf(ApiError as any);
   });
 
-  it('strips leading + from --to before POSTing to Meta', async () => {
-    seedOneSession();
+  it('strips leading + from session.phone before POSTing (idempotent normalization)', async () => {
+    // Defensive: some backends might return phone with +, some without.
+    apiClientMock.mockResolvedValueOnce([
+      {
+        id: 'sess-1',
+        phone: '+15551234567', // with leading +
+        activationCode: 'ACT_xxx',
+        hmacSecret: 'HMAC_yyy',
+        status: 'active',
+        workspaceId: 'w1',
+        sandboxPhoneNumberId: '1080996501762047',
+      },
+    ]);
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({ messages: [{ id: 'wamid.XYZ' }] }),
@@ -194,16 +200,13 @@ describe('sandbox send — Wave 0 RED', () => {
     );
     await runSandboxSend({
       phone: '+15551234567',
-      to: '+15550000000',
       message: 'hi',
     });
     const [, init] = fetchSpy.mock.calls[0];
     const body = JSON.parse(String(init?.body ?? '{}'));
-    expect(body.to).toBe('15550000000');
+    expect(body.to).toBe('15551234567');
     expect(body.to).not.toContain('+');
   });
-
-  // ---- Phase 260415-jmg new acceptance tests ----
 
   it('S3: 1 active session, no --phone → picker IS shown (no silent auto-pick)', async () => {
     seedOneSession();
@@ -220,7 +223,6 @@ describe('sandbox send — Wave 0 RED', () => {
       ),
     );
     await runSandboxSend({
-      to: '+15550000000',
       message: 'hi',
     });
     expect(selectMock).toHaveBeenCalled();
@@ -229,7 +231,7 @@ describe('sandbox send — Wave 0 RED', () => {
   it('S4: 0 active sessions → ValidationError mentioning `sandbox start`', async () => {
     apiClientMock.mockResolvedValueOnce([]);
     await expect(
-      runSandboxSend({ to: '+15550000000', message: 'hi' }),
+      runSandboxSend({ message: 'hi' }),
     ).rejects.toThrow(/sandbox start/);
   });
 
@@ -248,12 +250,9 @@ describe('sandbox send — Wave 0 RED', () => {
     await expect(
       runSandboxSend({
         phone: '+99999',
-        to: '+15550000000',
         message: 'hi',
       }),
     ).rejects.toThrow(/\+99999/);
-    // Re-run to also assert it lists available phones (rejects.toThrow only
-    // accepts one matcher per call).
     apiClientMock.mockResolvedValueOnce([
       {
         id: 'sess-1',
@@ -268,7 +267,6 @@ describe('sandbox send — Wave 0 RED', () => {
     await expect(
       runSandboxSend({
         phone: '+99999',
-        to: '+15550000000',
         message: 'hi',
       }),
     ).rejects.toThrow(/Available:.*\+15551234567/);
@@ -277,7 +275,7 @@ describe('sandbox send — Wave 0 RED', () => {
   it('S6: 403 SESSION_WINDOW_CLOSED → throws SessionWindowError with body.message verbatim', async () => {
     seedOneSession();
     const friendlyMessage =
-      'Cannot send to +15550000000 — this number has not sent an inbound message in the last 24 hours. WhatsApp requires the recipient to message first before you can reply.';
+      'Cannot send to +15551234567 — this number has not sent an inbound message in the last 24 hours. WhatsApp requires the recipient to message first before you can reply.';
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -292,7 +290,6 @@ describe('sandbox send — Wave 0 RED', () => {
     try {
       await runSandboxSend({
         phone: '+15551234567',
-        to: '+15550000000',
         message: 'hi',
       });
     } catch (err) {
@@ -315,7 +312,6 @@ describe('sandbox send — Wave 0 RED', () => {
       );
       await runSandboxSend({
         phone: '+15551234567',
-        to: '+15550000000',
         message: 'hi',
       });
       const [url] = fetchSpy.mock.calls[0];

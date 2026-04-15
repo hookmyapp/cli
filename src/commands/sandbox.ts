@@ -109,7 +109,6 @@ export async function runSandboxEnv(opts: {
 
 interface SendFlags {
   phone?: string;
-  to?: string;
   message?: string;
   json?: boolean;
 }
@@ -138,13 +137,11 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
     );
   }
 
-  const to =
-    opts.to ??
-    (await input({
-      message: 'To (E.164, e.g. +15550000):',
-      validate: (v: string) =>
-        /^\+\d{6,15}$/.test(v) ? true : 'Enter a valid E.164 phone',
-    }));
+  // In the sandbox, the recipient is ALWAYS the session's own phone — the
+  // customer who activated it. Sending to any other number would defeat the
+  // activation handshake and silently burn Meta quota. Enforced server-side
+  // in sandbox-proxy too; no CLI flag can override.
+  const toStripped = session.phone.replace(/^\+/, '');
   const message =
     opts.message ??
     (await input({
@@ -152,8 +149,6 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
       validate: (v: string) =>
         v.length > 0 ? true : 'Message cannot be empty',
     }));
-
-  const toStripped = to.replace(/^\+/, '');
   // Env-aware proxy base (Phase 260415-jmg). HOOKMYAPP_SANDBOX_PROXY_URL
   // still wins as a surgical override.
   const proxyBase = getEffectiveSandboxProxyUrl();
@@ -197,7 +192,7 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
   }
   const msgId = body?.messages?.[0]?.id ?? '?';
   console.log(
-    `${c.success(icon.success)} Message sent to ${to} (id: ${msgId})`,
+    `${c.success(icon.success)} Message sent to +${toStripped} (id: ${msgId})`,
   );
 }
 
@@ -399,11 +394,12 @@ export function registerSandboxCommand(program: Command): void {
 
   const sandboxSend = sandbox
     .command('send')
-    .description('Send a one-shot WhatsApp message via sandbox-proxy')
-    .option('--phone <phone>', 'Select session by phone (your sender)')
-    .option('--to <e164>', 'Recipient phone (E.164)')
+    .description(
+      'Reply to a sandbox session (recipient is the session phone — sandbox cannot send to any other number)',
+    )
+    .option('--phone <phone>', 'Select session by phone')
     .option('--message <text>', 'Message body')
-    .action(async (opts: { phone?: string; to?: string; message?: string }) => {
+    .action(async (opts: { phone?: string; message?: string }) => {
       await runSandboxSend({ ...opts, json: !!program.opts().json });
     });
 
@@ -460,9 +456,9 @@ EXAMPLES:
     sandboxSend,
     `
 EXAMPLES:
-  $ hookmyapp sandbox send                                                      # prompts for all fields
-  $ hookmyapp sandbox send --to +15550000 --message "hi"                        # prompts only for session
-  $ hookmyapp sandbox send --phone +15551234567 --to +15550000 --message "hi"   # fully flagged (CI)
+  $ hookmyapp sandbox send                                          # prompts for session + message
+  $ hookmyapp sandbox send --message "hi"                           # prompts only for session
+  $ hookmyapp sandbox send --phone +15551234567 --message "hi"      # fully flagged (CI)
 `,
   );
 }
