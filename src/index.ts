@@ -12,8 +12,10 @@ import { registerBillingCommand } from './commands/billing.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerSandboxCommand } from './commands/sandbox.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
+import { registerConfigCommand } from './commands/config.js';
 import { CliError, outputError } from './output/error.js';
 import { addExamples } from './output/help.js';
+import { VALID_ENV_NAMES, isValidEnv } from './config/env-profiles.js';
 
 const pkg = JSON.parse(
   readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf-8'),
@@ -33,6 +35,26 @@ program.option(
   '--workspace <slug>',
   'Override default workspace for this invocation (name, slug, or id)',
 );
+program.option(
+  '--env <name>',
+  `Environment profile (one-off override). One of: ${VALID_ENV_NAMES.join(', ')}.`,
+);
+
+// Propagate --env flag into process.env.HOOKMYAPP_ENV so downstream resolvers
+// (src/config/env-profiles.ts, api/client.ts, etc.) pick it up uniformly.
+program.hook('preAction', (thisCommand) => {
+  const envFlag = thisCommand.optsWithGlobals().env as string | undefined;
+  if (envFlag) {
+    if (!isValidEnv(envFlag)) {
+      throw new CommanderError(
+        2,
+        'commander.invalidArgument',
+        `Invalid --env "${envFlag}". Valid values: ${VALID_ENV_NAMES.join(', ')}.`,
+      );
+    }
+    process.env.HOOKMYAPP_ENV = envFlag;
+  }
+});
 
 addExamples(
   program,
@@ -99,6 +121,9 @@ registerBillingCommand(program);
 
 // Workspace management
 registerWorkspaceCommand(program);
+
+// Persistent CLI config (env profile: local | staging | production)
+registerConfigCommand(program);
 
 // Sandbox sessions (start/status/stop)
 registerSandboxCommand(program);

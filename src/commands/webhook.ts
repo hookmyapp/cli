@@ -5,6 +5,7 @@ import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { resolveAccount } from './accounts.js';
 import { readCredentials } from '../auth/store.js';
+import { getEffectiveApiUrl } from '../config/env-profiles.js';
 
 export function registerWebhookCommand(program: Command): void {
   const webhook = program.command('webhook').description('Manage webhook configuration');
@@ -36,7 +37,7 @@ export function registerWebhookCommand(program: Command): void {
       const payload = { webhookUrl: opts.url, verifyToken: opts.verifyToken ?? undefined };
 
       // Check if webhook config already exists
-      const baseUrl = process.env.HOOKMYAPP_API_URL ?? 'https://api.hookmyapp.com';
+      const baseUrl = getEffectiveApiUrl();
       const creds = readCredentials();
       const checkRes = await fetch(`${baseUrl}/webhook-config/${account.id}`, {
         headers: { Authorization: `Bearer ${creds!.accessToken}` },

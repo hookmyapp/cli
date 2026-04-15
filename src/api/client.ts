@@ -7,8 +7,10 @@ import {
   ConflictError,
   CliError,
 } from '../output/error.js';
-
-const WORKOS_CLIENT_ID = process.env.HOOKMYAPP_WORKOS_CLIENT_ID ?? 'client_01KM5S4D10TKG4VJEXSCRVAMG7';
+import {
+  getEffectiveApiUrl,
+  getEffectiveWorkosClientId,
+} from '../config/env-profiles.js';
 
 function decodeJwtExp(token: string): number {
   try {
@@ -27,7 +29,7 @@ async function refreshToken(
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: refreshTokenValue,
-    client_id: WORKOS_CLIENT_ID,
+    client_id: getEffectiveWorkosClientId(),
   });
   if (organizationId) {
     params.set('organization_id', organizationId);
@@ -123,7 +125,7 @@ export async function apiClient(
     }
   }
 
-  const baseUrl = process.env.HOOKMYAPP_API_URL ?? 'https://api.hookmyapp.com';
+  const baseUrl = getEffectiveApiUrl();
 
   const { workspaceId, ...fetchOptions } = options ?? {};
 

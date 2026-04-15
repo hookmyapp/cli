@@ -4,6 +4,7 @@ import { output } from '../output/format.js';
 import { AuthError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { readCredentials } from '../auth/store.js';
+import { getEffectiveApiUrl, getEffectiveAppUrl } from '../config/env-profiles.js';
 import open from 'open';
 
 async function fetchAppConfig(): Promise<{ metaAppId: string; metaConfigId: string }> {
@@ -46,7 +47,7 @@ export async function runAccountsConnect(): Promise<void> {
   }
 
   const config = await fetchAppConfig();
-  const appUrl = process.env.HOOKMYAPP_APP_URL ?? 'https://app.hookmyapp.com';
+  const appUrl = getEffectiveAppUrl();
   const redirectUri = `${appUrl}/cli/callback`;
 
   const extras = JSON.stringify({
@@ -75,7 +76,7 @@ export async function runAccountsConnect(): Promise<void> {
   const pollInterval = 5000;
   const start = Date.now();
   let newAccount: any = null;
-  const baseUrl = process.env.HOOKMYAPP_API_URL ?? 'https://api.hookmyapp.com';
+  const baseUrl = getEffectiveApiUrl();
 
   while (Date.now() - start < maxWait) {
     await new Promise((r) => setTimeout(r, pollInterval));

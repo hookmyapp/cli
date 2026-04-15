@@ -3,8 +3,7 @@ import { saveCredentials } from './store.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
-
-const WORKOS_CLIENT_ID = process.env.HOOKMYAPP_WORKOS_CLIENT_ID ?? 'client_01KM5S4D10TKG4VJEXSCRVAMG7';
+import { getEffectiveWorkosClientId } from '../config/env-profiles.js';
 
 // --- Types used by the post-login wizard ---
 interface Workspace {
@@ -364,7 +363,7 @@ export function loginCommand(program: Command): void {
           res = await fetch('https://api.workos.com/user_management/authorize/device', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ client_id: WORKOS_CLIENT_ID }),
+            body: new URLSearchParams({ client_id: getEffectiveWorkosClientId() }),
           });
         } catch {
           throw new NetworkError();
@@ -391,7 +390,7 @@ export function loginCommand(program: Command): void {
         await open(verification_uri_complete);
 
         await pollForTokens({
-          clientId: WORKOS_CLIENT_ID,
+          clientId: getEffectiveWorkosClientId(),
           deviceCode: device_code,
           expiresIn: expires_in,
           interval,
