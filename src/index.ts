@@ -171,13 +171,20 @@ async function main(): Promise<void> {
   }
 }
 
-process.on('unhandledRejection', (reason) => {
-  const human = resolveHuman();
-  const msg = 'Something went wrong. Try again later.';
-  outputError(new CliError(msg, 'UNKNOWN_ERROR'), { human });
-  process.exit(1);
-});
+// Skip CLI side-effects when this module is imported by vitest tests (e.g.
+// help.test.ts imports `program`). Without this guard, the module-level
+// main() call runs with vitest's process.argv and the unhandledRejection
+// handler fires on test-driven CLI error paths — exiting the test worker
+// with code 1 even though every test passed. VITEST=true is set by vitest.
+if (!process.env.VITEST) {
+  process.on('unhandledRejection', (reason) => {
+    const human = resolveHuman();
+    const msg = 'Something went wrong. Try again later.';
+    outputError(new CliError(msg, 'UNKNOWN_ERROR'), { human });
+    process.exit(1);
+  });
 
-main();
+  main();
+}
 
 export { program };
