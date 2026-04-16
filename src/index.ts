@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { Command, CommanderError } from 'commander';
 import { loginCommand } from './auth/login.js';
 import { logoutCommand } from './auth/logout.js';
-import { registerAccountsCommand } from './commands/accounts.js';
+import { registerChannelsCommand } from './commands/channels.js';
 import { registerHealthCommand } from './commands/health.js';
 import { registerWebhookCommand } from './commands/webhook.js';
 import { registerTokenCommand } from './commands/token.js';
@@ -25,7 +25,7 @@ const program = new Command();
 
 program
   .name('hookmyapp')
-  .description('HookMyApp CLI — manage WhatsApp Business accounts')
+  .description('HookMyApp CLI — manage WhatsApp Business channels')
   .version(pkg.version);
 
 program.option('--json', 'Machine-readable JSON output (scripts/CI)');
@@ -78,7 +78,7 @@ COMMON COMMANDS:
   sandbox listen    Stream Meta webhooks to your local server through a sandbox tunnel
   sandbox env       Print or write the .env values for a sandbox session
   sandbox send      Send a test WhatsApp message via sandbox-proxy
-  accounts connect  Connect a WhatsApp Business account (embedded signup)
+  channels connect  Connect a WhatsApp Business channel (embedded signup)
   workspace list    List workspaces you belong to
   billing           View or change your plan
 
@@ -112,8 +112,8 @@ program.configureOutput({
 loginCommand(program);
 logoutCommand(program);
 
-// Account management
-registerAccountsCommand(program);
+// Channel management
+registerChannelsCommand(program);
 
 // Health check
 registerHealthCommand(program);
