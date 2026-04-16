@@ -40,7 +40,7 @@ const fakeWorkspaceDetail = {
   id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
   name: 'Alpha Workspace',
   memberCount: 3,
-  accountCount: 2,
+  channelCount: 2,
   createdAt: '2026-01-01',
   updatedAt: '2026-01-15',
 };

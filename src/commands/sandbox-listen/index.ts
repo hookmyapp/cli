@@ -13,7 +13,7 @@
 import type { Command } from 'commander';
 import { apiClient } from '../../api/client.js';
 import { CliError, AuthError, ConflictError } from '../../output/error.js';
-import { getEffectiveApiUrl } from '../../config/env-profiles.js';
+import { resolveEnv } from '../../config/env-profiles.js';
 import { addExamples } from '../../output/help.js';
 import { cliCommandPrefix } from '../../output/cli-self.js';
 import { readCredentials } from '../../auth/store.js';
@@ -42,24 +42,6 @@ export interface TunnelStartResponse {
   cloudflareTunnelToken: string;
   hostname: string;
   webhookPath?: string;
-}
-
-/** Resolve the effective HookMyApp API base URL (mirrors api/client.ts). */
-function getApiBaseUrl(): string {
-  return (
-    getEffectiveApiUrl()
-  );
-}
-
-/** Derive tunnel env from the API host the CLI is pointed at. */
-export function detectEnv(apiBaseUrl: string): 'local' | 'staging' | 'production' {
-  if (apiBaseUrl.includes('localhost') || apiBaseUrl.includes('127.0.0.1')) {
-    return 'local';
-  }
-  if (apiBaseUrl.includes('staging')) {
-    return 'staging';
-  }
-  return 'production';
 }
 
 /**
@@ -104,7 +86,7 @@ export async function runSandboxListenFlow(
   // LISTENER_ACTIVE / PHONE_TAKEN_ANOTHER — let those propagate as
   // ConflictError (exit 6) so users see the remediation text. Non-conflict
   // provisioning failures (5xx, timeouts) still map to exit 3.
-  const env = detectEnv(getApiBaseUrl());
+  const env = resolveEnv();
   let tunnel: TunnelStartResponse;
   try {
     tunnel = (await apiClient(

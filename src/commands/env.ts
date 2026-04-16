@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { apiClient } from '../api/client.js';
 import { addExamples } from '../output/help.js';
-import { resolveAccount } from './accounts.js';
+import { resolveChannel } from './channels.js';
 
 export function registerEnvCommand(program: Command): void {
   const env = program
@@ -9,11 +9,11 @@ export function registerEnvCommand(program: Command): void {
     .description('Output credentials as .env format')
     .argument('<waba-id>', 'WABA ID')
     .action(async (wabaId: string) => {
-      const account = await resolveAccount(wabaId);
-      const tokenData = await apiClient(`/meta/accounts/${account.id}/token`);
+      const channel = await resolveChannel(wabaId);
+      const tokenData = await apiClient(`/meta/channels/${channel.id}/token`);
 
       process.stdout.write(
-        `WABA_ID=${account.metaWabaId}\nACCESS_TOKEN=${tokenData.accessToken}\nPHONE_NUMBER_ID=${account.phoneNumberId}\n`,
+        `WABA_ID=${channel.metaWabaId}\nACCESS_TOKEN=${tokenData.accessToken}\nPHONE_NUMBER_ID=${channel.phoneNumberId}\n`,
       );
     });
 

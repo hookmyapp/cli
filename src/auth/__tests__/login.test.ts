@@ -39,10 +39,10 @@ vi.mock('../../commands/sandbox-listen/index.js', () => ({
   registerListenCommand: vi.fn(),
 }));
 
-const runAccountsConnectMock = vi.fn();
-vi.mock('../../commands/accounts.js', () => ({
-  runAccountsConnect: runAccountsConnectMock,
-  registerAccountsCommand: vi.fn(),
+const runChannelsConnectMock = vi.fn();
+vi.mock('../../commands/channels.js', () => ({
+  runChannelsConnect: runChannelsConnectMock,
+  registerChannelsCommand: vi.fn(),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,7 +55,7 @@ beforeEach(async () => {
   apiClientMock.mockReset();
   writeWorkspaceConfigMock.mockClear();
   runSandboxListenFlowMock.mockReset();
-  runAccountsConnectMock.mockReset();
+  runChannelsConnectMock.mockReset();
   workspaceConfigState = {};
   vi.resetModules();
   const mod = await import('../login.js');
@@ -86,10 +86,10 @@ describe('post-login wizard', () => {
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).toContain('Next steps');
     expect(out).toContain('hookmyapp sandbox start');
-    expect(out).toContain('hookmyapp accounts connect');
+    expect(out).toContain('hookmyapp channels connect');
     expect(out).toContain('hookmyapp help');
     expect(runSandboxListenFlowMock).not.toHaveBeenCalled();
-    expect(runAccountsConnectMock).not.toHaveBeenCalled();
+    expect(runChannelsConnectMock).not.toHaveBeenCalled();
     logSpy.mockRestore();
   });
 
@@ -142,7 +142,7 @@ describe('post-login wizard', () => {
     logSpy.mockRestore();
   });
 
-  it('--next exit → no next-steps block, no sandbox/accounts call', async () => {
+  it('--next exit → no next-steps block, no sandbox/channels call', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
         id: 'w1',
@@ -156,7 +156,7 @@ describe('post-login wizard', () => {
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).not.toContain('Next steps');
     expect(runSandboxListenFlowMock).not.toHaveBeenCalled();
-    expect(runAccountsConnectMock).not.toHaveBeenCalled();
+    expect(runChannelsConnectMock).not.toHaveBeenCalled();
     logSpy.mockRestore();
   });
 
@@ -195,7 +195,7 @@ describe('post-login wizard', () => {
     logSpy.mockRestore();
   });
 
-  it('--next accounts → delegates to runAccountsConnect', async () => {
+  it('--next channels → delegates to runChannelsConnect', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
         id: 'w1',
@@ -205,10 +205,10 @@ describe('post-login wizard', () => {
       },
     ]);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    await runWizard({ next: 'accounts' });
+    await runWizard({ next: 'channels' });
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).not.toContain('Next steps');
-    expect(runAccountsConnectMock).toHaveBeenCalledTimes(1);
+    expect(runChannelsConnectMock).toHaveBeenCalledTimes(1);
     expect(runSandboxListenFlowMock).not.toHaveBeenCalled();
     logSpy.mockRestore();
   });
@@ -239,7 +239,7 @@ describe('post-login wizard', () => {
     });
     expect(Array.isArray(payload.nextSteps)).toBe(true);
     expect(payload.nextSteps.join(' ')).toContain('hookmyapp sandbox start');
-    expect(payload.nextSteps.join(' ')).toContain('hookmyapp accounts connect');
+    expect(payload.nextSteps.join(' ')).toContain('hookmyapp channels connect');
     expect(payload.nextSteps.join(' ')).toContain('hookmyapp help');
     const humanOut = logSpy.mock.calls.flat().join('\n');
     expect(humanOut).not.toContain('Next steps');

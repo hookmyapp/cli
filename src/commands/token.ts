@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { apiClient } from '../api/client.js';
 import { addExamples } from '../output/help.js';
-import { resolveAccount } from './accounts.js';
+import { resolveChannel } from './channels.js';
 
 export function registerTokenCommand(program: Command): void {
   const token = program
@@ -9,8 +9,8 @@ export function registerTokenCommand(program: Command): void {
     .description('Reveal access token')
     .argument('<waba-id>', 'WABA ID')
     .action(async (wabaId: string) => {
-      const account = await resolveAccount(wabaId);
-      const data = await apiClient(`/meta/accounts/${account.id}/token`);
+      const channel = await resolveChannel(wabaId);
+      const data = await apiClient(`/meta/channels/${channel.id}/token`);
       process.stdout.write(data.accessToken + '\n');
     });
 

@@ -31,7 +31,7 @@ import { output } from '../output/format.js';
 const mockedApiClient = vi.mocked(apiClient);
 const mockedOutput = vi.mocked(output);
 
-const fakeAccounts = [
+const fakeChannels = [
   { id: '11111111-1111-1111-1111-111111111111', metaWabaId: 'waba-1', wabaName: 'Test WABA', phoneNumberId: 'phone-1', workspaceId: '10101010-1010-1010-1010-101010101010' },
 ];
 
@@ -56,27 +56,27 @@ describe('webhook commands', () => {
     registerWebhookCommand = mod.registerWebhookCommand;
   });
 
-  it('showWebhook calls apiClient /webhook-config/:accountId', async () => {
+  it('showWebhook calls apiClient /webhook-config/:channelId', async () => {
     const config = { webhookUrl: 'https://example.com/hook', verifyToken: 'abc123' };
-    // First call: resolveAccount -> /meta/accounts
+    // First call: resolveChannel -> /meta/channels
     // Second call: /webhook-config/:id
     mockedApiClient
-      .mockResolvedValueOnce(fakeAccounts)
+      .mockResolvedValueOnce(fakeChannels)
       .mockResolvedValueOnce(config);
 
     const program = new Command();
     registerWebhookCommand(program);
     await program.parseAsync(['webhook', 'show', 'waba-1'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts', { workspaceId: '10101010-1010-1010-1010-101010101010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/11111111-1111-1111-1111-111111111111');
     expect(mockedOutput).toHaveBeenCalledWith(config, expect.objectContaining({}));
   });
 
-  it('setWebhook calls apiClient to configure webhook for account', async () => {
-    // resolveAccount -> /meta/accounts
+  it('setWebhook calls apiClient to configure webhook for channel', async () => {
+    // resolveChannel -> /meta/channels
     mockedApiClient
-      .mockResolvedValueOnce(fakeAccounts)
+      .mockResolvedValueOnce(fakeChannels)
       .mockResolvedValueOnce({ updated: true }); // PUT webhook-config
 
     // Mock fetch for the direct check call (returns 200 = existing config)
@@ -89,7 +89,7 @@ describe('webhook commands', () => {
     registerWebhookCommand(program);
     await program.parseAsync(['webhook', 'set', 'waba-1', '--url', 'https://example.com/hook', '--verify-token', 'secret'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts', { workspaceId: '10101010-1010-1010-1010-101010101010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/11111111-1111-1111-1111-111111111111', {
       method: 'PUT',
       body: JSON.stringify({ webhookUrl: 'https://example.com/hook', verifyToken: 'secret' }),
@@ -120,10 +120,10 @@ describe('token command', () => {
     registerTokenCommand = mod.registerTokenCommand;
   });
 
-  it('token command calls apiClient /meta/accounts/:id/token and writes raw token to stdout', async () => {
-    // resolveAccount -> /meta/accounts, then /meta/accounts/:id/token
+  it('token command calls apiClient /meta/channels/:id/token and writes raw token to stdout', async () => {
+    // resolveChannel -> /meta/channels, then /meta/channels/:id/token
     mockedApiClient
-      .mockResolvedValueOnce(fakeAccounts)
+      .mockResolvedValueOnce(fakeChannels)
       .mockResolvedValueOnce({ accessToken: 'EAABxyz123' });
     const mockWrite = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
@@ -131,8 +131,8 @@ describe('token command', () => {
     registerTokenCommand(program);
     await program.parseAsync(['token', 'waba-1'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts/11111111-1111-1111-1111-111111111111/token');
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/11111111-1111-1111-1111-111111111111/token');
     expect(mockWrite).toHaveBeenCalledWith('EAABxyz123\n');
     mockWrite.mockRestore();
   });

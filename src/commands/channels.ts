@@ -13,33 +13,33 @@ async function fetchAppConfig(): Promise<{ metaAppId: string; metaConfigId: stri
 }
 
 /** Pick only customer-facing fields for CLI display output */
-function pickDisplayFields(account: any): any {
-  const { id, workspaceId, qualityRating, ...display } = account;
-  if (account.connectionType !== 'coexistence' && qualityRating) {
+function pickDisplayFields(channel: any): any {
+  const { id, workspaceId, qualityRating, ...display } = channel;
+  if (channel.connectionType !== 'coexistence' && qualityRating) {
     display.qualityRating = qualityRating;
   }
   return display;
 }
 
-/** Resolve a WABA ID to the full account object with workspaceId */
-export async function resolveAccount(wabaId: string): Promise<any> {
+/** Resolve a WABA ID to the full channel object with workspaceId */
+export async function resolveChannel(wabaId: string): Promise<any> {
   const { getDefaultWorkspaceId } = await import('./_helpers.js');
   const workspaceId = await getDefaultWorkspaceId();
-  const accounts = await apiClient('/meta/accounts', { workspaceId });
-  const account = accounts.find((a: any) => a.metaWabaId === wabaId);
-  if (!account) {
-    throw new ValidationError(`account not found for WABA ID ${wabaId}`);
+  const channels = await apiClient('/meta/channels', { workspaceId });
+  const channel = channels.find((c: any) => c.metaWabaId === wabaId);
+  if (!channel) {
+    throw new ValidationError(`channel not found for WABA ID ${wabaId}`);
   }
-  return account;
+  return channel;
 }
 
 /**
  * Exported helper: drive the Embedded Signup flow end-to-end.
  *
  * Called directly by the post-login wizard (src/auth/login.ts) and by the
- * `accounts connect` subcommand action below. Never subprocess-spawned.
+ * `channels connect` subcommand action below. Never subprocess-spawned.
  */
-export async function runAccountsConnect(): Promise<void> {
+export async function runChannelsConnect(): Promise<void> {
   // Force a fresh 15-min token right before opening signup
   await forceTokenRefresh();
   const creds = readCredentials();
@@ -66,17 +66,17 @@ export async function runAccountsConnect(): Promise<void> {
   u.searchParams.set('extras', extras);
   u.searchParams.set('state', `cli:${creds.accessToken}`);
 
-  // Snapshot existing accounts before signup
-  const existingAccounts = await apiClient('/meta/accounts');
+  // Snapshot existing channels before signup
+  const existingChannels = await apiClient('/meta/channels');
   console.log('\nOpening Embedded Signup in browser...\nComplete the signup, then return here.\n');
   await open(u.toString());
-  console.log('Waiting for account...');
+  console.log('Waiting for channel...');
 
-  // Poll for new account (check every 5s, timeout after 15 min)
+  // Poll for new channel (check every 5s, timeout after 15 min)
   const maxWait = 15 * 60 * 1000;
   const pollInterval = 5000;
   const start = Date.now();
-  let newAccount: any = null;
+  let newChannel: any = null;
   const baseUrl = getEffectiveApiUrl();
 
   while (Date.now() - start < maxWait) {
@@ -86,178 +86,178 @@ export async function runAccountsConnect(): Promise<void> {
       const freshCreds = readCredentials();
       if (!freshCreds) continue;
 
-      const res = await fetch(`${baseUrl}/meta/accounts`, {
+      const res = await fetch(`${baseUrl}/meta/channels`, {
         headers: { Authorization: `Bearer ${freshCreds.accessToken}`, 'Content-Type': 'application/json' },
       });
       if (!res.ok) continue;
 
       const current = await res.json();
-      newAccount = current.find((a: any) =>
-        !existingAccounts.some((e: any) => e.id === a.id)
+      newChannel = current.find((c: any) =>
+        !existingChannels.some((e: any) => e.id === c.id)
       );
-      if (newAccount) break;
+      if (newChannel) break;
     } catch {
       // Network error — keep trying
     }
   }
 
-  if (!newAccount) {
-    console.log(`\nTimed out waiting for account.\nRun "${cliCommandPrefix()} accounts list" to check.\n`);
+  if (!newChannel) {
+    console.log(`\nTimed out waiting for channel.\nRun "${cliCommandPrefix()} channels list" to check.\n`);
     return;
   }
 
-  const name = newAccount.phoneVerifiedName ?? newAccount.wabaName ?? '';
-  console.log(`\n✓ Account connected`);
-  console.log(`  waba:  ${newAccount.metaWabaId}`);
-  console.log(`  phone: ${newAccount.displayPhoneNumber}`);
+  const name = newChannel.phoneVerifiedName ?? newChannel.wabaName ?? '';
+  console.log(`\n✓ Channel connected`);
+  console.log(`  waba:  ${newChannel.metaWabaId}`);
+  console.log(`  phone: ${newChannel.displayPhoneNumber}`);
   if (name) console.log(`  name:  ${name}`);
 
   // Check if webhook is configured
-  if (!newAccount.webhookUrl) {
+  if (!newChannel.webhookUrl) {
     console.log(`\n→ Next, configure your webhook to receive WhatsApp messages.`);
     console.log(`  The webhook URL should be a publicly accessible HTTPS`);
     console.log(`  endpoint that returns 200 OK.\n`);
-    console.log(`  ${cliCommandPrefix()} webhook set ${newAccount.metaWabaId} --url <your-webhook-url>\n`);
+    console.log(`  ${cliCommandPrefix()} webhook set ${newChannel.metaWabaId} --url <your-webhook-url>\n`);
     console.log(`→ Then get your credentials:`);
-    console.log(`  ${cliCommandPrefix()} env ${newAccount.metaWabaId}\n`);
+    console.log(`  ${cliCommandPrefix()} env ${newChannel.metaWabaId}\n`);
   } else {
-    console.log(`\n✓ Webhook configured: ${newAccount.webhookUrl}`);
+    console.log(`\n✓ Webhook configured: ${newChannel.webhookUrl}`);
     console.log(`\n→ Get your credentials:`);
-    console.log(`  ${cliCommandPrefix()} env ${newAccount.metaWabaId}\n`);
+    console.log(`  ${cliCommandPrefix()} env ${newChannel.metaWabaId}\n`);
   }
 }
 
-export function registerAccountsCommand(program: Command): void {
-  const accounts = program.command('accounts').description('Manage WhatsApp accounts');
+export function registerChannelsCommand(program: Command): void {
+  const channels = program.command('channels').description('Manage WhatsApp channels');
 
-  const accountsList = accounts
+  const channelsList = channels
     .command('list')
-    .description('List all accounts')
+    .description('List all channels')
     .action(async () => {
       const { getDefaultWorkspaceId } = await import('./_helpers.js');
       const workspaceId = await getDefaultWorkspaceId();
-      const data = await apiClient('/meta/accounts', { workspaceId });
-      const connectedAccounts = data.filter((a: any) => a.metaConnected !== false);
-      output(connectedAccounts.map(pickDisplayFields), { human: !program.opts().json });
+      const data = await apiClient('/meta/channels', { workspaceId });
+      const connectedChannels = data.filter((c: any) => c.metaConnected !== false);
+      output(connectedChannels.map(pickDisplayFields), { human: !program.opts().json });
     });
 
-  const accountsShow = accounts
+  const channelsShow = channels
     .command('show')
-    .description('Show account details')
+    .description('Show channel details')
     .argument('<waba-id>', 'WABA ID')
     .action(async (wabaId: string) => {
-      const account = await resolveAccount(wabaId);
-      const detail = await apiClient(`/meta/accounts/${account.id}`);
+      const channel = await resolveChannel(wabaId);
+      const detail = await apiClient(`/meta/channels/${channel.id}`);
       output(pickDisplayFields(detail), { human: !program.opts().json });
     });
 
-  const accountsConnect = accounts
+  const channelsConnect = channels
     .command('connect')
-    .description('Connect a WhatsApp account via Embedded Signup')
+    .description('Connect a WhatsApp channel via Embedded Signup')
     .action(async () => {
-      await runAccountsConnect();
+      await runChannelsConnect();
     });
 
-  const accountsDisconnect = accounts
+  const channelsDisconnect = channels
     .command('disconnect')
-    .description('Disconnect an account')
+    .description('Disconnect a channel')
     .argument('<waba-id>', 'WABA ID')
     .action(async (wabaId: string) => {
-      const account = await resolveAccount(wabaId);
-      const result = await apiClient(`/meta/accounts/${account.id}/disconnect`, {
+      const channel = await resolveChannel(wabaId);
+      const result = await apiClient(`/meta/channels/${channel.id}/disconnect`, {
         method: 'POST',
-        workspaceId: account.workspaceId,
+        workspaceId: channel.workspaceId,
       });
       output(result, { human: !program.opts().json });
     });
 
-  const accountsEnable = accounts
+  const channelsEnable = channels
     .command('enable')
-    .description('Enable forwarding for an account')
+    .description('Enable forwarding for a channel')
     .argument('<waba-id>', 'WABA ID')
     .action(async (wabaId: string) => {
-      const account = await resolveAccount(wabaId);
-      const result = await apiClient(`/meta/accounts/${account.id}/enable`, {
+      const channel = await resolveChannel(wabaId);
+      const result = await apiClient(`/meta/channels/${channel.id}/enable`, {
         method: 'POST',
-        workspaceId: account.workspaceId,
+        workspaceId: channel.workspaceId,
       });
       output(result, { human: !program.opts().json });
     });
 
-  const accountsDisable = accounts
+  const channelsDisable = channels
     .command('disable')
-    .description('Disable forwarding for an account')
+    .description('Disable forwarding for a channel')
     .argument('<waba-id>', 'WABA ID')
     .action(async (wabaId: string) => {
-      const account = await resolveAccount(wabaId);
-      const result = await apiClient(`/meta/accounts/${account.id}/disable`, {
+      const channel = await resolveChannel(wabaId);
+      const result = await apiClient(`/meta/channels/${channel.id}/disable`, {
         method: 'POST',
-        workspaceId: account.workspaceId,
+        workspaceId: channel.workspaceId,
       });
       output(result, { human: !program.opts().json });
     });
 
   addExamples(
-    accounts,
+    channels,
     `
 EXAMPLES:
-  $ hookmyapp accounts list
-  $ hookmyapp accounts connect
-  $ hookmyapp accounts disconnect 1234567890
+  $ hookmyapp channels list
+  $ hookmyapp channels connect
+  $ hookmyapp channels disconnect 1234567890
 `,
   );
 
   addExamples(
-    accountsList,
+    channelsList,
     `
 EXAMPLES:
-  $ hookmyapp accounts list
-  $ hookmyapp accounts list --json
+  $ hookmyapp channels list
+  $ hookmyapp channels list --json
 `,
   );
 
   addExamples(
-    accountsShow,
+    channelsShow,
     `
 EXAMPLES:
-  $ hookmyapp accounts show 1234567890
-  $ hookmyapp accounts show 1234567890 --json
+  $ hookmyapp channels show 1234567890
+  $ hookmyapp channels show 1234567890 --json
 `,
   );
 
   addExamples(
-    accountsConnect,
+    channelsConnect,
     `
 EXAMPLES:
-  $ hookmyapp accounts connect
-  $ hookmyapp accounts connect --workspace acme-corp
+  $ hookmyapp channels connect
+  $ hookmyapp channels connect --workspace acme-corp
 `,
   );
 
   addExamples(
-    accountsDisconnect,
+    channelsDisconnect,
     `
 EXAMPLES:
-  $ hookmyapp accounts disconnect 1234567890
-  $ hookmyapp accounts disconnect 1234567890 --workspace acme-corp
+  $ hookmyapp channels disconnect 1234567890
+  $ hookmyapp channels disconnect 1234567890 --workspace acme-corp
 `,
   );
 
   addExamples(
-    accountsEnable,
+    channelsEnable,
     `
 EXAMPLES:
-  $ hookmyapp accounts enable 1234567890
-  $ hookmyapp accounts enable 1234567890 --workspace acme-corp
+  $ hookmyapp channels enable 1234567890
+  $ hookmyapp channels enable 1234567890 --workspace acme-corp
 `,
   );
 
   addExamples(
-    accountsDisable,
+    channelsDisable,
     `
 EXAMPLES:
-  $ hookmyapp accounts disable 1234567890
-  $ hookmyapp accounts disable 1234567890 --workspace acme-corp
+  $ hookmyapp channels disable 1234567890
+  $ hookmyapp channels disable 1234567890 --workspace acme-corp
 `,
   );
 }

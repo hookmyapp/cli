@@ -39,7 +39,7 @@ const mockedApiClient = vi.mocked(apiClient);
 const mockedOutput = vi.mocked(output);
 const mockedOpen = vi.mocked(open);
 
-const fakeAccounts = [
+const fakeChannels = [
   {
     id: '11111111-1111-1111-1111-111111111111',
     workspaceId: '10101010-1010-1010-1010-101010101010',
@@ -89,8 +89,8 @@ const fakeDetailResponse = {
   verifyToken: null,
 };
 
-describe('accounts commands', () => {
-  let registerAccountsCommand: typeof import('../commands/accounts.js').registerAccountsCommand;
+describe('channels commands', () => {
+  let registerChannelsCommand: typeof import('../commands/channels.js').registerChannelsCommand;
   let Command: typeof import('commander').Command;
 
   beforeEach(async () => {
@@ -102,22 +102,22 @@ describe('accounts commands', () => {
 
     const commander = await import('commander');
     Command = commander.Command;
-    const mod = await import('../commands/accounts.js');
-    registerAccountsCommand = mod.registerAccountsCommand;
+    const mod = await import('../commands/channels.js');
+    registerChannelsCommand = mod.registerChannelsCommand;
   });
 
-  it('listAccounts calls apiClient /meta/accounts with workspaceId and passes display fields to output', async () => {
-    mockedApiClient.mockResolvedValue(fakeAccounts);
+  it('listChannels calls apiClient /meta/channels with workspaceId and passes display fields to output', async () => {
+    mockedApiClient.mockResolvedValue(fakeChannels);
 
     const program = new Command();
-    registerAccountsCommand(program);
-    await program.parseAsync(['accounts', 'list'], { from: 'user' });
+    registerChannelsCommand(program);
+    await program.parseAsync(['channels', 'list'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    // Verify output was called with filtered + display-picked accounts
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
+    // Verify output was called with filtered + display-picked channels
     expect(mockedOutput).toHaveBeenCalledTimes(1);
     const outputArgs = mockedOutput.mock.calls[0][0] as Record<string, unknown>[];
-    // Both accounts are metaConnected=true, so both should be in output
+    // Both channels are metaConnected=true, so both should be in output
     expect(outputArgs).toHaveLength(2);
     // pickDisplayFields removes id, workspaceId, and qualityRating (re-adds only for non-coexistence with value)
     expect(outputArgs[0]).not.toHaveProperty('id');
@@ -127,17 +127,17 @@ describe('accounts commands', () => {
     expect(outputArgs[1]).not.toHaveProperty('qualityRating'); // coexistence, null quality
   });
 
-  it('showAccount calls list to resolve, then calls detail endpoint, outputs without routing keys', async () => {
+  it('showChannel calls list to resolve, then calls detail endpoint, outputs without routing keys', async () => {
     mockedApiClient
-      .mockResolvedValueOnce(fakeAccounts) // list call for resolveAccount (with workspaceId)
+      .mockResolvedValueOnce(fakeChannels) // list call for resolveChannel (with workspaceId)
       .mockResolvedValueOnce(fakeDetailResponse); // detail endpoint call
 
     const program = new Command();
-    registerAccountsCommand(program);
-    await program.parseAsync(['accounts', 'show', 'waba-2'], { from: 'user' });
+    registerChannelsCommand(program);
+    await program.parseAsync(['channels', 'show', 'waba-2'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts/22222222-2222-2222-2222-222222222222');
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/22222222-2222-2222-2222-222222222222');
     // pickDisplayFields removes id, workspaceId, and qualityRating (coexistence + null = not re-added)
     expect(mockedOutput).toHaveBeenCalledTimes(1);
     const outputArgs = mockedOutput.mock.calls[0][0];
@@ -148,46 +148,46 @@ describe('accounts commands', () => {
     expect(outputArgs).toHaveProperty('accessToken', 'real-token-value');
   });
 
-  it('throws CliError when account not found', async () => {
-    mockedApiClient.mockResolvedValue(fakeAccounts);
+  it('throws CliError when channel not found', async () => {
+    mockedApiClient.mockResolvedValue(fakeChannels);
 
     const program = new Command();
-    registerAccountsCommand(program);
+    registerChannelsCommand(program);
 
     await expect(
-      program.parseAsync(['accounts', 'show', '999'], { from: 'user' }),
-    ).rejects.toThrow('account not found');
+      program.parseAsync(['channels', 'show', '999'], { from: 'user' }),
+    ).rejects.toThrow('channel not found');
   });
 
-  it('disconnectAccount calls apiClient with POST and workspaceId from account lookup', async () => {
+  it('disconnectChannel calls apiClient with POST and workspaceId from channel lookup', async () => {
     mockedApiClient
-      .mockResolvedValueOnce(fakeAccounts) // account lookup (with workspaceId)
+      .mockResolvedValueOnce(fakeChannels) // channel lookup (with workspaceId)
       .mockResolvedValueOnce({ success: true }); // disconnect call
 
     const program = new Command();
-    registerAccountsCommand(program);
-    await program.parseAsync(['accounts', 'disconnect', 'waba-1'], { from: 'user' });
+    registerChannelsCommand(program);
+    await program.parseAsync(['channels', 'disconnect', 'waba-1'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts/11111111-1111-1111-1111-111111111111/disconnect', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/11111111-1111-1111-1111-111111111111/disconnect', {
       method: 'POST',
       workspaceId: '10101010-1010-1010-1010-101010101010',
     });
   });
 
-  it('connectAccount calls forceTokenRefresh and opens Embedded Signup URL', async () => {
+  it('connectChannel calls forceTokenRefresh and opens Embedded Signup URL', async () => {
     // First call: fetchAppConfig -> /config
-    // Second call: snapshot accounts -> /meta/accounts (the poll will timeout, but we test the initial flow)
+    // Second call: snapshot channels -> /meta/channels (the poll will timeout, but we test the initial flow)
     mockedApiClient
       .mockResolvedValueOnce({ metaAppId: '123456', metaConfigId: 'config-1' }) // /config
-      .mockResolvedValueOnce([]); // initial snapshot /meta/accounts
+      .mockResolvedValueOnce([]); // initial snapshot /meta/channels
     // Suppress console.log
     vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const program = new Command();
-    registerAccountsCommand(program);
+    registerChannelsCommand(program);
     // Don't await -- it will poll for 15 min. Just verify the initial flow.
-    const p = program.parseAsync(['accounts', 'connect'], { from: 'user' });
+    const p = program.parseAsync(['channels', 'connect'], { from: 'user' });
 
     // Wait a tick for the async calls to resolve
     await new Promise((r) => setTimeout(r, 50));
@@ -200,36 +200,51 @@ describe('accounts commands', () => {
     vi.mocked(console.log).mockRestore();
   });
 
-  it('enableAccount calls apiClient with POST and workspaceId', async () => {
+  it('enableChannel calls apiClient with POST and workspaceId', async () => {
     mockedApiClient
-      .mockResolvedValueOnce(fakeAccounts)
+      .mockResolvedValueOnce(fakeChannels)
       .mockResolvedValueOnce({ enabled: true });
 
     const program = new Command();
-    registerAccountsCommand(program);
-    await program.parseAsync(['accounts', 'enable', 'waba-2'], { from: 'user' });
+    registerChannelsCommand(program);
+    await program.parseAsync(['channels', 'enable', 'waba-2'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts/22222222-2222-2222-2222-222222222222/enable', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/22222222-2222-2222-2222-222222222222/enable', {
       method: 'POST',
       workspaceId: '20202020-2020-2020-2020-202020202020',
     });
   });
 
-  it('disableAccount calls apiClient with POST and workspaceId', async () => {
+  it('disableChannel calls apiClient with POST and workspaceId', async () => {
     mockedApiClient
-      .mockResolvedValueOnce(fakeAccounts)
+      .mockResolvedValueOnce(fakeChannels)
       .mockResolvedValueOnce({ disabled: true });
 
     const program = new Command();
-    registerAccountsCommand(program);
-    await program.parseAsync(['accounts', 'disable', 'waba-2'], { from: 'user' });
+    registerChannelsCommand(program);
+    await program.parseAsync(['channels', 'disable', 'waba-2'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts/22222222-2222-2222-2222-222222222222/disable', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/22222222-2222-2222-2222-222222222222/disable', {
       method: 'POST',
       workspaceId: '20202020-2020-2020-2020-202020202020',
     });
+  });
+
+  // Nyquist Dimension 3 — boundary assertion: old `accounts` command must NOT exist.
+  // Proves the rename is absolute — not just that `channels` works, but that `accounts`
+  // is genuinely gone. If someone ever re-registers an `accounts` alias, this test
+  // catches it.
+  it('boundary: old `accounts` command is unknown (Nyquist Dim-3)', async () => {
+    const program = new Command();
+    // Disable commander's default process.exit on unknown command so we can assert.
+    program.exitOverride();
+    registerChannelsCommand(program);
+
+    await expect(
+      program.parseAsync(['accounts', 'list'], { from: 'user' }),
+    ).rejects.toThrow(/unknown command|accounts/i);
   });
 });
 
@@ -251,15 +266,15 @@ describe('health command', () => {
 
   it('health command calls refresh with POST and workspaceId', async () => {
     mockedApiClient
-      .mockResolvedValueOnce(fakeAccounts) // account lookup
+      .mockResolvedValueOnce(fakeChannels) // channel lookup
       .mockResolvedValueOnce({ metaConnected: true, forwardingEnabled: true, wabaName: 'Test' }); // health result
 
     const program = new Command();
     registerHealthCommand(program);
     await program.parseAsync(['health', 'waba-1'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/accounts/11111111-1111-1111-1111-111111111111/refresh', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/11111111-1111-1111-1111-111111111111/refresh', {
       method: 'POST',
       workspaceId: '10101010-1010-1010-1010-101010101010',
     });
@@ -270,9 +285,9 @@ describe('health command', () => {
   });
 });
 
-describe('accounts connect — npx prefix roll-out (cliCommandPrefix)', () => {
+describe('channels connect — npx prefix roll-out (cliCommandPrefix)', () => {
   let Command: typeof import('commander').Command;
-  let runAccountsConnect: typeof import('../commands/accounts.js').runAccountsConnect;
+  let runChannelsConnect: typeof import('../commands/channels.js').runChannelsConnect;
   let mockConsoleLog: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
@@ -285,8 +300,8 @@ describe('accounts connect — npx prefix roll-out (cliCommandPrefix)', () => {
 
     const commander = await import('commander');
     Command = commander.Command;
-    const mod = await import('../commands/accounts.js');
-    runAccountsConnect = mod.runAccountsConnect;
+    const mod = await import('../commands/channels.js');
+    runChannelsConnect = mod.runChannelsConnect;
   });
 
   afterEach(() => {
@@ -295,33 +310,33 @@ describe('accounts connect — npx prefix roll-out (cliCommandPrefix)', () => {
     mockConsoleLog.mockRestore();
   });
 
-  it('connect flow after account detected without webhook prints "npx hookmyapp webhook set" + "npx hookmyapp env" hints', async () => {
+  it('connect flow after channel detected without webhook prints "npx hookmyapp webhook set" + "npx hookmyapp env" hints', async () => {
     // Speed up the 5s poll interval by stubbing setTimeout.
     vi.useFakeTimers();
 
-    const newAccount = {
-      id: 'new-acc',
+    const newChannel = {
+      id: 'new-ch',
       metaWabaId: 'waba-new',
       displayPhoneNumber: '+1 555 0000',
       phoneVerifiedName: 'New Co',
       webhookUrl: null,
     };
 
-    // apiClient call order: /config, snapshot /meta/accounts (empty), then inside poll — nothing (uses fetch).
+    // apiClient call order: /config, snapshot /meta/channels (empty), then inside poll — nothing (uses fetch).
     mockedApiClient
       .mockResolvedValueOnce({ metaAppId: '123', metaConfigId: 'cfg-1' }) // /config
       .mockResolvedValueOnce([]); // initial snapshot
 
-    // Stub global fetch: first polled /meta/accounts returns [newAccount].
+    // Stub global fetch: first polled /meta/channels returns [newChannel].
     const origFetch = globalThis.fetch;
     const fetchMock = vi.fn(async () => ({
       ok: true,
-      json: async () => [newAccount],
+      json: async () => [newChannel],
     } as any));
     globalThis.fetch = fetchMock as any;
 
     try {
-      const p = runAccountsConnect();
+      const p = runChannelsConnect();
       // Advance fake timers past the 5s poll interval
       await vi.advanceTimersByTimeAsync(5000);
       // Let any microtasks run
@@ -338,11 +353,11 @@ describe('accounts connect — npx prefix roll-out (cliCommandPrefix)', () => {
     }
   }, 10000);
 
-  it('connect flow after account detected WITH webhook prints "npx hookmyapp env" hint', async () => {
+  it('connect flow after channel detected WITH webhook prints "npx hookmyapp env" hint', async () => {
     vi.useFakeTimers();
 
-    const newAccount = {
-      id: 'new-acc-2',
+    const newChannel = {
+      id: 'new-ch-2',
       metaWabaId: 'waba-hook',
       displayPhoneNumber: '+1 555 1111',
       phoneVerifiedName: 'HookCo',
@@ -356,11 +371,11 @@ describe('accounts connect — npx prefix roll-out (cliCommandPrefix)', () => {
     const origFetch = globalThis.fetch;
     globalThis.fetch = vi.fn(async () => ({
       ok: true,
-      json: async () => [newAccount],
+      json: async () => [newChannel],
     } as any)) as any;
 
     try {
-      const p = runAccountsConnect();
+      const p = runChannelsConnect();
       await vi.advanceTimersByTimeAsync(5000);
       await vi.runAllTimersAsync();
       await p;

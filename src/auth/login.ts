@@ -28,7 +28,7 @@ export interface WizardOpts {
   /** Skip sandbox session picker; use this phone (creates it if missing). */
   phone?: string;
   /** Non-interactive action selector (integration-test hook). */
-  next?: 'sandbox' | 'accounts' | 'exit';
+  next?: 'sandbox' | 'channels' | 'exit';
   /** Emit a final JSON completion payload instead of human-friendly logs. */
   json?: boolean;
 }
@@ -176,8 +176,8 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
     await runSandboxFlow({ phone: opts.phone, json: opts.json });
     return;
   }
-  if (opts.next === 'accounts') {
-    await runAccountsConnectFlow();
+  if (opts.next === 'channels') {
+    await runChannelsConnectFlow();
     return;
   }
 
@@ -195,7 +195,7 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
   const cmd = cliCommandPrefix();
   const entries: ReadonlyArray<readonly [string, string]> = [
     ['sandbox start', 'create a sandbox session and get a WhatsApp test number'],
-    ['accounts connect', 'connect a real WhatsApp Business account'],
+    ['channels connect', 'connect a real WhatsApp Business channel'],
     ['help', 'see all commands'],
   ];
   const col = cmd.length + 1 + Math.max(...entries.map(([s]) => s.length)) + 4;
@@ -356,11 +356,11 @@ async function startListen(
   await runSandboxListenFlow(fullSession);
 }
 
-async function runAccountsConnectFlow(): Promise<void> {
+async function runChannelsConnectFlow(): Promise<void> {
   // Direct function import — never subprocess spawn. Lazy import breaks the
-  // index.ts → commands/accounts.ts → auth/login.ts cycle.
-  const { runAccountsConnect } = await import('../commands/accounts.js');
-  await runAccountsConnect();
+  // index.ts → commands/channels.ts → auth/login.ts cycle.
+  const { runChannelsConnect } = await import('../commands/channels.js');
+  await runChannelsConnect();
 }
 
 export function loginCommand(program: Command): void {
@@ -375,12 +375,12 @@ export function loginCommand(program: Command): void {
     )
     .option(
       '--next <action>',
-      'Non-interactive next-action for scripts/CI (sandbox|accounts|exit)',
+      'Non-interactive next-action for scripts/CI (sandbox|channels|exit)',
     )
     .action(
       async (opts: { phone?: string; wizard?: boolean; next?: string }) => {
         const nextAction =
-          opts.next === 'sandbox' || opts.next === 'accounts' || opts.next === 'exit'
+          opts.next === 'sandbox' || opts.next === 'channels' || opts.next === 'exit'
             ? opts.next
             : undefined;
         const json = program.opts().json === true;
