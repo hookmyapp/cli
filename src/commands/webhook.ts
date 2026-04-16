@@ -3,7 +3,7 @@ import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
-import { resolveAccount } from './accounts.js';
+import { resolveChannel } from './channels.js';
 import { readCredentials } from '../auth/store.js';
 import { getEffectiveApiUrl } from '../config/env-profiles.js';
 
@@ -15,8 +15,8 @@ export function registerWebhookCommand(program: Command): void {
     .description('Show webhook config')
     .argument('<waba-id>', 'WABA ID')
     .action(async (wabaId: string) => {
-      const account = await resolveAccount(wabaId);
-      const data = await apiClient(`/webhook-config/${account.id}`);
+      const channel = await resolveChannel(wabaId);
+      const data = await apiClient(`/webhook-config/${channel.id}`);
       output(data, { json: !!program.opts().json, kind: 'read' });
     });
 
@@ -33,25 +33,25 @@ export function registerWebhookCommand(program: Command): void {
         );
       }
 
-      const account = await resolveAccount(wabaId);
+      const channel = await resolveChannel(wabaId);
       const payload = { webhookUrl: opts.url, verifyToken: opts.verifyToken ?? undefined };
 
       // Check if webhook config already exists
       const baseUrl = getEffectiveApiUrl();
       const creds = readCredentials();
-      const checkRes = await fetch(`${baseUrl}/webhook-config/${account.id}`, {
+      const checkRes = await fetch(`${baseUrl}/webhook-config/${channel.id}`, {
         headers: { Authorization: `Bearer ${creds!.accessToken}` },
       });
 
       if (checkRes.ok) {
-        await apiClient(`/webhook-config/${account.id}`, {
+        await apiClient(`/webhook-config/${channel.id}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         });
       } else {
         await apiClient('/webhook-config', {
           method: 'POST',
-          body: JSON.stringify({ ...payload, accountId: account.id }),
+          body: JSON.stringify({ ...payload, channelId: channel.id }),
         });
       }
 

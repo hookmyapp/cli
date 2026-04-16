@@ -191,7 +191,7 @@ export function registerWorkspaceCommand(program: Command): void {
         console.log(`ID:            ${merged.id}`);
         console.log(`Role:          ${merged.role ?? 'unknown'}`);
         console.log(`Members:       ${merged.memberCount}`);
-        console.log(`Accounts:      ${merged.accountCount}`);
+        console.log(`Channels:      ${merged.channelCount}`);
       } else {
         output(merged, { human: false });
       }
