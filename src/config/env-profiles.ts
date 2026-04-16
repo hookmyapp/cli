@@ -22,7 +22,7 @@ export const ENV_PROFILES: Record<EnvName, EnvProfile> = {
   local: {
     apiUrl: 'https://uninked-robbi-boughless.ngrok-free.dev',
     appUrl: 'https://uninked-robbi-boughless.ngrok-free.dev',
-    workosClientId: 'client_01KM5S4CGX9M2M2P63JTA6AFEH',
+    workosClientId: 'client_01KPAJA2CKGFMASZMABKDTS2X8',
   },
   staging: {
     apiUrl: 'https://staging-api.hookmyapp.com',
