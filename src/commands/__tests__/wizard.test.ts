@@ -32,7 +32,7 @@ vi.mock('../sandbox-listen/index.js', () => ({
 vi.mock('../../commands/workspace.js', () => ({
   writeWorkspaceConfig: vi.fn(),
   readWorkspaceConfig: () => ({
-    activeWorkspaceId: 'w1',
+    activeWorkspaceId: 'ws_TEST0001',
     activeWorkspaceSlug: 'acme-corp',
   }),
 }));
@@ -59,7 +59,7 @@ describe('wizard sandbox sub-flow — Wave 0 RED', () => {
     inputMock.mockResolvedValueOnce('+15551234567');
     // Second apiClient call: POST create session → returns session object.
     apiClientMock.mockResolvedValueOnce({
-      id: 'sess-new',
+      id: 'ssn_TESTnew',
       phone: '15551234567',
       activationCode: 'ACT_new',
       hmacSecret: 'HMAC_new',
@@ -73,14 +73,14 @@ describe('wizard sandbox sub-flow — Wave 0 RED', () => {
       expect.objectContaining({ method: 'POST' }),
     );
     expect(runSandboxListenFlowMock).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'sess-new' }),
+      expect.objectContaining({ id: 'ssn_TESTnew' }),
     );
   });
 
   it('1 session → direct listen (no input, no picker)', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
-        id: 'sess-only',
+        id: 'ssn_TESTonly',
         phone: '15551112222',
         activationCode: 'ACT_only',
         hmacSecret: 'HMAC_only',
@@ -91,7 +91,7 @@ describe('wizard sandbox sub-flow — Wave 0 RED', () => {
     expect(inputMock).not.toHaveBeenCalled();
     expect(selectMock).not.toHaveBeenCalled();
     expect(runSandboxListenFlowMock).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'sess-only' }),
+      expect.objectContaining({ id: 'ssn_TESTonly' }),
     );
   });
 
@@ -104,7 +104,7 @@ describe('wizard sandbox sub-flow — Wave 0 RED', () => {
     selectMock.mockResolvedValueOnce('__CREATE_NEW__');
     inputMock.mockResolvedValueOnce('+15553333333');
     apiClientMock.mockResolvedValueOnce({
-      id: 'sess-new',
+      id: 'ssn_TESTnew',
       phone: '15553333333',
       activationCode: 'ACT_new',
       hmacSecret: 'HMAC_new',

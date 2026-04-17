@@ -7,7 +7,7 @@ vi.mock('../api/client.js', () => ({
 
 // Mock workspace config
 vi.mock('../commands/workspace.js', () => ({
-  readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: '10101010-1010-1010-1010-101010101010' }),
+  readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: 'ws_TEST0010' }),
   writeWorkspaceConfig: vi.fn(),
   registerWorkspaceCommand: vi.fn(),
 }));
@@ -19,7 +19,7 @@ import { apiClient } from '../api/client.js';
 const mockedApiClient = vi.mocked(apiClient);
 
 const fakeChannels = [
-  { id: '11111111-1111-1111-1111-111111111111', metaWabaId: 'waba-111', phoneNumberId: 'phone-222', workspaceId: '10101010-1010-1010-1010-101010101010' },
+  { id: 'ch_TEST0001', metaWabaId: 'waba-111', phoneNumberId: 'phone-222', workspaceId: 'ws_TEST0010' },
 ];
 
 describe('env command', () => {
@@ -48,8 +48,8 @@ describe('env command', () => {
     registerEnvCommand(program);
     await program.parseAsync(['env', 'waba-111'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/11111111-1111-1111-1111-111111111111/token');
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/token');
 
     const written = mockWrite.mock.calls.map((c) => c[0]).join('');
     expect(written).toContain('WABA_ID=waba-111');

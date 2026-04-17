@@ -13,8 +13,8 @@ const mockedSelect = vi.mocked(select);
 
 function makeSession(overrides: Partial<Record<string, unknown>> = {}): any {
   return {
-    id: 'sess-1',
-    workspaceId: 'ws-1',
+    id: 'ssn_TEST001',
+    workspaceId: 'ws_TEST0001',
     workspaceName: 'acme-corp',
     phone: '+15550001',
     status: 'active',
@@ -49,8 +49,8 @@ describe('pickSession', () => {
   });
 
   it('invokes interactive select when 2+ sessions, no flag, isHuman=true', async () => {
-    const a = makeSession({ id: 'sess-a', phone: '+1111' });
-    const b = makeSession({ id: 'sess-b', phone: '+2222' });
+    const a = makeSession({ id: 'ssn_TESTa01', phone: '+1111' });
+    const b = makeSession({ id: 'ssn_TESTb01', phone: '+2222' });
     mockedSelect.mockResolvedValueOnce(b);
     const result = await pickSession({ sessions: [a, b], isHuman: true });
     expect(mockedSelect).toHaveBeenCalledTimes(1);
@@ -58,8 +58,8 @@ describe('pickSession', () => {
   });
 
   it('matches by --phone flag without prompting when flag provided', async () => {
-    const a = makeSession({ id: 'sess-a', phone: '+1111' });
-    const b = makeSession({ id: 'sess-b', phone: '+2222' });
+    const a = makeSession({ id: 'ssn_TESTa01', phone: '+1111' });
+    const b = makeSession({ id: 'ssn_TESTb01', phone: '+2222' });
     const result = await pickSession({
       sessions: [a, b],
       phoneFlag: '+2222',
@@ -70,7 +70,7 @@ describe('pickSession', () => {
   });
 
   it('throws SESSION_MISMATCH with exitCode 2 when --phone does not match', async () => {
-    const a = makeSession({ id: 'sess-a', phone: '+1111' });
+    const a = makeSession({ id: 'ssn_TESTa01', phone: '+1111' });
     let caught: CliError | undefined;
     try {
       await pickSession({ sessions: [a], phoneFlag: '+9999', isHuman: true });
@@ -83,11 +83,11 @@ describe('pickSession', () => {
   });
 
   it('matches by --session flag without prompting', async () => {
-    const a = makeSession({ id: 'sess-a' });
-    const b = makeSession({ id: 'sess-b' });
+    const a = makeSession({ id: 'ssn_TESTa01' });
+    const b = makeSession({ id: 'ssn_TESTb01' });
     const result = await pickSession({
       sessions: [a, b],
-      sessionFlag: 'sess-a',
+      sessionFlag: 'ssn_TESTa01',
       isHuman: true,
     });
     expect(result).toBe(a);
@@ -97,8 +97,8 @@ describe('pickSession', () => {
   it('state derivation: recent heartbeat (<2min) → "listening elsewhere (Xs ago)"', async () => {
     const now = Date.now();
     const fiveSecAgo = new Date(now - 5_000).toISOString();
-    const a = makeSession({ id: 'sess-a', lastHeartbeatAt: fiveSecAgo });
-    const b = makeSession({ id: 'sess-b' });
+    const a = makeSession({ id: 'ssn_TESTa01', lastHeartbeatAt: fiveSecAgo });
+    const b = makeSession({ id: 'ssn_TESTb01' });
     let capturedChoices: any[] | undefined;
     (mockedSelect as unknown as { mockImplementationOnce: (fn: (args: any) => Promise<any>) => void })
       .mockImplementationOnce(async (args: any) => {
@@ -112,8 +112,8 @@ describe('pickSession', () => {
   });
 
   it('state derivation: null heartbeat → "idle"', async () => {
-    const a = makeSession({ id: 'sess-a', lastHeartbeatAt: null });
-    const b = makeSession({ id: 'sess-b', lastHeartbeatAt: null });
+    const a = makeSession({ id: 'ssn_TESTa01', lastHeartbeatAt: null });
+    const b = makeSession({ id: 'ssn_TESTb01', lastHeartbeatAt: null });
     let capturedChoices: any[] | undefined;
     (mockedSelect as unknown as { mockImplementationOnce: (fn: (args: any) => Promise<any>) => void })
       .mockImplementationOnce(async (args: any) => {
@@ -129,8 +129,8 @@ describe('pickSession', () => {
 
   it('state derivation: old heartbeat (>2min) → "idle (last tunnel Xh ago)" or Xm ago', async () => {
     const threeHoursAgo = new Date(Date.now() - 3 * 3600_000).toISOString();
-    const a = makeSession({ id: 'sess-a', lastHeartbeatAt: threeHoursAgo });
-    const b = makeSession({ id: 'sess-b' });
+    const a = makeSession({ id: 'ssn_TESTa01', lastHeartbeatAt: threeHoursAgo });
+    const b = makeSession({ id: 'ssn_TESTb01' });
     let capturedChoices: any[] | undefined;
     (mockedSelect as unknown as { mockImplementationOnce: (fn: (args: any) => Promise<any>) => void })
       .mockImplementationOnce(async (args: any) => {

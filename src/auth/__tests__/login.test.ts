@@ -67,7 +67,7 @@ describe('post-login wizard', () => {
   it('single workspace, no --next → prints Next steps block and never calls select', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
-        id: 'w1',
+        id: 'ws_TEST0001',
         name: 'acme-corp',
         role: 'admin',
         workosOrganizationId: 'org_1',
@@ -79,7 +79,7 @@ describe('post-login wizard', () => {
     expect(selectMock).toHaveBeenCalledTimes(0);
     expect(writeWorkspaceConfigMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeWorkspaceId: 'w1',
+        activeWorkspaceId: 'ws_TEST0001',
         activeWorkspaceSlug: 'acme-corp',
       }),
     );
@@ -96,20 +96,20 @@ describe('post-login wizard', () => {
   it('multi workspace → picker shows names, not UUIDs; no next-action picker', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
-        id: 'w1-uuid',
+        id: 'ws_TESTw001',
         name: 'acme-corp',
         role: 'admin',
         workosOrganizationId: 'org_1',
       },
       {
-        id: 'w2-uuid',
+        id: 'ws_TESTw002',
         name: 'beta-workspace',
         role: 'member',
         workosOrganizationId: 'org_2',
       },
     ]);
     selectMock.mockResolvedValueOnce({
-      id: 'w1-uuid',
+      id: 'ws_TESTw001',
       name: 'acme-corp',
       workosOrganizationId: 'org_1',
     }); // workspace picker only
@@ -120,8 +120,8 @@ describe('post-login wizard', () => {
     const pickerCall = selectMock.mock.calls[0][0];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const ch of pickerCall.choices as any[]) {
-      expect(String(ch.name)).not.toContain('w1-uuid');
-      expect(String(ch.name)).not.toContain('w2-uuid');
+      expect(String(ch.name)).not.toContain('ws_TESTw001');
+      expect(String(ch.name)).not.toContain('ws_TESTw002');
     }
     expect(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -145,7 +145,7 @@ describe('post-login wizard', () => {
   it('--next exit → no next-steps block, no sandbox/channels call', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
-        id: 'w1',
+        id: 'ws_TEST0001',
         name: 'acme-corp',
         role: 'admin',
         workosOrganizationId: 'org_1',
@@ -165,7 +165,7 @@ describe('post-login wizard', () => {
       // workspaces fetch
       .mockResolvedValueOnce([
         {
-          id: 'w1',
+          id: 'ws_TEST0001',
           name: 'acme',
           role: 'admin',
           workosOrganizationId: 'org_1',
@@ -175,8 +175,8 @@ describe('post-login wizard', () => {
       .mockResolvedValueOnce([])
       // POST /sandbox/sessions
       .mockResolvedValueOnce({
-        id: 'sess_1',
-        workspaceId: 'w1',
+        id: 'ssn_TEST001',
+        workspaceId: 'ws_TEST0001',
         phone: '+15551234567',
         status: 'pending_activation',
         activationCode: 'ABCD',
@@ -198,7 +198,7 @@ describe('post-login wizard', () => {
   it('--next channels → delegates to runChannelsConnect', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
-        id: 'w1',
+        id: 'ws_TEST0001',
         name: 'acme',
         role: 'admin',
         workosOrganizationId: 'org_1',
@@ -216,7 +216,7 @@ describe('post-login wizard', () => {
   it('--json (no --next, no --phone) → emits JSON payload with nextSteps array, suppresses human block', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
-        id: 'w1',
+        id: 'ws_TEST0001',
         name: 'acme-corp',
         role: 'admin',
         workosOrganizationId: 'org_1',
@@ -234,7 +234,7 @@ describe('post-login wizard', () => {
     const payload = JSON.parse((payloadLine as string).trim());
     expect(payload).toMatchObject({
       ok: true,
-      workspaceId: 'w1',
+      workspaceId: 'ws_TEST0001',
       next: 'exit',
     });
     expect(Array.isArray(payload.nextSteps)).toBe(true);

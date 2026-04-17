@@ -31,7 +31,7 @@ vi.mock('../../api/client.js', () => ({
 // src/commands/__tests__/wizard.test.ts.
 vi.mock('../workspace.js', () => ({
   readWorkspaceConfig: () => ({
-    activeWorkspaceId: 'w1',
+    activeWorkspaceId: 'ws_TEST0001',
     activeWorkspaceSlug: 'acme-corp',
   }),
   writeWorkspaceConfig: vi.fn(),
@@ -58,12 +58,12 @@ WHATSAPP_PHONE_NUMBER_ID=15551234567
 function seedSession() {
   mocks.apiClientMock.mockResolvedValueOnce([
     {
-      id: 'sess-1',
+      id: 'ssn_TEST001',
       phone: '15551234567',
       activationCode: 'ACT_xxx',
       hmacSecret: 'HMAC_yyy',
       status: 'active',
-      workspaceId: 'w1',
+      workspaceId: 'ws_TEST0001',
     },
   ]);
 }
@@ -150,20 +150,20 @@ describe('sandbox env — Wave 0 RED (canonical env block)', () => {
   it('--phone +15551234567 skips session picker', async () => {
     mocks.apiClientMock.mockResolvedValueOnce([
       {
-        id: 'sess-a',
+        id: 'ssn_TESTa01',
         phone: '15551234567',
         activationCode: 'ACT_xxx',
         hmacSecret: 'HMAC_yyy',
         status: 'active',
-        workspaceId: 'w1',
+        workspaceId: 'ws_TEST0001',
       },
       {
-        id: 'sess-b',
+        id: 'ssn_TESTb01',
         phone: '15559999999',
         activationCode: 'ACT_other',
         hmacSecret: 'HMAC_other',
         status: 'active',
-        workspaceId: 'w1',
+        workspaceId: 'ws_TEST0001',
       },
     ]);
     const writeSpy = vi
