@@ -18,7 +18,7 @@ vi.mock('open', () => ({
 
 // Mock workspace config
 vi.mock('../commands/workspace.js', () => ({
-  readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: '10101010-1010-1010-1010-101010101010' }),
+  readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: 'ws_TEST0010' }),
   writeWorkspaceConfig: vi.fn(),
   registerWorkspaceCommand: vi.fn(),
 }));
@@ -41,8 +41,8 @@ const mockedOpen = vi.mocked(open);
 
 const fakeChannels = [
   {
-    id: '11111111-1111-1111-1111-111111111111',
-    workspaceId: '10101010-1010-1010-1010-101010101010',
+    id: 'ch_TEST0001',
+    workspaceId: 'ws_TEST0010',
     metaWabaId: 'waba-1',
     wabaName: 'Test WABA',
     displayPhoneNumber: '+1 234 567 890',
@@ -55,8 +55,8 @@ const fakeChannels = [
     verifyToken: 'tok-123',
   },
   {
-    id: '22222222-2222-2222-2222-222222222222',
-    workspaceId: '20202020-2020-2020-2020-202020202020',
+    id: 'ch_TEST0002',
+    workspaceId: 'ws_TEST0020',
     metaWabaId: 'waba-2',
     wabaName: 'Another WABA',
     displayPhoneNumber: '+1 987 654 321',
@@ -71,8 +71,8 @@ const fakeChannels = [
 ];
 
 const fakeDetailResponse = {
-  id: '22222222-2222-2222-2222-222222222222',
-  workspaceId: '20202020-2020-2020-2020-202020202020',
+  id: 'ch_TEST0002',
+  workspaceId: 'ws_TEST0020',
   metaWabaId: 'waba-2',
   wabaName: 'Another WABA',
   displayPhoneNumber: '+1 987 654 321',
@@ -113,7 +113,7 @@ describe('channels commands', () => {
     registerChannelsCommand(program);
     await program.parseAsync(['channels', 'list'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     // Verify output was called with filtered + display-picked channels
     expect(mockedOutput).toHaveBeenCalledTimes(1);
     const outputArgs = mockedOutput.mock.calls[0][0] as Record<string, unknown>[];
@@ -136,8 +136,8 @@ describe('channels commands', () => {
     registerChannelsCommand(program);
     await program.parseAsync(['channels', 'show', 'waba-2'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/22222222-2222-2222-2222-222222222222');
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0002');
     // pickDisplayFields removes id, workspaceId, and qualityRating (coexistence + null = not re-added)
     expect(mockedOutput).toHaveBeenCalledTimes(1);
     const outputArgs = mockedOutput.mock.calls[0][0];
@@ -168,10 +168,10 @@ describe('channels commands', () => {
     registerChannelsCommand(program);
     await program.parseAsync(['channels', 'disconnect', 'waba-1'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/11111111-1111-1111-1111-111111111111/disconnect', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/disconnect', {
       method: 'POST',
-      workspaceId: '10101010-1010-1010-1010-101010101010',
+      workspaceId: 'ws_TEST0010',
     });
   });
 
@@ -209,10 +209,10 @@ describe('channels commands', () => {
     registerChannelsCommand(program);
     await program.parseAsync(['channels', 'enable', 'waba-2'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/22222222-2222-2222-2222-222222222222/enable', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0002/enable', {
       method: 'POST',
-      workspaceId: '20202020-2020-2020-2020-202020202020',
+      workspaceId: 'ws_TEST0020',
     });
   });
 
@@ -225,10 +225,10 @@ describe('channels commands', () => {
     registerChannelsCommand(program);
     await program.parseAsync(['channels', 'disable', 'waba-2'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/22222222-2222-2222-2222-222222222222/disable', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0002/disable', {
       method: 'POST',
-      workspaceId: '20202020-2020-2020-2020-202020202020',
+      workspaceId: 'ws_TEST0020',
     });
   });
 
@@ -273,10 +273,10 @@ describe('health command', () => {
     registerHealthCommand(program);
     await program.parseAsync(['health', 'waba-1'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/11111111-1111-1111-1111-111111111111/refresh', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/refresh', {
       method: 'POST',
-      workspaceId: '10101010-1010-1010-1010-101010101010',
+      workspaceId: 'ws_TEST0010',
     });
     expect(mockedOutput).toHaveBeenCalledWith(
       { metaConnected: true, forwardingEnabled: true, wabaName: 'Test' },

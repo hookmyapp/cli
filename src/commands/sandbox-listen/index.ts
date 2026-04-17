@@ -12,12 +12,13 @@
 
 import type { Command } from 'commander';
 import { apiClient } from '../../api/client.js';
-import { CliError, AuthError, ConflictError } from '../../output/error.js';
+import { CliError, AuthError, ConflictError, ValidationError } from '../../output/error.js';
 import { resolveEnv } from '../../config/env-profiles.js';
 import { addExamples } from '../../output/help.js';
 import { cliCommandPrefix } from '../../output/cli-self.js';
 import { readCredentials } from '../../auth/store.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
+import { isValidPublicId } from '../../lib/publicId.js';
 import { ensureCloudflaredBinary } from './binary.js';
 import { startProxyServer, type LogLine } from './proxy-server.js';
 import { pickSession, type Session } from './picker.js';
@@ -193,7 +194,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
     )
     .option('--path <p>', 'Webhook path on your app', '/webhook')
     .option('--phone <e164>', 'Skip session picker by test phone')
-    .option('--session <id>', 'Skip session picker by session id')
+    .option('--session <id>', 'Skip session picker by session publicId (ssn_XXXXXXXX)')
     .option('--verbose', 'Print full request/response bodies', false)
     .option('--json', 'Machine-readable event log', false)
     .option(
@@ -203,6 +204,16 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
     )
     .action(async (opts: ListenOpts) => {
       const human = !program.opts().json && !opts.json;
+
+      // Step 0 — validate --session flag shape. Phase 117: must be a
+      // ssn_<8-char> publicId; raw UUIDs are rejected here rather than at
+      // the backend so CI scripts see exit 2 with the typed CliError code
+      // instead of a 400 round-trip.
+      if (opts.session && !isValidPublicId(opts.session, 'ssn')) {
+        throw new ValidationError(
+          `--session "${opts.session}" must be a publicId (ssn_<8-char>). Run: ${cliCommandPrefix()} sandbox status`,
+        );
+      }
 
       // Step 1 — auth gate. Throw AuthError so main() maps it to exit 4
       // (auth-required) rather than a blanket exit 1 that masks the real

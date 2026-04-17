@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { isValidPublicId } from '../lib/publicId.js';
 
 export type EnvName = 'local' | 'staging' | 'production';
 
@@ -63,6 +64,24 @@ function readConfig(): PersistedConfig {
   } catch {
     return {};
   }
+}
+
+/**
+ * Return the persisted `activeWorkspaceId` IF AND ONLY IF it is a valid
+ * ws_ publicId (post-Phase-117 shape). A stored value from a pre-0.5.0 CLI
+ * (raw UUID) is silently dropped — callers see `undefined` and re-resolve
+ * via the single-workspace auto-pick path in `_helpers.getDefaultWorkspaceId`
+ * or the login wizard, identical to how a fresh install behaves. This
+ * preserves the ~/.hookmyapp/config.json file (so the `env` slice owned by
+ * this module is not clobbered) while keeping the CLI's wire traffic
+ * publicId-only — ensuring a stale UUID value never escapes to the backend.
+ */
+export function getValidPersistedWorkspaceId(): string | undefined {
+  const cfg = readConfig();
+  if (cfg.activeWorkspaceId && isValidPublicId(cfg.activeWorkspaceId, 'ws')) {
+    return cfg.activeWorkspaceId;
+  }
+  return undefined;
 }
 
 function writeConfig(cfg: PersistedConfig): void {

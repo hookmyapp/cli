@@ -12,7 +12,7 @@ vi.mock('../output/format.js', () => ({
 
 // Mock workspace config
 vi.mock('../commands/workspace.js', () => ({
-  readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: '10101010-1010-1010-1010-101010101010' }),
+  readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: 'ws_TEST0010' }),
   writeWorkspaceConfig: vi.fn(),
   registerWorkspaceCommand: vi.fn(),
 }));
@@ -32,7 +32,7 @@ const mockedApiClient = vi.mocked(apiClient);
 const mockedOutput = vi.mocked(output);
 
 const fakeChannels = [
-  { id: '11111111-1111-1111-1111-111111111111', metaWabaId: 'waba-1', wabaName: 'Test WABA', phoneNumberId: 'phone-1', workspaceId: '10101010-1010-1010-1010-101010101010' },
+  { id: 'ch_TEST0001', metaWabaId: 'waba-1', wabaName: 'Test WABA', phoneNumberId: 'phone-1', workspaceId: 'ws_TEST0010' },
 ];
 
 // Mock global fetch for webhook set command's direct fetch call
@@ -68,8 +68,8 @@ describe('webhook commands', () => {
     registerWebhookCommand(program);
     await program.parseAsync(['webhook', 'show', 'waba-1'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/11111111-1111-1111-1111-111111111111');
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/ch_TEST0001');
     expect(mockedOutput).toHaveBeenCalledWith(config, expect.objectContaining({}));
   });
 
@@ -89,8 +89,8 @@ describe('webhook commands', () => {
     registerWebhookCommand(program);
     await program.parseAsync(['webhook', 'set', 'waba-1', '--url', 'https://example.com/hook', '--verify-token', 'secret'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/11111111-1111-1111-1111-111111111111', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/ch_TEST0001', {
       method: 'PUT',
       body: JSON.stringify({ webhookUrl: 'https://example.com/hook', verifyToken: 'secret' }),
     });
@@ -131,8 +131,8 @@ describe('token command', () => {
     registerTokenCommand(program);
     await program.parseAsync(['token', 'waba-1'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: '10101010-1010-1010-1010-101010101010' });
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/11111111-1111-1111-1111-111111111111/token');
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/token');
     expect(mockWrite).toHaveBeenCalledWith('EAABxyz123\n');
     mockWrite.mockRestore();
   });

@@ -30,14 +30,17 @@ import { output } from '../output/format.js';
 const mockedApiClient = vi.mocked(apiClient);
 const mockedOutput = vi.mocked(output);
 
+// Phase 117 — every id fixture below is a publicId (ws_/ch_/ssn_/mem_/inv_ prefix, 8-char
+// alphanumeric body). Raw UUIDs are rejected with a typed ValidationError at every
+// external flag/header/body surface; see workspace.ts resolveWorkspace + _helpers.ts.
 const fakeWorkspaces = [
-  { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', name: 'Alpha Workspace', role: 'owner', createdAt: '2026-01-01' },
-  { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', name: 'Beta Workspace', role: 'member', createdAt: '2026-02-01' },
-  { id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', name: 'Beta Workspace', role: 'admin', createdAt: '2026-03-01' },
+  { id: 'ws_TEST0001', name: 'Alpha Workspace', workosOrganizationId: 'org_01ALPHA', role: 'owner', createdAt: '2026-01-01' },
+  { id: 'ws_TEST0002', name: 'Beta Workspace', workosOrganizationId: 'org_01BETAA', role: 'member', createdAt: '2026-02-01' },
+  { id: 'ws_TEST0003', name: 'Beta Workspace', workosOrganizationId: 'org_01BETAB', role: 'admin', createdAt: '2026-03-01' },
 ];
 
 const fakeWorkspaceDetail = {
-  id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  id: 'ws_TEST0001',
   name: 'Alpha Workspace',
   memberCount: 3,
   channelCount: 2,
@@ -57,15 +60,21 @@ describe('resolveWorkspace', () => {
     resolveWorkspace = mod.resolveWorkspace;
   });
 
-  it('resolves workspace by UUID', async () => {
+  it('resolves workspace by ws_ publicId', async () => {
     mockedApiClient.mockResolvedValue(fakeWorkspaces);
-    const result = await resolveWorkspace('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    const result = await resolveWorkspace('ws_TEST0001');
     expect(result).toEqual(fakeWorkspaces[0]);
   });
 
   it('resolves workspace by case-insensitive name', async () => {
     mockedApiClient.mockResolvedValue(fakeWorkspaces);
     const result = await resolveWorkspace('alpha workspace');
+    expect(result).toEqual(fakeWorkspaces[0]);
+  });
+
+  it('resolves workspace by workosOrganizationId (slug)', async () => {
+    mockedApiClient.mockResolvedValue(fakeWorkspaces);
+    const result = await resolveWorkspace('org_01ALPHA');
     expect(result).toEqual(fakeWorkspaces[0]);
   });
 
@@ -81,6 +90,21 @@ describe('resolveWorkspace', () => {
     const { CliError } = await import('../output/error.js');
     await expect(resolveWorkspace('Nonexistent')).rejects.toThrow(CliError);
     await expect(resolveWorkspace('Nonexistent')).rejects.toThrow('not found');
+  });
+
+  // Phase 117 hard cutover — raw UUID input is not an accepted shape.
+  it('throws typed CliError when given a raw UUID (Phase 117 hard cutover)', async () => {
+    mockedApiClient.mockResolvedValue(fakeWorkspaces);
+    const { CliError } = await import('../output/error.js');
+    await expect(resolveWorkspace('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).rejects.toThrow(CliError);
+    await expect(resolveWorkspace('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).rejects.toThrow(/raw UUID/);
+  });
+
+  it('throws not-found when ws_ publicId is well-formed but unknown', async () => {
+    mockedApiClient.mockResolvedValue(fakeWorkspaces);
+    const { CliError } = await import('../output/error.js');
+    await expect(resolveWorkspace('ws_NOPEXXX0')).rejects.toThrow(CliError);
+    await expect(resolveWorkspace('ws_NOPEXXX0')).rejects.toThrow('not found');
   });
 });
 
@@ -121,7 +145,7 @@ describe('writeWorkspaceConfig config-file merge', () => {
 
     // Simulate: hookmyapp login → wizard persists active workspace
     writeWorkspaceConfig({
-      activeWorkspaceId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      activeWorkspaceId: 'ws_TEST0001',
       activeWorkspaceSlug: 'Test Workspace',
     });
 
@@ -129,13 +153,13 @@ describe('writeWorkspaceConfig config-file merge', () => {
     // fall back to DEFAULT_ENV='production' and hit the wrong backend.
     expect(getPersistedEnv()).toBe('local');
     const ws = readWorkspaceConfig();
-    expect(ws.activeWorkspaceId).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+    expect(ws.activeWorkspaceId).toBe('ws_TEST0001');
     expect(ws.activeWorkspaceSlug).toBe('Test Workspace');
   });
 
   it('preserves workspace fields when env-profiles rewrites env', () => {
     writeWorkspaceConfig({
-      activeWorkspaceId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      activeWorkspaceId: 'ws_TEST0002',
       activeWorkspaceSlug: 'Another Workspace',
     });
 
@@ -143,8 +167,37 @@ describe('writeWorkspaceConfig config-file merge', () => {
 
     expect(getPersistedEnv()).toBe('staging');
     const ws = readWorkspaceConfig();
-    expect(ws.activeWorkspaceId).toBe('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+    expect(ws.activeWorkspaceId).toBe('ws_TEST0002');
     expect(ws.activeWorkspaceSlug).toBe('Another Workspace');
+  });
+
+  // Phase 117 — readWorkspaceConfig silently drops a stale UUID activeWorkspaceId
+  // (pre-0.5.0 install artifact). Prevents the UUID from leaking back out to the
+  // backend which now 400s on every UUID input.
+  it('silently drops stale UUID activeWorkspaceId on read (pre-0.5.0 config)', async () => {
+    // Simulate a pre-0.5.0 install: write a raw UUID directly through the
+    // underlying fs, bypassing writeWorkspaceConfig (which shares the file
+    // with env-profiles). We only test the read path here.
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const os = await import('node:os');
+    const configDir = process.env.HOOKMYAPP_CONFIG_DIR ?? path.join(os.homedir(), '.hookmyapp');
+    const configPath = path.join(configDir, 'config.json');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        activeWorkspaceId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        activeWorkspaceSlug: 'Stale Workspace',
+        env: 'staging',
+      }) + '\n',
+    );
+
+    const ws = readWorkspaceConfig();
+    expect(ws.activeWorkspaceId).toBeUndefined();
+    expect(ws.activeWorkspaceSlug).toBeUndefined();
+    // env slice untouched — owned by env-profiles.ts; must survive the read.
+    expect(getPersistedEnv()).toBe('staging');
   });
 });
 
@@ -169,7 +222,7 @@ describe('workspace commands', () => {
 
   describe('workspace new', () => {
     it('creates workspace and auto-switches to it (human mode)', async () => {
-      const created = { id: 'dddddddd-dddd-dddd-dddd-dddddddddddd', name: 'New WS', createdAt: '2026-04-01', updatedAt: '2026-04-01' };
+      const created = { id: 'ws_TEST0004', name: 'New WS', createdAt: '2026-04-01', updatedAt: '2026-04-01' };
       mockedApiClient.mockResolvedValue(created);
 
       const program = new Command();
@@ -186,7 +239,7 @@ describe('workspace commands', () => {
     });
 
     it('outputs JSON under --json', async () => {
-      const created = { id: 'dddddddd-dddd-dddd-dddd-dddddddddddd', name: 'New WS', createdAt: '2026-04-01', updatedAt: '2026-04-01' };
+      const created = { id: 'ws_TEST0004', name: 'New WS', createdAt: '2026-04-01', updatedAt: '2026-04-01' };
       mockedApiClient.mockResolvedValue(created);
 
       const program = new Command();
@@ -226,13 +279,13 @@ describe('workspace commands', () => {
       let originalConfig: string | null = null;
       try { originalConfig = fs.readFileSync(configPath, 'utf-8'); } catch { /* noop */ }
       fs.mkdirSync(configDir, { recursive: true });
-      fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }));
+      fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'ws_TEST0001' }));
 
       try {
         await program.parseAsync(['workspace', 'current'], { from: 'user' });
 
         expect(mockedApiClient).toHaveBeenCalledWith('/workspaces');
-        expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+        expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws_TEST0001');
       } finally {
         // Restore original config
         if (originalConfig !== null) {
@@ -273,7 +326,7 @@ describe('workspace commands', () => {
 
   describe('workspace rename', () => {
     it('renames active workspace (human mode)', async () => {
-      const renamed = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', name: 'Renamed WS', updatedAt: '2026-04-02' };
+      const renamed = { id: 'ws_TEST0001', name: 'Renamed WS', updatedAt: '2026-04-02' };
       mockedApiClient.mockResolvedValue(renamed);
 
       const fs = await import('node:fs');
@@ -284,7 +337,7 @@ describe('workspace commands', () => {
       fs.mkdirSync(configDir, { recursive: true });
       let originalConfig: string | null = null;
       try { originalConfig = fs.readFileSync(configPath, 'utf-8'); } catch { /* noop */ }
-      fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }));
+      fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'ws_TEST0001' }));
 
       try {
         const program = new Command();
@@ -293,7 +346,7 @@ describe('workspace commands', () => {
         await program.parseAsync(['--human', 'workspace', 'rename', 'Renamed WS'], { from: 'user' });
 
         expect(mockedApiClient).toHaveBeenCalledWith(
-          '/workspaces/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          '/workspaces/ws_TEST0001',
           {
             method: 'PATCH',
             body: JSON.stringify({ name: 'Renamed WS' }),
@@ -330,7 +383,7 @@ describe('workspace commands', () => {
         expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('Alpha Workspace'));
         // Verify config was written
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        expect(config.activeWorkspaceId).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+        expect(config.activeWorkspaceId).toBe('ws_TEST0001');
       } finally {
         if (originalConfig !== null) {
           fs.writeFileSync(configPath, originalConfig);
@@ -338,7 +391,7 @@ describe('workspace commands', () => {
       }
     });
 
-    it('workspace use still works with UUID', async () => {
+    it('workspace use accepts ws_ publicId', async () => {
       mockedApiClient.mockResolvedValue(fakeWorkspaces);
 
       const fs = await import('node:fs');
@@ -354,15 +407,31 @@ describe('workspace commands', () => {
         const program = new Command();
         program.option('--human');
         registerWorkspaceCommand(program);
-        await program.parseAsync(['workspace', 'use', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'], { from: 'user' });
+        await program.parseAsync(['workspace', 'use', 'ws_TEST0002'], { from: 'user' });
 
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        expect(config.activeWorkspaceId).toBe('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+        expect(config.activeWorkspaceId).toBe('ws_TEST0002');
       } finally {
         if (originalConfig !== null) {
           fs.writeFileSync(configPath, originalConfig);
         }
       }
+    });
+
+    // Phase 117 hard cutover — negative regression.
+    it('workspace use rejects raw UUID with typed ValidationError', async () => {
+      mockedApiClient.mockResolvedValue(fakeWorkspaces);
+
+      const program = new Command();
+      program.option('--human');
+      registerWorkspaceCommand(program);
+
+      await expect(
+        program.parseAsync(
+          ['workspace', 'use', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+          { from: 'user' },
+        ),
+      ).rejects.toThrow(/raw UUID/);
     });
   });
 });
@@ -371,11 +440,11 @@ describe('workspace commands', () => {
 
 const fakeMembersResponse = {
   members: [
-    { id: 'mem-1', userId: 'user-1', workspaceId: 'ws-1', role: 'owner', user: { id: 'user-1', email: 'owner@co.com', firstName: 'Owner', lastName: 'User' } },
-    { id: 'mem-2', userId: 'user-2', workspaceId: 'ws-1', role: 'member', user: { id: 'user-2', email: 'member@co.com', firstName: 'Member', lastName: null } },
+    { id: 'mem_TEST001', userId: 'usr_TEST001', workspaceId: 'ws_TEST0001', role: 'owner', user: { id: 'usr_TEST001', email: 'owner@co.com', firstName: 'Owner', lastName: 'User' } },
+    { id: 'mem_TEST002', userId: 'usr_TEST002', workspaceId: 'ws_TEST0001', role: 'member', user: { id: 'usr_TEST002', email: 'member@co.com', firstName: 'Member', lastName: null } },
   ],
   invites: [
-    { id: 'inv-1', email: 'pending@co.com', role: 'admin', workspaceId: 'ws-1', invitedBy: 'user-1', createdAt: '2026-01-01' },
+    { id: 'inv_TEST001', email: 'pending@co.com', role: 'admin', workspaceId: 'ws_TEST0001', invitedBy: 'usr_TEST001', createdAt: '2026-01-01' },
   ],
 };
 
@@ -389,7 +458,7 @@ describe('resolveMemberByEmail', () => {
   it('finds member by email (case-insensitive)', async () => {
     mockedApiClient.mockResolvedValue(fakeMembersResponse);
     const { resolveMemberByEmail } = await import('../commands/workspace.js');
-    const member = await resolveMemberByEmail('ws-1', 'OWNER@CO.COM');
+    const member = await resolveMemberByEmail('ws_TEST0001', 'OWNER@CO.COM');
     expect(member).toEqual(fakeMembersResponse.members[0]);
   });
 
@@ -397,8 +466,8 @@ describe('resolveMemberByEmail', () => {
     mockedApiClient.mockResolvedValue(fakeMembersResponse);
     const { resolveMemberByEmail } = await import('../commands/workspace.js');
     const { CliError } = await import('../output/error.js');
-    await expect(resolveMemberByEmail('ws-1', 'unknown@co.com')).rejects.toThrow(CliError);
-    await expect(resolveMemberByEmail('ws-1', 'unknown@co.com')).rejects.toThrow('member');
+    await expect(resolveMemberByEmail('ws_TEST0001', 'unknown@co.com')).rejects.toThrow(CliError);
+    await expect(resolveMemberByEmail('ws_TEST0001', 'unknown@co.com')).rejects.toThrow('member');
   });
 });
 
@@ -412,29 +481,29 @@ describe('resolveInviteByIdOrEmail', () => {
   it('finds invite by email', async () => {
     mockedApiClient.mockResolvedValue(fakeMembersResponse);
     const { resolveInviteByIdOrEmail } = await import('../commands/workspace.js');
-    const invite = await resolveInviteByIdOrEmail('ws-1', 'pending@co.com');
+    const invite = await resolveInviteByIdOrEmail('ws_TEST0001', 'pending@co.com');
     expect(invite).toEqual(fakeMembersResponse.invites[0]);
   });
 
-  it('finds invite by UUID pattern', async () => {
-    const responseWithUuidInvite = {
+  it('finds invite by inv_ publicId (Phase 117 — not raw UUID)', async () => {
+    const responseWithPublicIdInvite = {
       members: [],
       invites: [
-        { id: 'aabbccdd-1234-5678-abcd-aabbccddeeff', email: 'pending@co.com', role: 'admin', workspaceId: 'ws-1', invitedBy: 'user-1', createdAt: '2026-01-01' },
+        { id: 'inv_TESTxyz0', email: 'pending@co.com', role: 'admin', workspaceId: 'ws_TEST0001', invitedBy: 'usr_TEST001', createdAt: '2026-01-01' },
       ],
     };
-    mockedApiClient.mockResolvedValue(responseWithUuidInvite);
+    mockedApiClient.mockResolvedValue(responseWithPublicIdInvite);
     const { resolveInviteByIdOrEmail } = await import('../commands/workspace.js');
-    const invite = await resolveInviteByIdOrEmail('ws-1', 'aabbccdd-1234-5678-abcd-aabbccddeeff');
-    expect(invite).toEqual(responseWithUuidInvite.invites[0]);
+    const invite = await resolveInviteByIdOrEmail('ws_TEST0001', 'inv_TESTxyz0');
+    expect(invite).toEqual(responseWithPublicIdInvite.invites[0]);
   });
 
   it('throws CliError when invite not found', async () => {
     mockedApiClient.mockResolvedValue(fakeMembersResponse);
     const { resolveInviteByIdOrEmail } = await import('../commands/workspace.js');
     const { CliError } = await import('../output/error.js');
-    await expect(resolveInviteByIdOrEmail('ws-1', 'unknown@co.com')).rejects.toThrow(CliError);
-    await expect(resolveInviteByIdOrEmail('ws-1', 'unknown@co.com')).rejects.toThrow('invite');
+    await expect(resolveInviteByIdOrEmail('ws_TEST0001', 'unknown@co.com')).rejects.toThrow(CliError);
+    await expect(resolveInviteByIdOrEmail('ws_TEST0001', 'unknown@co.com')).rejects.toThrow('invite');
   });
 });
 
@@ -456,7 +525,7 @@ describe('workspace members commands', () => {
     const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? pathMod.join(osMod.homedir(), '.hookmyapp'));
     const configPath = pathMod.join(configDir, 'config.json');
     fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'ws-1' }));
+    fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'ws_TEST0001' }));
 
     const commander = await import('commander');
     Command = commander.Command;
@@ -473,7 +542,7 @@ describe('workspace members commands', () => {
       registerWorkspaceCommand(program);
       await program.parseAsync(['workspace', 'members', 'list'], { from: 'user' });
 
-      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws-1/members');
+      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws_TEST0001/members');
       expect(mockedOutput).toHaveBeenCalledTimes(1);
       const rows = mockedOutput.mock.calls[0][0] as any[];
       expect(rows).toHaveLength(3);
@@ -485,14 +554,14 @@ describe('workspace members commands', () => {
 
   describe('members invite', () => {
     it('sends POST with default role member', async () => {
-      mockedApiClient.mockResolvedValue({ id: 'inv-new', email: 'new@co.com', role: 'member' });
+      mockedApiClient.mockResolvedValue({ id: 'inv_TESTnew', email: 'new@co.com', role: 'member' });
 
       const program = new Command();
       program.option('--human');
       registerWorkspaceCommand(program);
       await program.parseAsync(['--human', 'workspace', 'members', 'invite', 'new@co.com'], { from: 'user' });
 
-      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws-1/members', {
+      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws_TEST0001/members', {
         method: 'POST',
         body: JSON.stringify({ email: 'new@co.com', role: 'member' }),
       });
@@ -500,14 +569,14 @@ describe('workspace members commands', () => {
     });
 
     it('sends POST with --role admin', async () => {
-      mockedApiClient.mockResolvedValue({ id: 'inv-new', email: 'new@co.com', role: 'admin' });
+      mockedApiClient.mockResolvedValue({ id: 'inv_TESTnew', email: 'new@co.com', role: 'admin' });
 
       const program = new Command();
       program.option('--human');
       registerWorkspaceCommand(program);
       await program.parseAsync(['--human', 'workspace', 'members', 'invite', 'new@co.com', '--role', 'admin'], { from: 'user' });
 
-      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws-1/members', {
+      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws_TEST0001/members', {
         method: 'POST',
         body: JSON.stringify({ email: 'new@co.com', role: 'admin' }),
       });
@@ -549,7 +618,7 @@ describe('workspace members commands', () => {
       registerWorkspaceCommand(program);
       await program.parseAsync(['--human', 'workspace', 'members', 'remove', 'member@co.com', '--yes'], { from: 'user' });
 
-      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws-1/members/mem-2', {
+      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws_TEST0001/members/mem_TEST002', {
         method: 'DELETE',
       });
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('Removed'));
@@ -560,14 +629,14 @@ describe('workspace members commands', () => {
     it('sends PATCH with correct role', async () => {
       mockedApiClient
         .mockResolvedValueOnce(fakeMembersResponse) // resolveMemberByEmail
-        .mockResolvedValueOnce({ id: 'mem-2', role: 'admin' }); // PATCH
+        .mockResolvedValueOnce({ id: 'mem_TEST002', role: 'admin' }); // PATCH
 
       const program = new Command();
       program.option('--human');
       registerWorkspaceCommand(program);
       await program.parseAsync(['--human', 'workspace', 'members', 'role', 'member@co.com', '--role', 'admin'], { from: 'user' });
 
-      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws-1/members/mem-2', {
+      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws_TEST0001/members/mem_TEST002', {
         method: 'PATCH',
         body: JSON.stringify({ role: 'admin' }),
       });
@@ -603,7 +672,7 @@ describe('workspace invites commands', () => {
     const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? pathMod.join(osMod.homedir(), '.hookmyapp'));
     const configPath = pathMod.join(configDir, 'config.json');
     fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'ws-1' }));
+    fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'ws_TEST0001' }));
 
     const commander = await import('commander');
     Command = commander.Command;
@@ -636,29 +705,29 @@ describe('workspace invites commands', () => {
       registerWorkspaceCommand(program);
       await program.parseAsync(['--human', 'workspace', 'invites', 'cancel', 'pending@co.com', '--yes'], { from: 'user' });
 
-      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws-1/invites/inv-1', {
+      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws_TEST0001/invites/inv_TEST001', {
         method: 'DELETE',
       });
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('Cancelled'));
     });
 
-    it('with --yes and UUID resolves invite by ID and sends DELETE', async () => {
-      const responseWithUuidInvite = {
+    it('with --yes and inv_ publicId resolves invite by ID and sends DELETE', async () => {
+      const responseWithPublicIdInvite = {
         members: [],
         invites: [
-          { id: 'aabbccdd-1234-5678-abcd-aabbccddeeff', email: 'pending@co.com', role: 'admin', workspaceId: 'ws-1', invitedBy: 'user-1', createdAt: '2026-01-01' },
+          { id: 'inv_TESTxyz0', email: 'pending@co.com', role: 'admin', workspaceId: 'ws_TEST0001', invitedBy: 'usr_TEST001', createdAt: '2026-01-01' },
         ],
       };
       mockedApiClient
-        .mockResolvedValueOnce(responseWithUuidInvite) // resolveInviteByIdOrEmail
+        .mockResolvedValueOnce(responseWithPublicIdInvite) // resolveInviteByIdOrEmail
         .mockResolvedValueOnce({ success: true }); // DELETE
 
       const program = new Command();
       program.option('--human');
       registerWorkspaceCommand(program);
-      await program.parseAsync(['--human', 'workspace', 'invites', 'cancel', 'aabbccdd-1234-5678-abcd-aabbccddeeff', '--yes'], { from: 'user' });
+      await program.parseAsync(['--human', 'workspace', 'invites', 'cancel', 'inv_TESTxyz0', '--yes'], { from: 'user' });
 
-      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws-1/invites/aabbccdd-1234-5678-abcd-aabbccddeeff', {
+      expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws_TEST0001/invites/inv_TESTxyz0', {
         method: 'DELETE',
       });
     });

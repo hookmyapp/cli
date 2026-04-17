@@ -38,8 +38,8 @@ const mockedRefresh = vi.mocked(forceTokenRefresh);
 const CONFIG_PATH = path.join(TMP_HOME, '.hookmyapp', 'config.json');
 
 const fakeWorkspaces = [
-  { id: 'w1', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01' },
-  { id: 'w2', name: 'Globex', workosOrganizationId: 'org_01B', role: 'member', createdAt: '2026-02-01' },
+  { id: 'ws_TEST0001', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01' },
+  { id: 'ws_TEST0002', name: 'Globex', workosOrganizationId: 'org_01B', role: 'member', createdAt: '2026-02-01' },
 ];
 
 let originalIsTTY: boolean | undefined;
@@ -83,7 +83,7 @@ describe('workspace use (RBAC-UX-01/02/03)', () => {
     await runWorkspaceUse(['Acme']);
 
     const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-    expect(cfg.activeWorkspaceId).toBe('w1');
+    expect(cfg.activeWorkspaceId).toBe('ws_TEST0001');
     expect(cfg.activeWorkspaceSlug).toBe('Acme');
   });
 
@@ -97,20 +97,20 @@ describe('workspace use (RBAC-UX-01/02/03)', () => {
     Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
     mockedApi.mockResolvedValue(fakeWorkspaces);
     const { select } = await import('@inquirer/prompts');
-    vi.mocked(select).mockResolvedValue('w2');
+    vi.mocked(select).mockResolvedValue('ws_TEST0002');
 
     await runWorkspaceUse([]);
 
     expect(select).toHaveBeenCalledWith(
       expect.objectContaining({
         choices: expect.arrayContaining([
-          expect.objectContaining({ value: 'w1' }),
-          expect.objectContaining({ value: 'w2' }),
+          expect.objectContaining({ value: 'ws_TEST0001' }),
+          expect.objectContaining({ value: 'ws_TEST0002' }),
         ]),
       }),
     );
     const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-    expect(cfg.activeWorkspaceId).toBe('w2');
+    expect(cfg.activeWorkspaceId).toBe('ws_TEST0002');
     expect(mockedRefresh).toHaveBeenCalledWith('org_01B');
   });
 

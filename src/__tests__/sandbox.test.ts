@@ -12,12 +12,12 @@ vi.mock('../output/format.js', () => ({
 
 // Mock workspace helpers
 vi.mock('../commands/_helpers.js', () => ({
-  getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws-123'),
+  getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0123'),
 }));
 
 // Mock workspace config (required by _helpers transitive)
 vi.mock('../commands/workspace.js', () => ({
-  readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: 'ws-123' }),
+  readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: 'ws_TEST0123' }),
   writeWorkspaceConfig: vi.fn(),
   registerWorkspaceCommand: vi.fn(),
 }));
@@ -46,8 +46,8 @@ const mockedConfirm = vi.mocked(confirm);
 const mockedSelect = vi.mocked(select);
 
 const fakeSession = {
-  id: 'sess-1',
-  workspaceId: 'ws-123',
+  id: 'ssn_TEST001',
+  workspaceId: 'ws_TEST0123',
   phone: '+1234567890',
   activationCode: 'SANDBOX-ABC123',
   status: 'pending_activation' as const,
@@ -100,7 +100,7 @@ describe('sandbox commands', () => {
     expect(mockedApiClient).toHaveBeenCalledWith('/sandbox/sessions', {
       method: 'POST',
       body: JSON.stringify({ phone: '+1234567890' }),
-      workspaceId: 'ws-123',
+      workspaceId: 'ws_TEST0123',
     });
     expect(mockedOutput).toHaveBeenCalledWith(fakeSession, { human: false });
   });
@@ -119,7 +119,7 @@ describe('sandbox commands', () => {
     expect(mockedApiClient).toHaveBeenCalledWith('/sandbox/sessions', {
       method: 'POST',
       body: JSON.stringify({ phone: '+9876543210' }),
-      workspaceId: 'ws-123',
+      workspaceId: 'ws_TEST0123',
     });
   });
 
@@ -131,7 +131,7 @@ describe('sandbox commands', () => {
     registerSandboxCommand(program);
     await program.parseAsync(['sandbox', 'status', '--json'], { from: 'user' });
 
-    expect(mockedApiClient).toHaveBeenCalledWith('/sandbox/sessions', { workspaceId: 'ws-123' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/sandbox/sessions', { workspaceId: 'ws_TEST0123' });
     expect(mockedOutput).toHaveBeenCalledWith([fakeSession, fakeActiveSession], { human: false });
   });
 
@@ -145,16 +145,16 @@ describe('sandbox commands', () => {
     await program.parseAsync(['sandbox', 'stop'], { from: 'user' });
 
     expect(mockedConfirm).toHaveBeenCalled();
-    expect(mockedApiClient).toHaveBeenCalledWith('/sandbox/sessions/sess-1', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/sandbox/sessions/ssn_TEST001', {
       method: 'DELETE',
-      workspaceId: 'ws-123',
+      workspaceId: 'ws_TEST0123',
     });
   });
 
   it('sandbox stop with multiple sessions prompts selection', async () => {
-    const session2 = { ...fakeActiveSession, id: 'sess-2', phone: '+1111111111' };
+    const session2 = { ...fakeActiveSession, id: 'ssn_TEST002', phone: '+1111111111' };
     mockedApiClient.mockResolvedValueOnce([fakeSession, session2]); // list
-    mockedSelect.mockResolvedValueOnce('sess-2');
+    mockedSelect.mockResolvedValueOnce('ssn_TEST002');
     mockedConfirm.mockResolvedValueOnce(true);
     mockedApiClient.mockResolvedValueOnce(undefined); // delete
 
@@ -164,9 +164,9 @@ describe('sandbox commands', () => {
 
     expect(mockedSelect).toHaveBeenCalled();
     expect(mockedConfirm).toHaveBeenCalled();
-    expect(mockedApiClient).toHaveBeenCalledWith('/sandbox/sessions/sess-2', {
+    expect(mockedApiClient).toHaveBeenCalledWith('/sandbox/sessions/ssn_TEST002', {
       method: 'DELETE',
-      workspaceId: 'ws-123',
+      workspaceId: 'ws_TEST0123',
     });
   });
 

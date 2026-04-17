@@ -20,7 +20,7 @@ vi.mock('../../api/client.js', () => ({
 
 vi.mock('../workspace.js', () => ({
   readWorkspaceConfig: () => ({
-    activeWorkspaceId: 'w1',
+    activeWorkspaceId: 'ws_TEST0001',
     activeWorkspaceSlug: 'acme-corp',
   }),
   writeWorkspaceConfig: vi.fn(),
@@ -48,12 +48,12 @@ afterEach(() => {
 function seedOneSession() {
   apiClientMock.mockResolvedValueOnce([
     {
-      id: 'sess-1',
+      id: 'ssn_TEST001',
       phone: '15551234567',
       activationCode: 'ACT_xxx',
       hmacSecret: 'HMAC_yyy',
       status: 'active',
-      workspaceId: 'w1',
+      workspaceId: 'ws_TEST0001',
       sandboxPhoneNumberId: '1080996501762047',
     },
   ]);
@@ -99,12 +99,12 @@ describe('sandbox send', () => {
   it('no flags, multi-session: picker selects session, prompt only for message', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
-        id: 'sess-1',
+        id: 'ssn_TEST001',
         phone: '15551234567',
         activationCode: 'ACT_xxx',
         hmacSecret: 'HMAC_yyy',
         status: 'active',
-        workspaceId: 'w1',
+        workspaceId: 'ws_TEST0001',
         sandboxPhoneNumberId: '1080996501762047',
       },
       {
@@ -113,12 +113,12 @@ describe('sandbox send', () => {
         activationCode: 'ACT_two',
         hmacSecret: 'HMAC_two',
         status: 'active',
-        workspaceId: 'w1',
+        workspaceId: 'ws_TEST0001',
         sandboxPhoneNumberId: '1080996501762047',
       },
     ]);
     selectMock.mockResolvedValueOnce({
-      id: 'sess-1',
+      id: 'ssn_TEST001',
       phone: '15551234567',
       activationCode: 'ACT_xxx',
       sandboxPhoneNumberId: '1080996501762047',
@@ -183,12 +183,12 @@ describe('sandbox send', () => {
     // Defensive: some backends might return phone with +, some without.
     apiClientMock.mockResolvedValueOnce([
       {
-        id: 'sess-1',
+        id: 'ssn_TEST001',
         phone: '+15551234567', // with leading +
         activationCode: 'ACT_xxx',
         hmacSecret: 'HMAC_yyy',
         status: 'active',
-        workspaceId: 'w1',
+        workspaceId: 'ws_TEST0001',
         sandboxPhoneNumberId: '1080996501762047',
       },
     ]);
@@ -211,7 +211,7 @@ describe('sandbox send', () => {
   it('S3: 1 active session, no --phone → picker IS shown (no silent auto-pick)', async () => {
     seedOneSession();
     selectMock.mockResolvedValueOnce({
-      id: 'sess-1',
+      id: 'ssn_TEST001',
       phone: '15551234567',
       activationCode: 'ACT_xxx',
       sandboxPhoneNumberId: '1080996501762047',
@@ -238,12 +238,12 @@ describe('sandbox send', () => {
   it('S5: --phone +99999 with no matching session → ValidationError naming +99999 and listing available phones', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
-        id: 'sess-1',
+        id: 'ssn_TEST001',
         phone: '15551234567',
         activationCode: 'ACT_xxx',
         hmacSecret: 'HMAC_yyy',
         status: 'active',
-        workspaceId: 'w1',
+        workspaceId: 'ws_TEST0001',
         sandboxPhoneNumberId: '1080996501762047',
       },
     ]);
@@ -255,12 +255,12 @@ describe('sandbox send', () => {
     ).rejects.toThrow(/\+99999/);
     apiClientMock.mockResolvedValueOnce([
       {
-        id: 'sess-1',
+        id: 'ssn_TEST001',
         phone: '15551234567',
         activationCode: 'ACT_xxx',
         hmacSecret: 'HMAC_yyy',
         status: 'active',
-        workspaceId: 'w1',
+        workspaceId: 'ws_TEST0001',
         sandboxPhoneNumberId: '1080996501762047',
       },
     ]);
