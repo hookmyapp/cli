@@ -1,7 +1,7 @@
 import { apiClient } from '../api/client.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { readWorkspaceConfig, writeWorkspaceConfig } from './workspace.js';
-import { isValidPublicId } from '../lib/publicId.js';
+import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 
 /**
  * Fetch /workspaces while propagating auth + network errors (so callers bubble
@@ -51,7 +51,7 @@ export async function getDefaultWorkspaceId(): Promise<string> {
     // Phase 117: raw UUID shape is never a valid --workspace value. Short-
     // circuit with a typed ValidationError before the /workspaces round-trip
     // so scripts see exit 2 with a clear remediation hint.
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(flag)) {
+    if (isLikelyUuid(flag)) {
       throw new ValidationError(
         `--workspace "${flag}" is a raw UUID — Phase 117 CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
       );

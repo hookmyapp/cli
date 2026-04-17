@@ -4,7 +4,7 @@ import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import type { Workspace } from '../types/workspace.js';
-import { isValidPublicId } from '../lib/publicId.js';
+import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -62,6 +62,14 @@ export function readWorkspaceConfig(): WorkspaceConfig {
 }
 
 export function writeWorkspaceConfig(config: WorkspaceConfig): void {
+  // Phase 117 hard cutover: refuse to persist a UUID-shaped activeWorkspaceId.
+  // Symmetric with the read-side drop in readWorkspaceConfig — invariant is
+  // "no UUID ever reaches disk or escapes to the backend."
+  if (config.activeWorkspaceId && !isValidPublicId(config.activeWorkspaceId, 'ws')) {
+    throw new ValidationError(
+      `activeWorkspaceId "${config.activeWorkspaceId}" is not a valid ws_ publicId. This is a bug — callers must pass the server-returned publicId.`,
+    );
+  }
   fs.mkdirSync(configDir(), { recursive: true });
   // Merge with existing config so we never clobber env-profiles fields
   // (specifically `env`). See env-profiles.ts for the other half.
@@ -80,7 +88,7 @@ export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; 
   // accepted identifier shapes — matching what the backend now surfaces
   // over HTTP. If the caller passes a UUID, short-circuit with a typed
   // error instead of silently accepting it (would 400 at the backend).
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nameOrId)) {
+  if (isLikelyUuid(nameOrId)) {
     throw new ValidationError(
       `workspace identifier "${nameOrId}" is a raw UUID — Phase 117 CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
     );

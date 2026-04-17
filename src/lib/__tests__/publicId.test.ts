@@ -3,6 +3,7 @@ import {
   PUBLIC_ID_ALPHABET,
   PUBLIC_ID_LENGTH,
   PUBLIC_ID_PREFIXES,
+  isLikelyUuid,
   isValidPublicId,
 } from '../publicId.js';
 
@@ -74,6 +75,32 @@ describe('publicId local-fallback helpers', () => {
     });
     it('rejects an empty string', () => {
       expect(isValidPublicId('', 'ws')).toBe(false);
+    });
+  });
+
+  describe('isLikelyUuid', () => {
+    it('accepts a canonical UUIDv4', () => {
+      expect(isLikelyUuid('00000000-0000-4000-8000-000000000000')).toBe(true);
+    });
+    it('accepts uppercase hex', () => {
+      expect(isLikelyUuid('DEADBEEF-DEAD-BEEF-DEAD-BEEFDEADBEEF')).toBe(true);
+    });
+    it('accepts any UUID version (v1/v3/v4/v5) — cutover rejects all', () => {
+      expect(isLikelyUuid('12345678-1234-1234-1234-123456789abc')).toBe(true);
+    });
+    it('rejects a ws_ publicId', () => {
+      expect(isLikelyUuid('ws_A4zq8d2T')).toBe(false);
+    });
+    it('rejects a string shorter than UUID', () => {
+      expect(isLikelyUuid('abc')).toBe(false);
+    });
+    it('rejects non-string input', () => {
+      expect(isLikelyUuid(undefined)).toBe(false);
+      expect(isLikelyUuid(null)).toBe(false);
+      expect(isLikelyUuid(12345)).toBe(false);
+    });
+    it('rejects an empty string', () => {
+      expect(isLikelyUuid('')).toBe(false);
     });
   });
 });

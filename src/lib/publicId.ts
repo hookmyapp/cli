@@ -33,3 +33,14 @@ export function isValidPublicId(value: unknown, prefix: PublicIdPrefix): boolean
   const re = new RegExp(`^${prefix}_[0-9A-Za-z]{${PUBLIC_ID_LENGTH}}$`);
   return re.test(value);
 }
+
+/**
+ * True iff `value` matches the canonical UUID shape (any version). Used at
+ * CLI surfaces to short-circuit raw-UUID input with a typed ValidationError
+ * before round-tripping to the backend. Mirrors the backend's own rejection
+ * path so CI scripts see exit 2 locally instead of exit 1 from a 400.
+ */
+export function isLikelyUuid(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
