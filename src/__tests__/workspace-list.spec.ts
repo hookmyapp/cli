@@ -28,9 +28,10 @@ const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
 const CONFIG_PATH = path.join(TMP_HOME, '.hookmyapp', 'config.json');
 
+// Phase 117: every workspace id fixture is a ws_ publicId.
 const fakeWorkspaces = [
-  { id: 'w1', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01' },
-  { id: 'w2', name: 'Globex', workosOrganizationId: 'org_01B', role: 'member', createdAt: '2026-02-01' },
+  { id: 'ws_TEST0001', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01' },
+  { id: 'ws_TEST0002', name: 'Globex', workosOrganizationId: 'org_01B', role: 'member', createdAt: '2026-02-01' },
 ];
 
 beforeEach(async () => {
@@ -38,7 +39,7 @@ beforeEach(async () => {
   mockedApi.mockReset();
   mockConsoleLog.mockClear();
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'w1', activeWorkspaceSlug: 'Acme' }));
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'ws_TEST0001', activeWorkspaceSlug: 'Acme' }));
 });
 
 afterEach(() => {
@@ -89,6 +90,6 @@ describe('workspace list (RBAC-UX-04)', () => {
     expect(lastCall).toBeDefined();
     const parsed = JSON.parse(String(lastCall![0]));
     expect(Array.isArray(parsed)).toBe(true);
-    expect(parsed[0]).toMatchObject({ id: 'w1', workosOrganizationId: 'org_01A', role: 'admin' });
+    expect(parsed[0]).toMatchObject({ id: 'ws_TEST0001', workosOrganizationId: 'org_01A', role: 'admin' });
   });
 });

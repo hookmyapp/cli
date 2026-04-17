@@ -15,7 +15,7 @@ vi.mock('@inquirer/prompts', () => ({ select: vi.fn() }));
 
 // Mock workspace config
 vi.mock('../commands/workspace.js', () => ({
-  readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: '77777777-7777-7777-7777-777777777777' }),
+  readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: 'ws_TEST0070' }),
   writeWorkspaceConfig: vi.fn(),
   registerWorkspaceCommand: vi.fn(),
 }));
@@ -34,7 +34,7 @@ import openDefault from 'open';
 const mockedApiClient = vi.mocked(apiClient);
 const mockedOpen = vi.mocked(openDefault);
 
-const WORKSPACE_ID = '77777777-7777-7777-7777-777777777777';
+const WORKSPACE_ID = 'ws_TEST0070';
 
 const activeSub = {
   planSlug: 'growth',

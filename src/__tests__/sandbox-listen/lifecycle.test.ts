@@ -151,15 +151,15 @@ describe('startHeartbeat', () => {
   it('calls apiClient /tunnel/heartbeat on interval', async () => {
     mockedApiClient.mockResolvedValue(undefined);
     const hb = startHeartbeat({
-      sessionId: 'sess-xyz',
-      workspaceId: 'ws-1',
+      sessionId: 'ssn_TESTxyz',
+      workspaceId: 'ws_TEST0001',
       intervalMs: 1_000,
       onError: vi.fn(),
     });
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(mockedApiClient).toHaveBeenCalledWith(
-      '/sandbox/sessions/sess-xyz/tunnel/heartbeat',
+      '/sandbox/sessions/ssn_TESTxyz/tunnel/heartbeat',
       expect.objectContaining({ method: 'POST' }),
     );
 
@@ -175,7 +175,7 @@ describe('startHeartbeat', () => {
       .mockResolvedValueOnce(undefined);
     const onError = vi.fn();
 
-    const hb = startHeartbeat({ sessionId: 's1', workspaceId: 'ws-1', intervalMs: 1_000, onError });
+    const hb = startHeartbeat({ sessionId: 's1', workspaceId: 'ws_TEST0001', intervalMs: 1_000, onError });
 
     await vi.advanceTimersByTimeAsync(1_000);
     // Let the rejected promise settle.
@@ -193,7 +193,7 @@ describe('startHeartbeat', () => {
     mockedApiClient.mockRejectedValue(new Error('still down'));
     const onError = vi.fn();
 
-    const hb = startHeartbeat({ sessionId: 's1', workspaceId: 'ws-1', intervalMs: 1_000, onError });
+    const hb = startHeartbeat({ sessionId: 's1', workspaceId: 'ws_TEST0001', intervalMs: 1_000, onError });
 
     await vi.advanceTimersByTimeAsync(1_000);
     for (let i = 0; i < 5; i++) await Promise.resolve();
