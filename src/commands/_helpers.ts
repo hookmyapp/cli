@@ -1,6 +1,7 @@
 import { apiClient } from '../api/client.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { readWorkspaceConfig, writeWorkspaceConfig } from './workspace.js';
+import { isValidPublicId } from '../lib/publicId.js';
 
 /**
  * Fetch /workspaces while propagating auth + network errors (so callers bubble
@@ -47,6 +48,14 @@ export async function getDefaultWorkspaceId(): Promise<string> {
   const { program } = await import('../index.js');
   const flag = program.opts().workspace as string | undefined;
   if (flag) {
+    // Phase 117: raw UUID shape is never a valid --workspace value. Short-
+    // circuit with a typed ValidationError before the /workspaces round-trip
+    // so scripts see exit 2 with a clear remediation hint.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(flag)) {
+      throw new ValidationError(
+        `--workspace "${flag}" is a raw UUID — Phase 117 CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
+      );
+    }
     const workspaces = await listWorkspacesOrEmpty();
     const match = workspaces.find(
       (w) =>
@@ -56,7 +65,15 @@ export async function getDefaultWorkspaceId(): Promise<string> {
         w.id === flag,
     );
     if (!match) {
+      // If the flag looks like a publicId but no match was found, surface
+      // the shape mismatch explicitly — helps users who got the shape right
+      // but picked the wrong workspace.
       const available = workspaces.map((w) => w.name).join(', ') || '(none)';
+      if (isValidPublicId(flag, 'ws')) {
+        throw new ValidationError(
+          `Workspace ${flag} not found. Available: ${available}`,
+        );
+      }
       throw new ValidationError(
         `Unknown workspace: ${flag}. Available: ${available}`,
       );

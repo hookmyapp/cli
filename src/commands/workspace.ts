@@ -4,6 +4,7 @@ import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import type { Workspace } from '../types/workspace.js';
+import { isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -46,9 +47,17 @@ function readFullConfig(): FullPersistedConfig {
 
 export function readWorkspaceConfig(): WorkspaceConfig {
   const full = readFullConfig();
+  // Phase 117 hard cutover: activeWorkspaceId on disk MUST be a ws_ publicId.
+  // A stale UUID from a pre-0.5.0 install is silently dropped so the next
+  // caller falls through to the single-workspace auto-pick or the login
+  // wizard's picker. No UUID value ever leaks back out to the backend.
+  const activeWorkspaceId =
+    full.activeWorkspaceId && isValidPublicId(full.activeWorkspaceId, 'ws')
+      ? full.activeWorkspaceId
+      : undefined;
   return {
-    activeWorkspaceId: full.activeWorkspaceId,
-    activeWorkspaceSlug: full.activeWorkspaceSlug,
+    activeWorkspaceId,
+    activeWorkspaceSlug: activeWorkspaceId ? full.activeWorkspaceSlug : undefined,
   };
 }
 
@@ -66,12 +75,27 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
 }
 
 export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; name: string; role: string }> {
+  // Phase 117: raw UUID input is not an accepted shape. A `ws_` publicId,
+  // a workspace name, or a WorkOS organizationId (slug) are the three
+  // accepted identifier shapes — matching what the backend now surfaces
+  // over HTTP. If the caller passes a UUID, short-circuit with a typed
+  // error instead of silently accepting it (would 400 at the backend).
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nameOrId)) {
+    throw new ValidationError(
+      `workspace identifier "${nameOrId}" is a raw UUID — Phase 117 CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
+    );
+  }
+
   const workspaces = await apiClient('/workspaces');
-  // UUID detection: starts with 8 hex chars + hyphen + 4 hex chars
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(nameOrId)) {
+  // publicId detection: ws_ prefixed, 8-char alphanumeric body.
+  if (isValidPublicId(nameOrId, 'ws')) {
     const found = workspaces.find((w: any) => w.id === nameOrId);
     if (found) return found;
+    throw new ValidationError(`workspace "${nameOrId}" not found`);
   }
+  // WorkOS organization id shape (slug) — exact match, case-sensitive.
+  const orgMatch = workspaces.find((w: any) => w.workosOrganizationId === nameOrId);
+  if (orgMatch) return orgMatch;
   // Case-insensitive name match
   const matches = workspaces.filter((w: any) => w.name.toLowerCase() === nameOrId.toLowerCase());
   if (matches.length === 1) return matches[0];
@@ -83,7 +107,7 @@ export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; 
   for (const w of matches) {
     lines.push(`  ${w.id}  (role: ${w.role})`);
   }
-  lines.push('', 'Use the workspace ID instead: hookmyapp workspace use <id>');
+  lines.push('', 'Use the workspace publicId instead: hookmyapp workspace use <ws_xxxxxxxx>');
   throw new ValidationError(lines.join('\n'));
 }
 
@@ -106,9 +130,8 @@ export async function resolveMemberByEmail(workspaceId: string, email: string): 
 
 export async function resolveInviteByIdOrEmail(workspaceId: string, idOrEmail: string): Promise<any> {
   const data = await apiClient(`/workspaces/${workspaceId}/members`);
-  const uuidMatch = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
   let invite;
-  if (uuidMatch.test(idOrEmail)) {
+  if (isValidPublicId(idOrEmail, 'inv')) {
     invite = data.invites.find((i: any) => i.id === idOrEmail);
   } else {
     invite = data.invites.find((i: any) => i.email.toLowerCase() === idOrEmail.toLowerCase());
@@ -216,7 +239,7 @@ export function registerWorkspaceCommand(program: Command): void {
 
   const wsUse = ws.command('use')
     .description('Switch the active workspace')
-    .argument('[name-or-id]', 'Workspace name or ID (omit for interactive picker)')
+    .argument('[name-or-id]', 'Workspace name or publicId (ws_XXXXXXXX). Omit for interactive picker.')
     .action(async (nameOrId?: string) => {
       let workspace: Workspace;
       if (nameOrId) {
@@ -224,7 +247,7 @@ export function registerWorkspaceCommand(program: Command): void {
       } else {
         if (!process.stdout.isTTY) {
           throw new ValidationError(
-            'Workspace identifier required (non-TTY). Usage: hookmyapp workspace use <slug-or-id>',
+            'Workspace identifier required (non-TTY). Usage: hookmyapp workspace use <name-or-ws_publicId>',
           );
         }
         const { select } = await import('@inquirer/prompts');
