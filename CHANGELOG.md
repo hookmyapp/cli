@@ -2,6 +2,38 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.6.0] - 2026-04-17
+
+### Changed
+
+- **Post-Phase-118 URL shape alignment.** The HookMyApp app URL structure
+  flipped from `/dashboard/*` to workspace-scoped `/w/:ws/*` + user-scoped
+  `/account/*`. CLI source itself had no `/dashboard` references (URL
+  construction routes through the `appUrl` base + workspace-resolved
+  suffixes only), so this is a metadata release signaling compatibility
+  with the post-118 app. Consumers that read CLI output for URL strings
+  should update expectations to match the `/w/:ws/*` shape the app now
+  emits.
+
+### Decisions
+
+- No changes to the `hookmyapp login` "Next steps" block. The current
+  block prints command-shaped entries (`sandbox start`, `channels
+  connect`, `help`). Mixing a raw URL deep-link (`${appUrl}/w/${ws}`)
+  into a command list would break the column-aligned `cmd — desc`
+  visual contract. A URL-shaped deep-link helper belongs in a separate
+  output surface (future `hookmyapp workspace url` or a `--print-url`
+  flag on `workspace current`), not the next-steps guide. Tracked for a
+  later minor release.
+
+### Compatibility
+
+- Backend contract unchanged. No migration needed.
+- CLI still accepts prefixed publicIds on `--workspace` / `--session`
+  flags (Phase 117 contract, unchanged).
+- Requires backend Phase 117 or later (unchanged from 0.5.0). Phase 118
+  is purely a frontend URL restructure — backend API surface untouched.
+
 ## [0.5.0] - 2026-04-17
 
 ### Breaking Changes
