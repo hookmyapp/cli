@@ -153,11 +153,12 @@ export function getEffectiveWorkosClientId(): string {
  *   1. HOOKMYAPP_SANDBOX_PROXY_URL env var (surgical override for local/CI).
  *   2. Env-profile default:
  *        - local      → http://localhost:4315 (docker-compose sandbox-proxy)
- *        - staging    → https://sandbox.hookmyapp.com (shared with prod today)
+ *        - staging    → https://staging-sandbox.hookmyapp.com
  *        - production → https://sandbox.hookmyapp.com
  *
- * NOTE: staging reuses the prod sandbox-proxy until a dedicated staging
- * sandbox-proxy is deployed. If that changes, update the `byEnv` map below.
+ * Staging and production target separate Cloud Run services as of Phase 120
+ * (each in its own GCP project; shared upstream WABA number). Both services
+ * proxy to the same sandbox phone +972557046276 but run isolated runtimes.
  */
 export function getEffectiveSandboxProxyUrl(): string {
   const override = process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
@@ -165,7 +166,7 @@ export function getEffectiveSandboxProxyUrl(): string {
   const env = resolveEnv();
   const byEnv: Record<EnvName, string> = {
     local: 'http://localhost:4315',
-    staging: 'https://sandbox.hookmyapp.com',
+    staging: 'https://staging-sandbox.hookmyapp.com',
     production: 'https://sandbox.hookmyapp.com',
   };
   return byEnv[env];

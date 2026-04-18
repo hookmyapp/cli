@@ -207,11 +207,11 @@ describe('env-profiles: getEffectiveSandboxProxyUrl', () => {
     });
   });
 
-  // E4 — staging shares prod sandbox-proxy until a dedicated staging box ships
-  it('env=staging, no env var → returns https://sandbox.hookmyapp.com (shared with prod)', () => {
+  // E4 — staging targets dedicated staging sandbox-proxy (Phase 120)
+  it('env=staging, no env var → returns https://staging-sandbox.hookmyapp.com', () => {
     withTempConfig(() => {
       setPersistedEnv('staging');
-      expect(getEffectiveSandboxProxyUrl()).toBe('https://sandbox.hookmyapp.com');
+      expect(getEffectiveSandboxProxyUrl()).toBe('https://staging-sandbox.hookmyapp.com');
     });
   });
 });
