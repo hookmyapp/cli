@@ -1,6 +1,6 @@
 {
   "name": "@gethookmyapp/cli",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "HookMyApp CLI - connect WhatsApp Business API in minutes",
   "type": "module",
   "bin": {

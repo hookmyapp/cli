@@ -2,6 +2,22 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.6.1] - 2026-04-18
+
+### Changed
+
+- **Per-env sandbox-proxy URL.** `env=staging` now routes to
+  `https://staging-sandbox.hookmyapp.com` (dedicated Cloud Run service in
+  the staging GCP project). `env=production` remains
+  `https://sandbox.hookmyapp.com`. Previously both resolved to the prod
+  URL via the shared-URL design — that defeated the point of having
+  isolated per-env sandbox-proxy services.
+
+### Backend dependency
+
+- Requires Phase 120 infra (both `staging-sandbox.hookmyapp.com` and
+  `sandbox.hookmyapp.com` Cloud Run services live). Deployed 2026-04-18.
+
 ## [0.6.0] - 2026-04-17
 
 ### Changed
