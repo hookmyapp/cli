@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
+    "@sentry/node": "^10.49.0",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.0",
     "nanoid": "^5.1.7",
