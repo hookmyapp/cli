@@ -42,7 +42,14 @@ await build({
       process.env.HOOKMYAPP_CLI_RELEASE ?? '',
     ),
   },
-  external: [],
+  // Keep @sentry/node external — it's a real dependency (not devDep), so
+  // npm resolves it from the installed tree at runtime. Inlining it adds
+  // ~2MB raw + ~416KB gzip to dist/cli.js (OpenTelemetry instrumentation
+  // fan-out dwarfs the Sentry core), which blows past the Plan 10 target
+  // of ≤ 100KB gzip delta. With `external`, the dynamic-import path loads
+  // Sentry from the globally-installed node_modules only when telemetry is
+  // enabled + DSN baked — same fast path + much smaller bundle.
+  external: ['@sentry/node'],
 });
 
 console.log('Built dist/cli.js');
