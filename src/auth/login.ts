@@ -1,10 +1,32 @@
 import { Command } from 'commander';
-import { saveCredentials } from './store.js';
+import { saveCredentials, peekIdentity } from './store.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
-import { getEffectiveWorkosClientId } from '../config/env-profiles.js';
+import {
+  getEffectiveApiUrl,
+  getEffectiveWorkosClientId,
+} from '../config/env-profiles.js';
+
+// --- Phase 122 bootstrap-code exchange DTO ---
+// Mirrors backend/src/auth/bootstrap/dto/exchange-bootstrap.dto.ts (Wave 1
+// locked contract). The CLI does not import from the backend — the DTO is
+// re-declared here verbatim so drift is caught by integration tests.
+interface ExchangeBootstrapResponseDto {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number; // epoch SECONDS
+  workspace: {
+    id: string; // ws_<8> publicId
+    name: string;
+    workosOrganizationId: string;
+  };
+  user: {
+    publicId: string; // usr_<8>
+    email: string;
+  };
+}
 
 // --- Types used by the post-login wizard ---
 interface Workspace {
@@ -363,6 +385,74 @@ async function runChannelsConnectFlow(): Promise<void> {
   await runChannelsConnect();
 }
 
+/**
+ * Phase 122: bootstrap-code exchange branch. Invoked when the user (or their
+ * AI) runs `hookmyapp login --code hma_boot_<32>`. Bypasses the WorkOS device
+ * flow entirely — zero browser interaction, zero polling — then re-enters
+ * runWizard so the rest of the CLI (active workspace, --phone/--next hooks,
+ * JSON output shape) behaves identically to a browser login.
+ *
+ * Flow:
+ *   1. peekIdentity() BEFORE overwrite — needed for the "was:" diff.
+ *   2. POST /auth/bootstrap/exchange (unauthenticated @Public route).
+ *   3. saveCredentials + writeWorkspaceConfig — same shape the device-flow
+ *      wizard writes, so downstream api calls work unchanged.
+ *   4. Print "Replaced previous session (was: ...)" if prior identity differs.
+ *   5. Print "Logged in as ..." — stable contract the AI matches against.
+ *   6. runWizard — preselected-workspace path short-circuits the picker.
+ *
+ * Errors flow through mapApiError → the CLI error hierarchy pins exit codes.
+ */
+export async function runBootstrapCodeExchange(
+  code: string,
+  opts: { phone?: string; next?: 'sandbox' | 'channels' | 'exit'; json?: boolean },
+): Promise<void> {
+  const { mapApiError, isNetworkFailure } = await import('../api/client.js');
+  const { writeWorkspaceConfig } = await import('../commands/workspace.js');
+
+  const prior = peekIdentity();
+
+  const baseUrl = getEffectiveApiUrl();
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/auth/bootstrap/exchange`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+  } catch (err) {
+    if (isNetworkFailure(err)) throw new NetworkError();
+    throw err;
+  }
+  if (!res.ok) throw await mapApiError(res);
+
+  const data = (await res.json()) as ExchangeBootstrapResponseDto;
+
+  saveCredentials({
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+    expiresAt: data.expiresAt,
+  });
+  writeWorkspaceConfig({
+    activeWorkspaceId: data.workspace.id,
+    activeWorkspaceSlug: data.workspace.name,
+  });
+
+  if (
+    prior &&
+    (prior.email !== data.user.email || prior.workspaceSlug !== data.workspace.name)
+  ) {
+    console.log(
+      `${c.success(icon.success)} Replaced previous session (was: ${prior.email} — workspace "${prior.workspaceSlug}")`,
+    );
+  }
+  console.log(
+    `${c.success(icon.success)} Logged in as ${data.user.email} — workspace "${data.workspace.name}"`,
+  );
+
+  await runWizard({ phone: opts.phone, next: opts.next, json: opts.json });
+}
+
 export function loginCommand(program: Command): void {
   const login = program
     .command('login')
@@ -377,13 +467,39 @@ export function loginCommand(program: Command): void {
       '--next <action>',
       'Non-interactive next-action for scripts/CI (sandbox|channels|exit)',
     )
+    .option(
+      '--code <code>',
+      'Exchange a dashboard-minted bootstrap code (zero browser interaction)',
+    )
     .action(
-      async (opts: { phone?: string; wizard?: boolean; next?: string }) => {
+      async (opts: {
+        phone?: string;
+        wizard?: boolean;
+        next?: string;
+        code?: string;
+      }) => {
         const nextAction =
           opts.next === 'sandbox' || opts.next === 'channels' || opts.next === 'exit'
             ? opts.next
             : undefined;
         const json = program.opts().json === true;
+
+        // Phase 122 — bootstrap-code branch. MUST run BEFORE the wizard
+        // fast-path and BEFORE device-flow initiation so --code --wizard is
+        // flagged as a programming error (mutually exclusive).
+        if (opts.code) {
+          if (opts.wizard) {
+            throw new ValidationError(
+              '--code and --wizard are mutually exclusive.',
+            );
+          }
+          await runBootstrapCodeExchange(opts.code, {
+            phone: opts.phone,
+            next: nextAction,
+            json,
+          });
+          return;
+        }
 
         // --wizard is the integration-test fast path: skip browser auth and
         // run the wizard directly against whatever credentials the seed
@@ -441,11 +557,11 @@ export function loginCommand(program: Command): void {
     `
 EXAMPLES:
   $ hookmyapp login
-  $ hookmyapp login --workspace acme-corp
-  $ hookmyapp login --next sandbox --phone +15551234567   # scripts / CI
+  $ hookmyapp login --code hma_boot_xxx                    # zero-browser AI paste
+  $ hookmyapp login --next sandbox --phone +15551234567    # scripts / CI
 
 This runs the post-login wizard:
-  1. Browser sign-in
+  1. Browser sign-in (or --code <bootstrap-code> to skip the browser)
   2. Workspace picker (if you belong to more than one)
   3. Prints a "Next steps" guide (or runs --next / --phone non-interactively)
 `,
