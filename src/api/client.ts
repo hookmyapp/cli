@@ -104,7 +104,7 @@ export async function mapApiError(res: Response): Promise<CliError> {
     err.exitCode = 5;
     return err;
   }
-  if (res.status === 410) {
+  if (res.status === 410 && code === 'BOOTSTRAP_EXPIRED_OR_USED') {
     const err = new ApiError(
       'Code expired or already used. Ask the dashboard user to click Copy again.',
       410,
