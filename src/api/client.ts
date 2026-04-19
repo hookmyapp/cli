@@ -163,6 +163,18 @@ export async function apiClient(
     throw new AuthError('Not logged in. Run: hookmyapp login');
   }
 
+  // Phase 123 Plan 10 — set Sentry user tag on every authenticated API call.
+  // Idempotent + lazy (no-op when telemetry off or Sentry not initialized).
+  // Fire-and-forget so the API call's latency isn't gated on dynamic import.
+  void (async () => {
+    try {
+      const { setCliUserFromCreds } = await import('../observability/sentry.js');
+      await setCliUserFromCreds();
+    } catch {
+      // Swallow — telemetry must never affect API calls.
+    }
+  })();
+
   let { accessToken } = creds;
 
   // Check if token is expired (with 60-second buffer)
