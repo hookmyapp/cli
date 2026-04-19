@@ -1,6 +1,6 @@
 {
   "name": "@gethookmyapp/cli",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "HookMyApp CLI - connect WhatsApp Business API in minutes",
   "type": "module",
   "bin": {
@@ -13,6 +13,8 @@
     "test:unit": "vitest run --reporter=verbose",
     "test:integration": "vitest run --config vitest.integration.config.ts --reporter=verbose",
     "test:integration:nightly": "vitest run --config vitest.nightly.config.ts --reporter=verbose",
+    "sync:errors-manifest": "node scripts/sync-errors-manifest.mjs",
+    "sync:errors-manifest:check": "node scripts/sync-errors-manifest.mjs --check",
     "prepublishOnly": "node build.mjs"
   },
   "dependencies": {

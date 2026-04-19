@@ -5,8 +5,11 @@ import {
   NetworkError,
   PermissionError,
   ConflictError,
+  RateLimitError,
   SessionWindowError,
-  CliError,
+  UnexpectedError,
+  AppError,
+  type CliError,
 } from '../output/error.js';
 import {
   getEffectiveApiUrl,
@@ -42,7 +45,11 @@ async function refreshToken(
   });
 
   if (!res.ok) {
-    throw new Error('refresh failed');
+    // Throw a typed AppError so the top-level exit-code mapper + Sentry
+    // capture get a severity-tagged event instead of a bare Error. The caller
+    // (forceTokenRefresh / apiClient) catches this and surfaces a friendly
+    // AuthError('Session expired. Run: hookmyapp login') to the user.
+    throw new UnexpectedError('refresh failed', 'WORKOS_REFRESH_FAILED');
   }
 
   const data = await res.json();
@@ -66,10 +73,13 @@ export async function forceTokenRefresh(organizationId?: string): Promise<void> 
   }
 }
 
-// Centralized HTTP-status → CliError subclass mapping. Every non-ok response
+// Centralized HTTP-status → AppError subclass mapping. Every non-ok response
 // from apiClient funnels through here so that error shape/exit codes stay
 // consistent across commands. Keep this in sync with the error-hierarchy
 // contract in output/error.ts (exit codes: 2 / 3 / 4 / 5 / 6).
+//
+// Return type is `CliError` — a Phase 108 alias that is identical at runtime
+// to `AppError` under Phase 123 Plan 10. Existing callers see no change.
 export async function mapApiError(res: Response): Promise<CliError> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: any = await res.json().catch(() => ({ message: res.statusText }));
@@ -113,12 +123,12 @@ export async function mapApiError(res: Response): Promise<CliError> {
     return err;
   }
   if (res.status === 429) {
-    // REUSE the existing ConflictError (exitCode 6) — output/error.ts has
-    // no dedicated rate-limit class, and inventing one here would fork the
-    // 7-code exit-code contract locked in Phase 108. The body.code
-    // 'RATE_LIMITED' matches the backend's UserIdThrottlerGuard structured
-    // 429 body.
-    return new ConflictError(
+    // Phase 123 Plan 10 — use the new RateLimitError class (sev3, httpStatus
+    // 429). Exit code remains 6 so the Phase 108 exit-code contract for 429
+    // is preserved (historically this flowed through ConflictError → exit 6).
+    // The body.code 'RATE_LIMITED' matches the backend's
+    // UserIdThrottlerGuard structured 429 body.
+    return new RateLimitError(
       msg && msg !== 'Too Many Requests'
         ? msg
         : 'Too many codes minted. Wait a minute and retry.',
