@@ -90,13 +90,48 @@ export async function mapApiError(res: Response): Promise<CliError> {
     return new PermissionError(cfg.activeWorkspaceSlug ?? '<unknown>');
   }
   if (res.status === 409) return new ConflictError(msg, code ?? 'CONFLICT');
+  // Phase 122 — bootstrap-code exchange error mapping.
+  // 404 and 410 collapse to the same user-facing message (oracle-attack
+  // defense — brute-force guessers can't distinguish "unknown code" from
+  // "already spent code"). ApiError.exitCode defaults to 1; we override
+  // to 5 on the instance so the CLI's exit-code contract stays honest
+  // ("API rejected the bootstrap code" is a distinct failure class).
+  if (res.status === 404 && code === 'BOOTSTRAP_NOT_FOUND') {
+    const err = new ApiError(
+      'Code invalid or already used. Ask the dashboard user to click Copy again.',
+      404,
+    );
+    err.exitCode = 5;
+    return err;
+  }
+  if (res.status === 410 && code === 'BOOTSTRAP_EXPIRED_OR_USED') {
+    const err = new ApiError(
+      'Code expired or already used. Ask the dashboard user to click Copy again.',
+      410,
+    );
+    err.exitCode = 5;
+    return err;
+  }
+  if (res.status === 429) {
+    // REUSE the existing ConflictError (exitCode 6) — output/error.ts has
+    // no dedicated rate-limit class, and inventing one here would fork the
+    // 7-code exit-code contract locked in Phase 108. The body.code
+    // 'RATE_LIMITED' matches the backend's UserIdThrottlerGuard structured
+    // 429 body.
+    return new ConflictError(
+      msg && msg !== 'Too Many Requests'
+        ? msg
+        : 'Too many codes minted. Wait a minute and retry.',
+      'RATE_LIMITED',
+    );
+  }
   if (res.status >= 500) {
     return new ApiError('Something went wrong on our end. Try again later.', res.status);
   }
   return new ApiError(msg, res.status);
 }
 
-function isNetworkFailure(err: unknown): boolean {
+export function isNetworkFailure(err: unknown): boolean {
   if (err instanceof TypeError) return true;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const code = (err as any)?.code;
