@@ -438,6 +438,10 @@ export async function runBootstrapCodeExchange(
     activeWorkspaceSlug: data.workspace.name,
   });
 
+  // NOTE: prior.workspaceSlug is the stored activeWorkspaceSlug (set on line 438
+  // to data.workspace.name); today slug === name for all existing sessions. If a
+  // future rename sanitizes slug to a lowercase form, update this comparison to
+  // compare against workspace.id (publicId) or keep a stored workspace.name field.
   if (
     prior &&
     (prior.email !== data.user.email || prior.workspaceSlug !== data.workspace.name)
@@ -558,6 +562,7 @@ export function loginCommand(program: Command): void {
 EXAMPLES:
   $ hookmyapp login
   $ hookmyapp login --code hma_boot_xxx                    # zero-browser AI paste
+  $ hookmyapp login --workspace acme-corp                  # preselect workspace
   $ hookmyapp login --next sandbox --phone +15551234567    # scripts / CI
 
 This runs the post-login wizard:
