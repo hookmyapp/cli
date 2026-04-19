@@ -59,7 +59,11 @@ export { SEVERITY_TO_LEVEL, severityToLevel } from '../errors/base.js';
  * needed (UserBlockingError → sev1, UnexpectedError → sev2, …).
  */
 export class CliError extends AppError {
-  static readonly severity = 'sev3' as const;
+  // Typed as the broad `Severity` union (not a narrowed `'sev3'` literal) so
+  // that subclasses can override with `'sev1'` / `'sev2'` without tripping
+  // TS2417 `incorrectly extends base class static side`. The runtime default
+  // stays `'sev3'` — a safe, back-compat user-facing tier.
+  static override readonly severity: 'sev1' | 'sev2' | 'sev3' = 'sev3';
   public exitCode: number = 1;
 
   constructor(userMessage: string, code: string, statusCode?: number) {
