@@ -13,9 +13,10 @@ import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerSandboxCommand } from './commands/sandbox.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { registerConfigCommand } from './commands/config.js';
-import { CliError, outputError } from './output/error.js';
+import { CliError, UnexpectedError, exitCodeFor, outputError } from './output/error.js';
 import { addExamples } from './output/help.js';
 import { VALID_ENV_NAMES, isValidEnv } from './config/env-profiles.js';
+import { initSentryLazy, captureError, flushAndExit } from './observability/sentry.js';
 
 const pkg = JSON.parse(
   readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf-8'),
@@ -146,8 +147,15 @@ if (sandboxCmd) {
 }
 
 async function main(): Promise<void> {
+  // Phase 123 Plan 10 — init Sentry early so top-level throws + unhandled
+  // rejections capture before we hit the exit boundary. The function is
+  // idempotent + lazy: if telemetry is disabled (HOOKMYAPP_TELEMETRY=off
+  // or `config set telemetry off`), Sentry is never loaded.
+  await initSentryLazy();
+
   try {
     await program.parseAsync();
+    await flushAndExit(0);
   } catch (err) {
     const human = resolveHuman();
     const debug = program.opts().debug ?? process.argv.includes('--debug');
@@ -157,17 +165,21 @@ async function main(): Promise<void> {
         process.stderr.write('\n' + err.stack + '\n');
       }
     } else if (err instanceof CommanderError) {
-      if (err.exitCode === 0) process.exit(0); // --help, --version
-      // Arg errors already formatted by configureOutput
+      if (err.exitCode === 0) await flushAndExit(0); // --help, --version
+      // Arg errors already formatted by configureOutput — exit via
+      // flushAndExit below so any early Sentry events drain.
     } else {
       const msg = 'Something went wrong. Try again later.';
-      outputError(new CliError(msg, 'UNKNOWN_ERROR'), { human });
+      outputError(new UnexpectedError(msg, 'UNKNOWN_ERROR'), { human });
       if (debug && err instanceof Error && err.stack) {
         process.stderr.write('\n' + err.stack + '\n');
       }
     }
-    const exitCode = err instanceof CliError ? err.exitCode : 1;
-    process.exit(exitCode);
+    // Forward CLI-local errors to Sentry (HTTP-5xx wrappers are filtered out
+    // by shouldCaptureToSentry — backend already captured them).
+    await captureError(err);
+    const exitCode = exitCodeFor(err);
+    await flushAndExit(exitCode);
   }
 }
 
@@ -177,11 +189,12 @@ async function main(): Promise<void> {
 // handler fires on test-driven CLI error paths — exiting the test worker
 // with code 1 even though every test passed. VITEST=true is set by vitest.
 if (!process.env.VITEST) {
-  process.on('unhandledRejection', (reason) => {
+  process.on('unhandledRejection', async (reason) => {
     const human = resolveHuman();
     const msg = 'Something went wrong. Try again later.';
-    outputError(new CliError(msg, 'UNKNOWN_ERROR'), { human });
-    process.exit(1);
+    outputError(new UnexpectedError(msg, 'UNKNOWN_ERROR'), { human });
+    await captureError(reason);
+    await flushAndExit(1);
   });
 
   main();
