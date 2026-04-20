@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-04-19T00:00:00Z",
+  "classes": {
+    "UserBlockingError": { "severity": "sev1", "httpStatus": 500 },
+    "DataIntegrityError": { "severity": "sev1", "httpStatus": 500 },
+    "SecurityBoundaryError": { "severity": "sev1", "httpStatus": 500 },
+    "PaymentStateError": { "severity": "sev1", "httpStatus": 500 },
+    "ConfigurationError": { "severity": "sev1", "httpStatus": 500 },
+    "BackgroundJobError": { "severity": "sev2" },
+    "QueueError": { "severity": "sev2" },
+    "UnexpectedError": { "severity": "sev2", "httpStatus": 500 },
+    "ValidationError": { "severity": "sev3", "httpStatus": 400 },
+    "NotFoundError": { "severity": "sev3", "httpStatus": 404 },
+    "ConflictError": { "severity": "sev3", "httpStatus": 409 },
+    "RateLimitError": { "severity": "sev3", "httpStatus": 429 },
+    "UserFacingError": { "severity": "sev3" },
+    "PermissionError": { "severity": "sev3", "httpStatus": 403 },
+    "AuthError": { "severity": "sev3", "httpStatus": 401 }
+  }
+}
