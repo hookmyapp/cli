@@ -23,6 +23,9 @@ jobs:
           NODE_ENV: development
       - name: Build
         run: node build.mjs
+        env:
+          HOOKMYAPP_SENTRY_DSN: ${{ secrets.HOOKMYAPP_CLI_SENTRY_DSN }}
+          HOOKMYAPP_CLI_RELEASE: ${{ github.ref_name }}
       - name: Verify build
         run: node bin/hookmyapp.js --version
       - name: Publish to npm (OIDC + provenance)
