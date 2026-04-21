@@ -179,7 +179,7 @@ describe('post-login wizard', () => {
         workspaceId: 'ws_TEST0001',
         phone: '+15551234567',
         status: 'pending_activation',
-        activationCode: 'ABCD',
+        accessToken: 'ABCD',
         hmacSecret: 'secret',
       });
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
