@@ -100,7 +100,7 @@ describe('wizard sandbox sub-flow — Phase 126 bind-code rework', () => {
       {
         id: 'ssn_TESTonly',
         phone: '15551112222',
-        accessToken: 'st_abcdef0123456789abcdef01',
+        accessToken: 'abc12345',
         hmacSecret: 'HMAC_only',
         status: 'active',
       },
