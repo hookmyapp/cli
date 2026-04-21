@@ -39,6 +39,14 @@ vi.mock('../../commands/sandbox-listen/index.js', () => ({
   registerListenCommand: vi.fn(),
 }));
 
+const runSandboxStartMock = vi.fn();
+vi.mock('../../commands/sandbox.js', () => ({
+  registerSandboxCommand: vi.fn(),
+  runSandboxStart: runSandboxStartMock,
+  runSandboxSend: vi.fn(),
+  runSandboxEnv: vi.fn(),
+}));
+
 const runChannelsConnectMock = vi.fn();
 vi.mock('../../commands/channels.js', () => ({
   runChannelsConnect: runChannelsConnectMock,
@@ -55,6 +63,7 @@ beforeEach(async () => {
   apiClientMock.mockReset();
   writeWorkspaceConfigMock.mockClear();
   runSandboxListenFlowMock.mockReset();
+  runSandboxStartMock.mockReset();
   runChannelsConnectMock.mockReset();
   workspaceConfigState = {};
   vi.resetModules();
@@ -160,7 +169,7 @@ describe('post-login wizard', () => {
     logSpy.mockRestore();
   });
 
-  it('--next sandbox --phone → delegates to sandbox flow (non-interactive)', async () => {
+  it('--next sandbox --phone matches existing → delegates to listen (Phase 126 bind-code model)', async () => {
     apiClientMock
       // workspaces fetch
       .mockResolvedValueOnce([
@@ -171,26 +180,37 @@ describe('post-login wizard', () => {
           workosOrganizationId: 'org_1',
         },
       ])
-      // sandbox sessions fetch
-      .mockResolvedValueOnce([])
-      // POST /sandbox/sessions
-      .mockResolvedValueOnce({
-        id: 'ssn_TEST001',
-        workspaceId: 'ws_TEST0001',
-        phone: '+15551234567',
-        status: 'pending_activation',
-        accessToken: 'ABCD',
-        hmacSecret: 'secret',
-      });
+      // sandbox sessions fetch — the session already exists (bound previously
+      // via `hookmyapp sandbox start`). Phase 126 no longer POSTs to
+      // /sandbox/sessions; binding is inbound-message driven.
+      .mockResolvedValueOnce([
+        {
+          id: 'ssn_TEST001',
+          workspaceId: 'ws_TEST0001',
+          phone: '15551234567',
+          status: 'active',
+          accessToken: 'st_abcdef0123456789abcdef01',
+          hmacSecret: 'secret',
+        },
+      ]);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await runWizard({ next: 'sandbox', phone: '+15551234567' });
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).not.toContain('Next steps');
-    // confirms runSandboxFlow took the phone path
+    // Confirms runSandboxFlow took the matching-existing-phone path.
     expect(apiClientMock).toHaveBeenCalledWith(
       '/sandbox/sessions?active=true',
       expect.objectContaining({ method: 'GET' }),
     );
+    // Guardrail: no POST to the deleted /sandbox/sessions endpoint.
+    for (const call of apiClientMock.mock.calls) {
+      const [path, init] = call;
+      if (path === '/sandbox/sessions' && init?.method === 'POST') {
+        throw new Error(
+          'Regression: wizard POSTed to /sandbox/sessions which was deleted in Phase 126 Plan 03',
+        );
+      }
+    }
     expect(runSandboxListenFlowMock).toHaveBeenCalledTimes(1);
     logSpy.mockRestore();
   });
