@@ -234,3 +234,36 @@ export async function apiClient(
     return undefined;
   }
 }
+
+// --- Phase 126 sandbox bind-code contract ---
+//
+// Mirrors backend/src/sandbox/bind-code.controller.ts (Plan 03 Wave 2 locked
+// contract: `GET /sandbox/bind-code` returns the caller's available bind code
+// for the active workspace. The code doubles as the consumed-session bearer
+// token once a phone claims it via an inbound WhatsApp message). The backend
+// populates `consumedSessionId` only after the code has been consumed — the
+// CLI polls until that field is present, then fetches the session detail via
+// the existing `GET /sandbox/sessions/:sessionPublicId` path.
+export interface BindCodeResponse {
+  code: string;
+  issuedAt: string; // ISO timestamp
+  consumedSessionId?: string; // ssn_<8> publicId; present iff the code was consumed
+}
+
+/**
+ * Fetch the caller's available bind code for the active workspace. Thin
+ * wrapper around `apiClient` so the CLI commands get a typed return +
+ * centralized retry/error-mapping through the main client.
+ *
+ * Errors funnel through `mapApiError`: 401 → AuthError (exit 4), 409 →
+ * ConflictError (exit 6), 5xx → ApiError (exit 1) — same contract every other
+ * typed helper in this file honors.
+ */
+export async function getBindCode(
+  workspaceId: string,
+): Promise<BindCodeResponse> {
+  return (await apiClient('/sandbox/bind-code', {
+    method: 'GET',
+    workspaceId,
+  })) as BindCodeResponse;
+}
