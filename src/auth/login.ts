@@ -42,7 +42,10 @@ interface SandboxSessionLite {
   workspaceId?: string;
   phone: string | null;
   status: string;
-  activationCode: string;
+  // Phase 126: consumed bind code persists on SandboxSession as `accessToken`
+  // (the starter-kit WHATSAPP_ACCESS_TOKEN). See 126-CONTEXT.md §1 for the
+  // rename rationale.
+  accessToken: string;
   hmacSecret: string;
 }
 
@@ -254,21 +257,34 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
 }
 
 /**
- * Sandbox sub-flow. Invoked by the wizard OR (future) by a standalone
- * `hookmyapp sandbox session` helper.
+ * Sandbox sub-flow. Invoked by the wizard when the user passes
+ * `hookmyapp login --next sandbox` (or `--phone <e164>` without `--next`).
  *
- * 0 sessions → prompt phone → create → listen.
- * 1 session  → direct listen (no prompt, no picker).
- * N sessions → picker with "+ Create new" option → listen.
- * --phone    → authoritative: match existing OR create → listen.
+ * Phase 126 bind-code model — session creation is phone-initiated (user
+ * sends a bind code from their WhatsApp into the shared sandbox number),
+ * NOT CLI-flag-initiated. The wizard therefore no longer offers a
+ * "create from phone" path; that's what `hookmyapp sandbox start` does,
+ * and we delegate to it directly.
+ *
+ * 0 sessions → runSandboxStart (prints bind code + QR + polls; on poll success,
+ *              runSandboxListenFlow starts automatically because `--listen` is true).
+ * 1 session  → direct listen (matches the "single active session" fast-path
+ *              from before Phase 126 — preserved so repeated logins don't
+ *              force the user through bind flow again).
+ * N sessions → picker (no "+ Create new" — bind flow handles that; the
+ *              picker is purely for choosing which ALREADY-bound phone to
+ *              listen on).
+ * --phone    → authoritative match on existing sessions. If present, listen.
+ *              If not, surface a ValidationError pointing at sandbox start;
+ *              the wizard does not try to bind a specific phone because
+ *              binding is inbound-message-driven, not CLI-driven.
  */
 export async function runSandboxFlow(
   opts: { phone?: string; json?: boolean } = {},
 ): Promise<void> {
   const { apiClient } = await import('../api/client.js');
   const { readWorkspaceConfig } = await import('../commands/workspace.js');
-  const { select, input } = await import('@inquirer/prompts');
-  const { runSandboxListenFlow } = await import('../commands/sandbox-listen/index.js');
+  const { select } = await import('@inquirer/prompts');
 
   const config = readWorkspaceConfig();
   const workspaceId = config.activeWorkspaceId;
@@ -283,7 +299,11 @@ export async function runSandboxFlow(
     workspaceId,
   })) as SandboxSessionLite[];
 
-  // --phone is authoritative: bypass every picker.
+  // --phone is authoritative: match against existing active sessions only.
+  // Phase 126 — we do NOT POST /sandbox/sessions here (endpoint deleted);
+  // binding is phone-initiated via an inbound WhatsApp message matching
+  // the user's bind code, which the dedicated `sandbox start` command
+  // drives.
   if (opts.phone) {
     const normalized = opts.phone.replace(/^\+/, '');
     const match = sessions.find(
@@ -293,27 +313,26 @@ export async function runSandboxFlow(
       await startListen(match, workspaceId, opts.json);
       return;
     }
-    // Not found → create (ConflictError bubbles up for PHONE_TAKEN_ANOTHER etc).
-    const created = await createSession(workspaceId, opts.phone);
-    await startListen(created, workspaceId, opts.json);
-    return;
+    throw new ValidationError(
+      `No active sandbox session for ${opts.phone}. Run ` +
+        `\`${cliCommandPrefix()} sandbox start\` and bind your phone first.`,
+    );
   }
 
   // --json mode cannot prompt; require an explicit --phone.
   if (opts.json) {
     throw new ValidationError(
-      'In --json mode, pass --phone <e164> to select or create a sandbox session.',
+      'In --json mode, pass --phone <e164> to select an existing sandbox session.',
     );
   }
 
   if (sessions.length === 0) {
-    const phone = await input({
-      message: 'Sandbox phone (E.164, e.g. +15551234567):',
-      validate: (v: string) =>
-        /^\+\d{6,15}$/.test(v) ? true : 'Enter a valid E.164 phone (starts with +)',
-    });
-    const created = await createSession(workspaceId, phone);
-    await startListen(created, workspaceId, opts.json);
+    // No active sessions — delegate to the bind-code flow. runSandboxStart
+    // prints the bind code + QR, polls, and (with --listen) chains into
+    // runSandboxListenFlow so the final UX is identical to the legacy
+    // "create + listen" single step.
+    const { runSandboxStart } = await import('../commands/sandbox.js');
+    await runSandboxStart({ listen: true, json: opts.json });
     return;
   }
 
@@ -322,43 +341,18 @@ export async function runSandboxFlow(
     return;
   }
 
-  // N sessions → picker with + Create new sentinel.
-  const CREATE_NEW = '__CREATE_NEW__';
-  const choice = (await select<SandboxSessionLite | string>({
+  // N sessions → picker over existing active sessions. No "+ Create new"
+  // sentinel — binding is inbound-message-driven; if the user wants to
+  // bind another phone they run `hookmyapp sandbox start` directly.
+  const choice = (await select<SandboxSessionLite>({
     message: 'Select a sandbox session',
-    choices: [
-      ...sessions.map((s) => ({
-        name: `+${(s.phone ?? '').replace(/^\+/, '')} (${s.status})`,
-        value: s as SandboxSessionLite | string,
-      })),
-      { name: c.dim('+ Create new'), value: CREATE_NEW as SandboxSessionLite | string },
-    ],
-  })) as SandboxSessionLite | string;
-
-  if (choice === CREATE_NEW) {
-    const phone = await input({
-      message: 'Sandbox phone (E.164):',
-      validate: (v: string) =>
-        /^\+\d{6,15}$/.test(v) ? true : 'Enter a valid E.164 phone',
-    });
-    const created = await createSession(workspaceId, phone);
-    await startListen(created, workspaceId, opts.json);
-    return;
-  }
-
-  await startListen(choice as SandboxSessionLite, workspaceId, opts.json);
-}
-
-async function createSession(
-  workspaceId: string,
-  phone: string,
-): Promise<SandboxSessionLite> {
-  const { apiClient } = await import('../api/client.js');
-  return (await apiClient('/sandbox/sessions', {
-    method: 'POST',
-    body: JSON.stringify({ phone }),
-    workspaceId,
+    choices: sessions.map((s) => ({
+      name: `+${(s.phone ?? '').replace(/^\+/, '')} (${s.status})`,
+      value: s,
+    })),
   })) as SandboxSessionLite;
+
+  await startListen(choice, workspaceId, opts.json);
 }
 
 async function startListen(
