@@ -189,7 +189,7 @@ describe('post-login wizard', () => {
           workspaceId: 'ws_TEST0001',
           phone: '15551234567',
           status: 'active',
-          accessToken: 'st_abcdef0123456789abcdef01',
+          accessToken: 'abc12345',
           hmacSecret: 'secret',
         },
       ]);
