@@ -42,7 +42,10 @@ interface SandboxSessionLite {
   workspaceId?: string;
   phone: string | null;
   status: string;
-  activationCode: string;
+  // Phase 126: consumed bind code persists on SandboxSession as `accessToken`
+  // (the starter-kit WHATSAPP_ACCESS_TOKEN). See 126-CONTEXT.md §1 for the
+  // rename rationale.
+  accessToken: string;
   hmacSecret: string;
 }
 
