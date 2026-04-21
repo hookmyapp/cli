@@ -61,7 +61,7 @@ describe('wizard sandbox sub-flow — Wave 0 RED', () => {
     apiClientMock.mockResolvedValueOnce({
       id: 'ssn_TESTnew',
       phone: '15551234567',
-      activationCode: 'ACT_new',
+      accessToken: 'ACT_new',
       hmacSecret: 'HMAC_new',
       status: 'pending_activation',
     });
@@ -82,7 +82,7 @@ describe('wizard sandbox sub-flow — Wave 0 RED', () => {
       {
         id: 'ssn_TESTonly',
         phone: '15551112222',
-        activationCode: 'ACT_only',
+        accessToken: 'ACT_only',
         hmacSecret: 'HMAC_only',
         status: 'active',
       },
@@ -106,7 +106,7 @@ describe('wizard sandbox sub-flow — Wave 0 RED', () => {
     apiClientMock.mockResolvedValueOnce({
       id: 'ssn_TESTnew',
       phone: '15553333333',
-      activationCode: 'ACT_new',
+      accessToken: 'ACT_new',
       hmacSecret: 'HMAC_new',
       status: 'pending_activation',
     });
