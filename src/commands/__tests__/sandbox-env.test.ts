@@ -60,7 +60,7 @@ function seedSession() {
     {
       id: 'ssn_TEST001',
       phone: '15551234567',
-      activationCode: 'ACT_xxx',
+      accessToken: 'ACT_xxx',
       hmacSecret: 'HMAC_yyy',
       status: 'active',
       workspaceId: 'ws_TEST0001',
@@ -152,7 +152,7 @@ describe('sandbox env — Wave 0 RED (canonical env block)', () => {
       {
         id: 'ssn_TESTa01',
         phone: '15551234567',
-        activationCode: 'ACT_xxx',
+        accessToken: 'ACT_xxx',
         hmacSecret: 'HMAC_yyy',
         status: 'active',
         workspaceId: 'ws_TEST0001',
@@ -160,7 +160,7 @@ describe('sandbox env — Wave 0 RED (canonical env block)', () => {
       {
         id: 'ssn_TESTb01',
         phone: '15559999999',
-        activationCode: 'ACT_other',
+        accessToken: 'ACT_other',
         hmacSecret: 'HMAC_other',
         status: 'active',
         workspaceId: 'ws_TEST0001',

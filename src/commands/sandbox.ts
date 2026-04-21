@@ -1,11 +1,16 @@
 import * as fs from 'node:fs';
 import type { Command } from 'commander';
 import { input, confirm, select } from '@inquirer/prompts';
-import { apiClient } from '../api/client.js';
+import qrcode from 'qrcode-terminal';
+import ora from 'ora';
+import pc from 'picocolors';
+import { apiClient, getBindCode } from '../api/client.js';
 import { output } from '../output/format.js';
 import {
   ValidationError,
   ApiError,
+  AuthError,
+  ConflictError,
   SessionWindowError,
 } from '../output/error.js';
 import { addExamples } from '../output/help.js';
@@ -13,15 +18,24 @@ import { c, icon } from '../output/color.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import { getEffectiveSandboxProxyUrl } from '../config/env-profiles.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
-import { pickSessionByPhone } from './sandbox-listen/picker.js';
+import { pickSessionByPhone, type Session as ListenSession } from './sandbox-listen/picker.js';
+import { runSandboxListenFlow } from './sandbox-listen/index.js';
 
+// Shared sandbox WABA number (same for staging + local + prod — per
+// project_sandbox_waba_credentials memory). Kept as a module-level constant
+// rather than fetched from the backend because the number never changes and
+// the CLI would prefer one less round-trip before the QR renders.
 const SANDBOX_WHATSAPP_NUMBER = '972557046276';
 
 interface SandboxSession {
   id: string;
+  publicId?: string;
   workspaceId: string;
   phone: string | null;
-  activationCode: string;
+  // Phase 126 rename: consumed bind code doubles as the bearer token for
+  // sandbox-proxy. See .planning/phases/126-sandbox-rework-session-onboarding/
+  // 126-CONTEXT.md §1 for the rename rationale.
+  accessToken: string;
   status: 'pending_activation' | 'active' | 'replaced' | 'expired';
   webhookUrl: string | null;
   // Cloudflare tunnel fields (populated only while a tunnel is live via
@@ -45,14 +59,14 @@ interface SandboxSession {
 // source of truth for starter-kit developers copy/pasting these values.
 function buildEnvBlock(session: {
   phone: string | null;
-  activationCode: string;
+  accessToken: string;
   hmacSecret: string;
 }): string {
   return [
     `VERIFY_TOKEN=${session.hmacSecret}`,
     `PORT=3000`,
     `WHATSAPP_API_URL=https://sandbox.hookmyapp.com/v22.0`,
-    `WHATSAPP_ACCESS_TOKEN=${session.activationCode}`,
+    `WHATSAPP_ACCESS_TOKEN=${session.accessToken}`,
     `WHATSAPP_PHONE_NUMBER_ID=${session.phone ?? ''}`,
     '',
   ].join('\n');
@@ -164,7 +178,7 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${session.activationCode}`,
+      Authorization: `Bearer ${session.accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -247,46 +261,181 @@ async function pickSendSession(
   });
 }
 
+/**
+ * `hookmyapp sandbox start` — Phase 126 bind-code flow.
+ *
+ * 1. Fetch the caller's available bind code for the active workspace via
+ *    `getBindCode(workspaceId)` (GET /sandbox/bind-code, Plan 03 contract).
+ * 2. Print the code + (TTY-only) terminal QR of the wa.me URL + raw URL as
+ *    fallback for non-Unicode terminals.
+ * 3. Poll `getBindCode` every 2s until `consumedSessionId` populates. Ctrl+C
+ *    cancels cleanly; after 5min the spinner warns once + keeps polling (no
+ *    hard timeout — the user left the terminal open on purpose).
+ * 4. Fetch the consumed session via `GET /sandbox/sessions/:sessionPublicId`;
+ *    announce `✓ Session created. Phone: {phone}. Token: {accessToken}`.
+ * 5. If `--listen` is passed, chain in-process into `runSandboxListenFlow`
+ *    (NEVER subprocess spawn — matches Phase 108 CLI-108-02 `runSandboxFlow`
+ *    precedent).
+ *
+ * Errors flow through `mapApiError`: 401 → AuthError (exit 4), 409 →
+ * ConflictError (exit 6; phone already bound to another workspace), 5xx →
+ * ApiError (exit 1).
+ *
+ * Exported for unit tests; the Commander registration in
+ * `registerSandboxCommand` delegates here.
+ */
+export async function runSandboxStart(opts: {
+  workspace?: string;
+  listen?: boolean;
+  json?: boolean;
+}): Promise<void> {
+  const isTty = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+  const workspaceId = await getDefaultWorkspaceId();
+
+  // 1. Fetch bind code.
+  const bindRes = await getBindCode(workspaceId);
+  const bindCode = bindRes.code;
+  const waUrl = `https://wa.me/${SANDBOX_WHATSAPP_NUMBER}?text=${bindCode}`;
+
+  // 2. Header + instruction + code display + QR + raw URL fallback.
+  //
+  // picocolors is imported directly here (rather than only via `c` from
+  // ../output/color.js) because `c` exposes the subset of styles the rest of
+  // the CLI uses (success/error/warn/dim); the start banner needs bold + cyan
+  // which aren't in that subset, and wrapping them would be dead code for the
+  // Phase 126 flow's one callsite.
+  console.log();
+  console.log(isTty ? pc.bold('Start a sandbox testing session') : 'Start a sandbox testing session');
+  console.log(
+    isTty
+      ? c.dim('Send this code to the sandbox WhatsApp number from the phone you want to bind.')
+      : 'Send this code to the sandbox WhatsApp number from the phone you want to bind.',
+  );
+  console.log();
+  console.log(isTty ? `  ${pc.bold(pc.cyan(bindCode))}` : `  ${bindCode}`);
+  console.log();
+
+  if (isTty) {
+    qrcode.generate(waUrl, { small: true });
+    console.log();
+  }
+
+  console.log(isTty ? c.dim(`Or open: ${waUrl}`) : `Or open: ${waUrl}`);
+  console.log();
+
+  // 3. Poll loop with spinner + Ctrl+C trap + 5-minute soft warning.
+  const spinner = isTty ? ora('Waiting for your WhatsApp message…') : null;
+  spinner?.start();
+
+  const onSigint = (): void => {
+    spinner?.stop();
+    console.log();
+    console.log(
+      isTty
+        ? c.dim(
+            'Cancelled. Your bind code is still valid — run `hookmyapp sandbox start` again to resume.',
+          )
+        : 'Cancelled. Your bind code is still valid — run `hookmyapp sandbox start` again to resume.',
+    );
+    process.exit(0);
+  };
+  process.once('SIGINT', onSigint);
+
+  const started = Date.now();
+  let warned = false;
+  let session: SandboxSession;
+
+  try {
+    while (true) {
+      try {
+        const latest = await getBindCode(workspaceId);
+        if (latest.consumedSessionId) {
+          // 4. Fetch session detail.
+          session = (await apiClient(
+            `/sandbox/sessions/${latest.consumedSessionId}`,
+            { workspaceId },
+          )) as SandboxSession;
+          spinner?.succeed(
+            `Session created. Phone: ${session.phone ?? '(unknown)'}. Token: ${session.accessToken}`,
+          );
+          if (!isTty) {
+            // Non-TTY fallback — spinner.succeed is a no-op when spinner is null.
+            console.log(
+              `Session created. Phone: ${session.phone ?? '(unknown)'}. Token: ${session.accessToken}`,
+            );
+          }
+          break;
+        }
+      } catch (err) {
+        if (err instanceof ConflictError) {
+          spinner?.fail(
+            'This number is already bound to another workspace. Remove the existing binding first.',
+          );
+          if (!isTty) {
+            console.error(
+              'This number is already bound to another workspace. Remove the existing binding first.',
+            );
+          }
+          throw err; // mapApiError already set exit 6
+        }
+        if (err instanceof AuthError) {
+          spinner?.fail("You're not logged in. Run `hookmyapp login` first.");
+          if (!isTty) {
+            console.error("You're not logged in. Run `hookmyapp login` first.");
+          }
+          throw err; // mapApiError already set exit 4
+        }
+        // Other transient errors (5xx, network) — don't fail the spinner;
+        // the next poll will retry. mapApiError already surfaced a typed
+        // subclass; suppress here and let the next tick re-attempt.
+      }
+
+      if (!warned && Date.now() - started > 5 * 60 * 1000) {
+        spinner?.warn('Still waiting. Press Ctrl+C to cancel, or leave this running.');
+        spinner?.start('Waiting for your WhatsApp message…');
+        warned = true;
+      }
+
+      await sleep(2000);
+    }
+  } finally {
+    process.removeListener('SIGINT', onSigint);
+  }
+
+  // 5. Optional --listen chain (in-process).
+  if (opts.listen) {
+    console.log(
+      isTty
+        ? c.dim('→ Starting sandbox listener…')
+        : '→ Starting sandbox listener…',
+    );
+    const listenSession: ListenSession = {
+      id: session.publicId ?? session.id,
+      phone: session.phone,
+      workspaceId: session.workspaceId,
+      status: session.status,
+      lastHeartbeatAt: session.lastHeartbeatAt,
+    };
+    await runSandboxListenFlow(listenSession, {});
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function registerSandboxCommand(program: Command): void {
   const sandbox = program.command('sandbox').description('Manage sandbox sessions for local development');
 
   const sandboxStart = sandbox
     .command('start')
-    .description('Create a new sandbox session')
-    .option('--phone <phone>', 'Phone number for WhatsApp activation')
-    .action(async (opts: { phone?: string }) => {
-      let phone = opts.phone;
-      if (!phone) {
-        phone = await input({
-          message: 'Phone number for WhatsApp activation (e.g. +1234567890):',
-        });
-      }
-
-      const workspaceId = await getDefaultWorkspaceId();
-      const session: SandboxSession = await apiClient('/sandbox/sessions', {
-        method: 'POST',
-        body: JSON.stringify({ phone }),
-        workspaceId,
+    .description('Bind your WhatsApp phone to this workspace and start a sandbox session')
+    .option('--listen', 'After bind, immediately start the webhook listener')
+    .action(async (opts: { listen?: boolean }) => {
+      await runSandboxStart({
+        listen: opts.listen,
+        json: !!program.opts().json,
       });
-
-      const human = !program.opts().json;
-      if (!human) {
-        output(session, { human: false });
-        return;
-      }
-
-      console.log(`\nSandbox session created!\n`);
-      console.log(`  1. Send your activation code via WhatsApp:`);
-      console.log(`     Open: https://wa.me/${SANDBOX_WHATSAPP_NUMBER}?text=${session.activationCode}\n`);
-
-      if (session.status === 'active') {
-        printActiveSteps(session);
-      } else {
-        console.log(`  Your session is pending activation.`);
-        console.log(`  After sending the activation code, run:\n`);
-        console.log(`     ${cliCommandPrefix()} sandbox status\n`);
-        console.log(`  to see your tunnel credentials and next steps.\n`);
-      }
     });
 
   const sandboxStatus = sandbox
@@ -311,7 +460,7 @@ export function registerSandboxCommand(program: Command): void {
         const phone = session.phone ? `+${session.phone.replace(/^\+/, '')}` : '(none)';
         console.log(`\nSandbox session for ${phone}`);
         console.log(`  Status:          ${session.status}`);
-        console.log(`  Activation Code: ${session.activationCode}`);
+        console.log(`  Access Token:    ${session.accessToken}`);
         console.log(`  Tunnel Host:     ${session.hostname ?? '(no live tunnel)'}`);
         console.log(`  Webhook URL:     ${session.webhookUrl ?? '(not set — run sandbox listen)'}`);
         console.log(`  Activated At:    ${session.activatedAt ?? '(not yet)'}`);
@@ -412,7 +561,8 @@ export function registerSandboxCommand(program: Command): void {
     sandbox,
     `
 EXAMPLES:
-  $ hookmyapp sandbox start --phone +15551234567
+  $ hookmyapp sandbox start
+  $ hookmyapp sandbox start --listen
   $ hookmyapp sandbox listen
   $ hookmyapp sandbox status
 `,
@@ -422,8 +572,8 @@ EXAMPLES:
     sandboxStart,
     `
 EXAMPLES:
-  $ hookmyapp sandbox start --phone +15551234567
   $ hookmyapp sandbox start
+  $ hookmyapp sandbox start --listen
 `,
   );
 

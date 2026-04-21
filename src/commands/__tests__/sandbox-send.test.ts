@@ -50,7 +50,7 @@ function seedOneSession() {
     {
       id: 'ssn_TEST001',
       phone: '15551234567',
-      activationCode: 'ACT_xxx',
+      accessToken: 'ACT_xxx',
       hmacSecret: 'HMAC_yyy',
       status: 'active',
       workspaceId: 'ws_TEST0001',
@@ -101,7 +101,7 @@ describe('sandbox send', () => {
       {
         id: 'ssn_TEST001',
         phone: '15551234567',
-        activationCode: 'ACT_xxx',
+        accessToken: 'ACT_xxx',
         hmacSecret: 'HMAC_yyy',
         status: 'active',
         workspaceId: 'ws_TEST0001',
@@ -110,7 +110,7 @@ describe('sandbox send', () => {
       {
         id: 'sess-2',
         phone: '15559999999',
-        activationCode: 'ACT_two',
+        accessToken: 'ACT_two',
         hmacSecret: 'HMAC_two',
         status: 'active',
         workspaceId: 'ws_TEST0001',
@@ -120,7 +120,7 @@ describe('sandbox send', () => {
     selectMock.mockResolvedValueOnce({
       id: 'ssn_TEST001',
       phone: '15551234567',
-      activationCode: 'ACT_xxx',
+      accessToken: 'ACT_xxx',
       sandboxPhoneNumberId: '1080996501762047',
     });
     inputMock.mockResolvedValueOnce('prompted message');
@@ -185,7 +185,7 @@ describe('sandbox send', () => {
       {
         id: 'ssn_TEST001',
         phone: '+15551234567', // with leading +
-        activationCode: 'ACT_xxx',
+        accessToken: 'ACT_xxx',
         hmacSecret: 'HMAC_yyy',
         status: 'active',
         workspaceId: 'ws_TEST0001',
@@ -213,7 +213,7 @@ describe('sandbox send', () => {
     selectMock.mockResolvedValueOnce({
       id: 'ssn_TEST001',
       phone: '15551234567',
-      activationCode: 'ACT_xxx',
+      accessToken: 'ACT_xxx',
       sandboxPhoneNumberId: '1080996501762047',
     });
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
@@ -240,7 +240,7 @@ describe('sandbox send', () => {
       {
         id: 'ssn_TEST001',
         phone: '15551234567',
-        activationCode: 'ACT_xxx',
+        accessToken: 'ACT_xxx',
         hmacSecret: 'HMAC_yyy',
         status: 'active',
         workspaceId: 'ws_TEST0001',
@@ -257,7 +257,7 @@ describe('sandbox send', () => {
       {
         id: 'ssn_TEST001',
         phone: '15551234567',
-        activationCode: 'ACT_xxx',
+        accessToken: 'ACT_xxx',
         hmacSecret: 'HMAC_yyy',
         status: 'active',
         workspaceId: 'ws_TEST0001',
