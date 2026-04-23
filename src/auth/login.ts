@@ -8,6 +8,7 @@ import {
   getEffectiveApiUrl,
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
+import { posthogAliasAndIdentify } from '../observability/posthog.js';
 
 // --- Phase 122 bootstrap-code exchange DTO ---
 // Mirrors backend/src/auth/bootstrap/dto/exchange-bootstrap.dto.ts (Wave 1
@@ -85,6 +86,13 @@ async function pollForTokens(opts: {
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
         expiresAt: Math.floor(Date.now() / 1000) + 900,
+      });
+      // Phase 125 — alias machineId → workosSub once per (machine, user) and
+      // emit cli_logged_in. Fail-open: a posthog hiccup must never block the
+      // login UX.
+      await posthogAliasAndIdentify({
+        jwt: data.access_token,
+        loginMethod: 'device',
       });
       console.log(`\n${c.success(icon.success)} Logged in successfully\n`);
       return;
@@ -430,6 +438,14 @@ export async function runBootstrapCodeExchange(
   writeWorkspaceConfig({
     activeWorkspaceId: data.workspace.id,
     activeWorkspaceSlug: data.workspace.name,
+  });
+
+  // Phase 125 — alias machineId → workosSub once per (machine, user) and
+  // emit cli_logged_in. workspace publicId is already on disk above so
+  // baseline workspace_id resolves. Fail-open: posthog hiccup ≠ blocked login.
+  await posthogAliasAndIdentify({
+    jwt: data.accessToken,
+    loginMethod: 'code',
   });
 
   // NOTE: prior.workspaceSlug is the stored activeWorkspaceSlug (set on line 438

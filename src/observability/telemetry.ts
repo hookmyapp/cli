@@ -100,7 +100,7 @@ export function maybePrintFirstRunDisclosure(): void {
   process.stderr.write(
     [
       '',
-      'ℹ Telemetry: HookMyApp CLI reports crashes to help us fix bugs fast.',
+      'ℹ Telemetry: HookMyApp CLI reports crashes + usage analytics to help us fix bugs and improve UX.',
       '  No command arguments, file contents, or env var values are sent.',
       '  Disable: `hookmyapp config set telemetry off` or `HOOKMYAPP_TELEMETRY=off`',
       '',

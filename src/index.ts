@@ -17,6 +17,13 @@ import { CliError, UnexpectedError, exitCodeFor, outputError } from './output/er
 import { addExamples } from './output/help.js';
 import { VALID_ENV_NAMES, isValidEnv } from './config/env-profiles.js';
 import { initSentryLazy, captureError, flushAndExit } from './observability/sentry.js';
+import {
+  maybeEmitFirstRun,
+  emit,
+  shouldEmitCommandInvoked,
+  getCliVersion,
+} from './observability/posthog.js';
+import type { CliExitCode } from './analytics/events.js';
 
 const pkg = JSON.parse(
   readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf-8'),
@@ -41,13 +48,22 @@ program.option(
   `Environment profile (one-off override). One of: ${VALID_ENV_NAMES.join(', ')}.`,
 );
 
+// Phase 125 — capture the command + subcommand resolved by Commander into
+// module-level state so main() can emit `cli_command_invoked` with the
+// correct names without each action handler having to wrap itself. Commander
+// passes `actionCommand` (the leaf) AND we walk parents to reconstruct the
+// full path, e.g. `workspace list` (parent + leaf) or `login` (no parent).
+let invokedCommand: string | null = null;
+let invokedSubcommand: string | null = null;
+const ROOT_NAME = 'hookmyapp';
+
 // Propagate --env flag into process.env.HOOKMYAPP_ENV so downstream resolvers
 // (src/config/env-profiles.ts, api/client.ts, etc.) pick it up uniformly.
 // Also propagate --debug into HOOKMYAPP_DEBUG=1 so the cloudflared stderr
 // filter in sandbox-listen/lifecycle.ts can bypass its allowlist and surface
 // every line verbatim — whether the user invokes `sandbox listen --debug`
 // directly or reaches it through the wizard (auth/login.ts runSandboxFlow).
-program.hook('preAction', (thisCommand) => {
+program.hook('preAction', (thisCommand, actionCommand) => {
   const opts = thisCommand.optsWithGlobals();
   const envFlag = opts.env as string | undefined;
   if (envFlag) {
@@ -63,6 +79,20 @@ program.hook('preAction', (thisCommand) => {
   if (opts.debug) {
     process.env.HOOKMYAPP_DEBUG = '1';
   }
+
+  // Capture the resolved command name for cli_command_invoked. Walk up the
+  // parent chain to skip the root program name. e.g.
+  //   hookmyapp workspace list  → command='workspace', subcommand='list'
+  //   hookmyapp login           → command='login',     subcommand=null
+  //   hookmyapp sandbox listen  → command='sandbox',   subcommand='listen'
+  const chain: string[] = [];
+  let cur: Command | null = actionCommand;
+  while (cur && cur.name() !== ROOT_NAME) {
+    chain.unshift(cur.name());
+    cur = cur.parent;
+  }
+  invokedCommand = chain[0] ?? null;
+  invokedSubcommand = chain[1] ?? null;
 });
 
 addExamples(
@@ -146,6 +176,32 @@ if (sandboxCmd) {
   registerListenCommand(sandboxCmd, program);
 }
 
+async function emitCommandInvoked(
+  exit_code: CliExitCode,
+  duration_ms: number,
+  errorCode: string | null,
+): Promise<void> {
+  if (invokedCommand === null) return; // Commander didn't dispatch (e.g. --help, --version, parse error)
+  if (!shouldEmitCommandInvoked(invokedCommand, invokedSubcommand)) return;
+  await emit('cli_command_invoked', {
+    cli_version: getCliVersion(),
+    command: invokedCommand,
+    subcommand: invokedSubcommand,
+    exit_code,
+    duration_ms,
+    node_version: process.version,
+    platform: process.platform,
+  });
+  if (errorCode !== null) {
+    await emit('cli_error_shown', {
+      cli_version: getCliVersion(),
+      error_code: errorCode,
+      exit_code,
+      command: invokedCommand,
+    });
+  }
+}
+
 async function main(): Promise<void> {
   // Phase 123 Plan 10 — init Sentry early so top-level throws + unhandled
   // rejections capture before we hit the exit boundary. The function is
@@ -153,8 +209,15 @@ async function main(): Promise<void> {
   // or `config set telemetry off`), Sentry is never loaded.
   await initSentryLazy();
 
+  // Phase 125 Plan 02 — emit cli_first_run on the first-ever invocation per
+  // machine. Idempotent: subsequent invocations short-circuit on the
+  // persisted machine-id presence. Skipped silently when telemetry is off.
+  await maybeEmitFirstRun();
+
+  const startedAt = Date.now();
   try {
     await program.parseAsync();
+    await emitCommandInvoked(0, Date.now() - startedAt, null);
     await flushAndExit(0);
   } catch (err) {
     const human = resolveHuman();
@@ -178,7 +241,18 @@ async function main(): Promise<void> {
     // Forward CLI-local errors to Sentry (HTTP-5xx wrappers are filtered out
     // by shouldCaptureToSentry — backend already captured them).
     await captureError(err);
-    const exitCode = exitCodeFor(err);
+    const ec = exitCodeFor(err);
+    const exitCode = ec;
+    const ecBucket = (ec >= 0 && ec <= 6 ? ec : 1) as CliExitCode;
+    let errorCode: string | null = null;
+    if (err instanceof CliError) {
+      errorCode = err.code;
+    } else if (err && typeof err === 'object' && typeof (err as { code?: unknown }).code === 'string') {
+      errorCode = (err as { code: string }).code;
+    } else {
+      errorCode = 'UNKNOWN_ERROR';
+    }
+    await emitCommandInvoked(ecBucket, Date.now() - startedAt, errorCode);
     await flushAndExit(exitCode);
   }
 }

@@ -33,6 +33,7 @@
 
 import { isTelemetryEnabled, maybePrintFirstRunDisclosure } from './telemetry.js';
 import { decodeJwtSub } from './jwt-light.js';
+import { shutdownPostHog } from './posthog.js';
 
 // Module-level state — one init per process, one Sentry module instance.
 let initialized = false;
@@ -186,20 +187,29 @@ export async function captureError(err: unknown): Promise<void> {
 }
 
 /**
- * Drain Sentry buffer (2 s timeout) then exit. Replaces direct `process.exit()`
- * at the top-level main() boundary + unhandledRejection handler.
+ * Drain Sentry buffer + PostHog queue (each with a 2s timeout) then exit.
+ * Replaces direct `process.exit()` at the top-level main() boundary +
+ * unhandledRejection handler.
  *
- * If Sentry isn't initialized, exits immediately — zero added latency on the
- * happy path for telemetry-off users.
+ * Phase 125 (CONTEXT.md §125-02 must_haves): both vendors are awaited in
+ * PARALLEL via Promise.allSettled — neither rejection blocks the other,
+ * neither vendor's slow drain serializes behind the other. If neither SDK
+ * is initialized this is essentially a no-op + immediate exit (zero added
+ * latency on the happy path for telemetry-off users).
  */
 export async function flushAndExit(exitCode: number): Promise<never> {
-  if (initialized && sentryModule) {
-    try {
-      await sentryModule.close(2000);
-    } catch {
-      // Swallow — never block exit.
-    }
-  }
+  await Promise.allSettled([
+    (async (): Promise<void> => {
+      if (initialized && sentryModule) {
+        try {
+          await sentryModule.close(2000);
+        } catch {
+          // Swallow — never block exit.
+        }
+      }
+    })(),
+    shutdownPostHog(2000),
+  ]);
   process.exit(exitCode);
   // Unreachable; satisfies the `Promise<never>` return type for TS.
   throw new Error('unreachable');
