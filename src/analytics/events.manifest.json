@@ -1,0 +1,111 @@
+{
+  "version": "1",
+  "generatedAt": "2026-04-23T00:00:00Z",
+  "description": "Phase 125 typed PostHog event registry. Byte-mirrored to /Users/ordvir/COD/cli/src/analytics/events.manifest.json. Edit the monorepo copy then re-run the CLI-side sync; manifest-drift.spec.ts fails on drift in either repo. Baseline properties (site, environment, workspace_id, days_since_signup) are implicit on every event and injected by super-properties.ts — not listed per-event below.",
+  "events": [
+    {
+      "name": "cli_first_run",
+      "properties": ["cli_version", "node_version", "platform"]
+    },
+    {
+      "name": "cli_logged_in",
+      "properties": ["cli_version", "login_method", "workspace_public_id"]
+    },
+    {
+      "name": "cli_command_invoked",
+      "properties": [
+        "cli_version",
+        "command",
+        "subcommand",
+        "exit_code",
+        "duration_ms",
+        "node_version",
+        "platform"
+      ]
+    },
+    {
+      "name": "cli_sandbox_listen_started",
+      "properties": ["cli_version", "session_public_id", "workspace_public_id"]
+    },
+    {
+      "name": "cli_sandbox_listen_heartbeat",
+      "properties": ["cli_version", "session_public_id", "elapsed_minutes"]
+    },
+    {
+      "name": "cli_error_shown",
+      "properties": ["cli_version", "error_code", "exit_code", "command"]
+    },
+    {
+      "name": "sandbox_message_sent",
+      "properties": ["workspace_id", "message_type", "meta_status"]
+    },
+    {
+      "name": "sandbox_message_received",
+      "properties": ["workspace_id", "session_public_id"]
+    },
+    {
+      "name": "sandbox_message_forwarded",
+      "properties": ["workspace_id", "session_public_id", "forward_duration_ms"]
+    },
+    {
+      "name": "webhook_forwarded",
+      "properties": ["workspace_id", "path", "destination_url_hash", "forward_duration_ms"]
+    },
+    {
+      "name": "first_webhook_forwarded",
+      "properties": ["workspace_id"]
+    },
+    {
+      "name": "sandbox_session_created",
+      "properties": ["workspace_id", "session_public_id"]
+    },
+    {
+      "name": "quickstart_code_copied",
+      "properties": ["workspace_id"]
+    },
+    {
+      "name": "quickstart_phone_copied",
+      "properties": ["workspace_id"]
+    },
+    {
+      "name": "quickstart_whatsapp_link_opened",
+      "properties": ["workspace_id"]
+    },
+    {
+      "name": "quickstart_session_selected",
+      "properties": ["workspace_id", "session_public_id"]
+    },
+    {
+      "name": "quickstart_bind_new_number_clicked",
+      "properties": ["workspace_id"]
+    },
+    {
+      "name": "sandbox_instructions_copied",
+      "properties": ["workspace_id"]
+    },
+    {
+      "name": "workspace_switched",
+      "properties": ["from_workspace_id", "to_workspace_id"]
+    },
+    {
+      "name": "invite_accepted",
+      "properties": ["workspace_id"]
+    },
+    {
+      "name": "webhook_test_fired",
+      "properties": ["workspace_id", "result", "status_code"]
+    },
+    {
+      "name": "plan_checkout_completed",
+      "properties": ["workspace_id", "plan"]
+    },
+    {
+      "name": "plan_checkout_abandoned",
+      "properties": ["workspace_id", "plan"]
+    },
+    {
+      "name": "api_error_shown",
+      "properties": ["workspace_id", "error_code", "status_code"]
+    }
+  ]
+}
