@@ -216,3 +216,89 @@ afterEach(() => {
     // best-effort
   }
 });
+
+// Phase 125 Plan 02: HOOKMYAPP_TELEMETRY=off is the SINGLE kill-switch that
+// covers both Sentry AND PostHog (CONTEXT.md §4 — "single CLI opt-out").
+// This block lives here (not in posthog-init.test.ts) so the contract
+// "isTelemetryEnabled is the one shared gate" is documented next to the gate
+// itself.
+import { vi } from 'vitest';
+
+vi.mock('posthog-node', () => {
+  const ctor = vi.fn();
+  class FakePostHog {
+    constructor(token: string, opts: Record<string, unknown>) {
+      ctor(token, opts);
+    }
+    capture = vi.fn();
+    alias = vi.fn();
+    shutdown = vi.fn().mockResolvedValue(undefined);
+    on = vi.fn();
+  }
+  // expose ctor via a side-channel for the test below
+  (globalThis as { __fakePostHogCtor?: ReturnType<typeof vi.fn> }).__fakePostHogCtor = ctor;
+  return { PostHog: FakePostHog };
+});
+
+describe('HOOKMYAPP_TELEMETRY=off covers BOTH Sentry AND PostHog', () => {
+  beforeEach(() => {
+    resetConfig();
+    delete process.env.HOOKMYAPP_TELEMETRY;
+    delete process.env.HOOKMYAPP_POSTHOG_TOKEN;
+    delete process.env.HOOKMYAPP_SENTRY_DSN;
+  });
+
+  afterEach(() => {
+    delete process.env.HOOKMYAPP_TELEMETRY;
+    delete process.env.HOOKMYAPP_POSTHOG_TOKEN;
+    delete process.env.HOOKMYAPP_SENTRY_DSN;
+  });
+
+  it('HOOKMYAPP_TELEMETRY=off → BOTH initSentryLazy + initPostHogLazy are no-ops', async () => {
+    const { initSentryLazy, __isInitializedForTests: sentryInitd, __resetForTests: resetSentry } =
+      await import('../observability/sentry.js');
+    const {
+      initPostHogLazy,
+      __isInitializedForTests: posthogInitd,
+      __resetForTests: resetPosthog,
+    } = await import('../observability/posthog.js');
+
+    resetSentry();
+    resetPosthog();
+    process.env.HOOKMYAPP_TELEMETRY = 'off';
+    process.env.HOOKMYAPP_SENTRY_DSN = 'https://fake@sentry.io/1';
+    process.env.HOOKMYAPP_POSTHOG_TOKEN = 'phc_fake';
+
+    await initSentryLazy();
+    const phClient = await initPostHogLazy();
+
+    expect(sentryInitd()).toBe(false);
+    expect(posthogInitd()).toBe(false);
+    expect(phClient).toBeNull();
+    const ctor = (globalThis as { __fakePostHogCtor?: ReturnType<typeof vi.fn> }).__fakePostHogCtor;
+    expect(ctor?.mock.calls.length ?? 0).toBe(0);
+  });
+
+  it('persisted telemetry=off → BOTH SDKs no-op (single mental model)', async () => {
+    const { initSentryLazy, __isInitializedForTests: sentryInitd, __resetForTests: resetSentry } =
+      await import('../observability/sentry.js');
+    const {
+      initPostHogLazy,
+      __isInitializedForTests: posthogInitd,
+      __resetForTests: resetPosthog,
+    } = await import('../observability/posthog.js');
+
+    resetSentry();
+    resetPosthog();
+    setPersistedTelemetry('off');
+    process.env.HOOKMYAPP_SENTRY_DSN = 'https://fake@sentry.io/1';
+    process.env.HOOKMYAPP_POSTHOG_TOKEN = 'phc_fake';
+
+    await initSentryLazy();
+    const phClient = await initPostHogLazy();
+
+    expect(sentryInitd()).toBe(false);
+    expect(posthogInitd()).toBe(false);
+    expect(phClient).toBeNull();
+  });
+});
