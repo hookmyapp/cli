@@ -14,6 +14,7 @@
 
 import { spawn, ChildProcess } from 'node:child_process';
 import { apiClient } from '../../api/client.js';
+import { emit, getCliVersion } from '../../observability/posthog.js';
 
 // Exported so gracefulShutdown can flip it before sending SIGTERM. Once true,
 // cloudflared's stderr filter stops writing — otherwise every Ctrl-C surfaces
@@ -185,6 +186,14 @@ export interface GracefulShutdownArgs {
   cloudflaredChild: ChildProcess;
   proxyClose: () => Promise<void>;
   stopHeartbeat: () => void;
+  /**
+   * Phase 125 — stop the PostHog heartbeat timer. Separate from the
+   * tunnel-heartbeat `stopHeartbeat` above because the two are independent:
+   * the tunnel heartbeat pings the backend every 30s, the PostHog heartbeat
+   * emits an analytics event every 5 minutes. Both must be cleared on every
+   * shutdown path.
+   */
+  stopPosthogHeartbeat?: () => void;
   callBackendStop: () => Promise<void>;
 }
 
@@ -203,6 +212,12 @@ export async function gracefulShutdown(args: GracefulShutdownArgs): Promise<void
   markShuttingDown();
 
   args.stopHeartbeat();
+  // Phase 125 — tear down the PostHog heartbeat alongside the tunnel
+  // heartbeat. Symmetric on every teardown path (Ctrl-C, SIGTERM,
+  // cloudflared-exit handler in src/commands/sandbox-listen/index.ts) —
+  // RESEARCH §Pitfall 6 warns that a dangling timer will emit phantom
+  // heartbeats for dead sessions, corrupting duration analysis.
+  args.stopPosthogHeartbeat?.();
   try {
     await args.proxyClose();
   } catch {
@@ -224,4 +239,59 @@ export async function gracefulShutdown(args: GracefulShutdownArgs): Promise<void
       resolve();
     });
   });
+}
+
+/**
+ * Phase 125 Plan 02 Task 2 — PostHog heartbeat for `sandbox listen`.
+ *
+ * CONTEXT.md §5 + RESEARCH §Pattern 9: every 5 minutes while the listen
+ * session is live, emit `cli_sandbox_listen_heartbeat` with the running
+ * `elapsed_minutes`. Distinct from the tunnel `startHeartbeat` above — that
+ * one pings the backend every 30s and gates the session; this one is pure
+ * analytics for "how long did users actually use listen?" correlation
+ * post-launch (CONTEXT.md: "Duration is a property available for later
+ * correlation, NOT the basis of a pre-built heavy-user cohort").
+ *
+ * Chosen over start/end event pairs because:
+ *   - Survives force-kill (Ctrl+C, terminal close, SIGKILL) — a "session_end"
+ *     event on SIGKILL never fires.
+ *   - Bounded cardinality — 12 heartbeats/hour per session is trivial for
+ *     PostHog ingest.
+ *
+ * Teardown contract (RESEARCH §Pitfall 6): the handle's `.stop()` MUST be
+ * called from:
+ *   1. gracefulShutdown (Ctrl+C, SIGTERM) — wired via the
+ *      `stopPosthogHeartbeat` GracefulShutdownArgs field above.
+ *   2. The cloudflared `child.on('exit')` handler in
+ *      src/commands/sandbox-listen/index.ts — otherwise the session is
+ *      "dead" but the timer keeps firing phantom heartbeats every 5 min.
+ *
+ * `timer.unref()` ensures a dangling handle never keeps the event loop
+ * alive past the expected listen lifetime (defense in depth — teardown
+ * contract above is still the primary guarantee).
+ */
+export interface PosthogHeartbeatHandle {
+  stop: () => void;
+}
+
+export function startPosthogHeartbeat(opts: {
+  sessionId: string;
+  workspaceId: string;
+  intervalMs?: number;
+}): PosthogHeartbeatHandle {
+  const interval = opts.intervalMs ?? 300_000; // 5 minutes per CONTEXT §5
+  const startedAt = Date.now();
+  const timer = setInterval(() => {
+    void emit('cli_sandbox_listen_heartbeat', {
+      cli_version: getCliVersion(),
+      session_public_id: opts.sessionId,
+      elapsed_minutes: Math.floor((Date.now() - startedAt) / 60_000),
+    });
+  }, interval);
+  if (typeof (timer as NodeJS.Timeout).unref === 'function') {
+    (timer as NodeJS.Timeout).unref();
+  }
+  return {
+    stop: () => clearInterval(timer),
+  };
 }

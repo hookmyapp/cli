@@ -41,15 +41,27 @@ await build({
     'process.env.HOOKMYAPP_CLI_RELEASE': JSON.stringify(
       process.env.HOOKMYAPP_CLI_RELEASE ?? '',
     ),
+    // Phase 125 Plan 02 — bake PostHog token + host at build time. Same
+    // pattern as the Sentry DSN: publish-cli.yml passes HOOKMYAPP_POSTHOG_TOKEN
+    // + HOOKMYAPP_POSTHOG_HOST as build env vars sourced from GitHub repo
+    // secrets. Dev builds without these vars bake empty strings → lazy init
+    // no-ops. Token is a public phc_ key (safe to bake; same security profile
+    // as frontend VITE_PUBLIC_POSTHOG_TOKEN per CONTEXT.md §2).
+    'process.env.HOOKMYAPP_POSTHOG_TOKEN': JSON.stringify(
+      process.env.HOOKMYAPP_POSTHOG_TOKEN ?? '',
+    ),
+    'process.env.HOOKMYAPP_POSTHOG_HOST': JSON.stringify(
+      process.env.HOOKMYAPP_POSTHOG_HOST ?? '',
+    ),
   },
-  // Keep @sentry/node external — it's a real dependency (not devDep), so
-  // npm resolves it from the installed tree at runtime. Inlining it adds
-  // ~2MB raw + ~416KB gzip to dist/cli.js (OpenTelemetry instrumentation
-  // fan-out dwarfs the Sentry core), which blows past the Plan 10 target
-  // of ≤ 100KB gzip delta. With `external`, the dynamic-import path loads
-  // Sentry from the globally-installed node_modules only when telemetry is
-  // enabled + DSN baked — same fast path + much smaller bundle.
-  external: ['@sentry/node'],
+  // Keep @sentry/node + posthog-node external — real runtime deps (not
+  // devDeps), resolved from the installed node_modules tree. Inlining
+  // @sentry/node would add ~416KB gzip (OpenTelemetry fan-out); posthog-node
+  // is smaller but following the same pattern keeps the dist/cli.js bundle
+  // under the Plan 10 target of ≤ 100KB gzip delta and the dynamic-import
+  // fast path in posthog.ts loads it only when telemetry is enabled + token
+  // baked.
+  external: ['@sentry/node', 'posthog-node'],
 });
 
 console.log('Built dist/cli.js');
