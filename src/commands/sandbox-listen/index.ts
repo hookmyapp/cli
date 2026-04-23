@@ -25,9 +25,11 @@ import { pickSession, type Session } from './picker.js';
 import {
   spawnCloudflared,
   startHeartbeat,
+  startPosthogHeartbeat,
   gracefulShutdown,
 } from './lifecycle.js';
 import { checkForNewerCli } from './version-check.js';
+import { emit, getCliVersion } from '../../observability/posthog.js';
 
 export interface ListenOpts {
   port: number;
@@ -144,7 +146,23 @@ export async function runSandboxListenFlow(
     json: listenOpts.json,
   });
 
-  // Step 9 — heartbeat loop.
+  // Phase 125 — emit cli_sandbox_listen_started once the tunnel is live +
+  // start the PostHog 5-min heartbeat. Both are fire-and-forget from the
+  // UX perspective; fail-open in posthog.ts ensures observability blips
+  // never break the listen command.
+  void emit('cli_sandbox_listen_started', {
+    cli_version: getCliVersion(),
+    session_public_id: session.id,
+    workspace_public_id: session.workspaceId,
+  });
+  const posthogHb = startPosthogHeartbeat({
+    sessionId: session.id,
+    workspaceId: session.workspaceId,
+  });
+
+  // Step 9 — tunnel heartbeat loop (pings backend /tunnel/heartbeat every 30s
+  // so the backend doesn't reap the session; separate from PostHog heartbeat
+  // which is pure analytics every 5 minutes — CONTEXT.md §5 decision).
   const hb = startHeartbeat({
     sessionId: session.id,
     workspaceId: session.workspaceId,
@@ -154,6 +172,14 @@ export async function runSandboxListenFlow(
         `heartbeat: repeated failures (${err.message}) — tunnel may be reconciled\n`,
       );
     },
+  });
+
+  // RESEARCH §Pitfall 6 — if cloudflared dies on its own (crash, OOM, network
+  // blip), the SIGINT/SIGTERM handlers below never fire and the PostHog
+  // heartbeat keeps emitting phantom events for a dead session. Hook the
+  // child's exit event directly to stop the PostHog timer.
+  child.once('exit', () => {
+    posthogHb.stop();
   });
 
   // Step 11 — SIGINT/SIGTERM handlers.
@@ -168,6 +194,7 @@ export async function runSandboxListenFlow(
       cloudflaredChild: child,
       proxyClose: () => proxy.close(),
       stopHeartbeat: hb.stop,
+      stopPosthogHeartbeat: posthogHb.stop,
       callBackendStop: () =>
         apiClient(
           `/sandbox/sessions/${session.id}/tunnel/stop`,
