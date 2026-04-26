@@ -2,6 +2,16 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.9.2] - 2026-04-26
+
+### Fixed
+
+- **PostHog token bake.** v0.9.1 was published before the GitHub Actions
+  repo secrets carried real values (the secrets existed but were empty),
+  so esbuild baked empty strings and `initPostHogLazy()` no-op'd. v0.9.2
+  picks up the real `HOOKMYAPP_POSTHOG_TOKEN` + `HOOKMYAPP_POSTHOG_HOST`
+  secret values; CLI events now actually reach PostHog.
+
 ## [0.9.1] - 2026-04-26
 
 ### Added
