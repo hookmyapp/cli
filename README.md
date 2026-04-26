@@ -1,6 +1,6 @@
 # @gethookmyapp/cli
 
-HookMyApp CLI — connect WhatsApp Business API in minutes.
+HookMyApp CLI, No BS. Just go live.
 
 ## Install
 
