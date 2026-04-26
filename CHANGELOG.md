@@ -2,6 +2,35 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.9.5] - 2026-04-26
+
+### Fixed
+
+- **`sandbox listen` now actually blocks until shutdown.** Previously
+  `runSandboxListenFlow` registered SIGINT/SIGTERM handlers and returned;
+  the top-level `await flushAndExit(0)` in src/index.ts then ran
+  immediately. The command stayed alive in interactive terminals only
+  because cloudflared's stdio happened to keep the event loop pumping. In
+  non-TTY contexts (`nohup`, `setsid`, `< /dev/null`, `docker --no-tty`,
+  systemd / Cloud Run / Fly.io) the listener exited within seconds. The
+  fix is a single shutdown Promise resolved by exactly three events:
+  SIGINT (exit 0), SIGTERM (exit 0 — same graceful path; required for
+  Cloud Run / Docker stop / k8s clean shutdown), or cloudflared child
+  exiting unexpectedly (exit 7 — new code, after running the same
+  cleanup the signal path runs). Help text gains an EXAMPLES line for
+  background invocation: `nohup hookmyapp sandbox listen --port 3000 &`.
+  Regression test lives at
+  `test-integration/specs/sandbox-listen.spec.ts` and currently
+  describe-skips behind `SANDBOX_LISTEN_INTEGRATION=1` due to upstream
+  test-infra rot (see file header for the four pre-existing blockers); it
+  will activate as a CI gate once those are unblocked.
+
+### Added
+
+- New exit code `7` — cloudflared child process exited unexpectedly
+  while `sandbox listen` was running. Codes 0..6 retain their existing
+  meanings (CONTEXT.md §CLI Flow).
+
 ## [0.9.4] - 2026-04-26
 
 ### Added
