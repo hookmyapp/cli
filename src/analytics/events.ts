@@ -158,6 +158,7 @@ export interface QuickstartBindNewNumberClickedProps {
 }
 export interface SandboxInstructionsCopiedProps {
   workspace_id: string;
+  session_public_id?: string;
 }
 
 // Other named app events (6).
