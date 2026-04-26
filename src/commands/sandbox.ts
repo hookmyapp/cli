@@ -16,16 +16,13 @@ import {
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
-import { getEffectiveSandboxProxyUrl } from '../config/env-profiles.js';
+import {
+  getEffectiveSandboxProxyUrl,
+  getEffectiveSandboxWhatsAppNumber,
+} from '../config/env-profiles.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
 import { pickSessionByPhone, type Session as ListenSession } from './sandbox-listen/picker.js';
 import { runSandboxListenFlow } from './sandbox-listen/index.js';
-
-// Shared sandbox WABA number (same for staging + local + prod — per
-// project_sandbox_waba_credentials memory). Kept as a module-level constant
-// rather than fetched from the backend because the number never changes and
-// the CLI would prefer one less round-trip before the QR renders.
-const SANDBOX_WHATSAPP_NUMBER = '972557046276';
 
 interface SandboxSession {
   id: string;
@@ -295,7 +292,7 @@ export async function runSandboxStart(opts: {
   // 1. Fetch bind code.
   const bindRes = await getBindCode(workspaceId);
   const bindCode = bindRes.code;
-  const waUrl = `https://wa.me/${SANDBOX_WHATSAPP_NUMBER}?text=${bindCode}`;
+  const waUrl = `https://wa.me/${getEffectiveSandboxWhatsAppNumber()}?text=${bindCode}`;
 
   // 2. Header + instruction + code display + QR + raw URL fallback.
   //

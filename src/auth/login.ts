@@ -274,8 +274,9 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
  * `hookmyapp login --next sandbox` (or `--phone <e164>` without `--next`).
  *
  * Phase 126 bind-code model — session creation is phone-initiated (user
- * sends a bind code from their WhatsApp into the shared sandbox number),
- * NOT CLI-flag-initiated. The wizard therefore no longer offers a
+ * sends a bind code from their WhatsApp into the env's sandbox number —
+ * staging IL or prod US, per env-profiles.ts), NOT CLI-flag-initiated.
+ * The wizard therefore no longer offers a
  * "create from phone" path; that's what `hookmyapp sandbox start` does,
  * and we delegate to it directly.
  *
