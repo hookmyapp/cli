@@ -9,6 +9,11 @@ export interface EnvProfile {
   apiUrl: string;
   appUrl: string;
   workosClientId: string;
+  // 12-digit (or 11-digit NANP) E.164 number sans '+' that the CLI shows in
+  // `sandbox start` output as the WhatsApp destination for the bind code.
+  // Per-env: each env runs an isolated sandbox WABA under a separate Meta App
+  // (staging IL, prod US). NEVER cross over.
+  sandboxWhatsAppNumber: string;
 }
 
 /**
@@ -24,16 +29,23 @@ export const ENV_PROFILES: Record<EnvName, EnvProfile> = {
     apiUrl: 'https://uninked-robbi-boughless.ngrok-free.dev',
     appUrl: 'https://uninked-robbi-boughless.ngrok-free.dev',
     workosClientId: 'client_01KPAJA2CKGFMASZMABKDTS2X8',
+    // local dev shares the staging sandbox WABA (+972 55 704 6276)
+    sandboxWhatsAppNumber: '972557046276',
   },
   staging: {
     apiUrl: 'https://staging-api.hookmyapp.com',
     appUrl: 'https://staging-app.hookmyapp.com',
     workosClientId: 'client_01KM5S4CGX9M2M2P63JTA6AFEH',
+    // staging sandbox WABA: +972 55 704 6276 (WABA 1276334778010256)
+    sandboxWhatsAppNumber: '972557046276',
   },
   production: {
     apiUrl: 'https://api.hookmyapp.com',
     appUrl: 'https://app.hookmyapp.com',
     workosClientId: 'client_01KM5S4D10TKG4VJEXSCRVAMG7',
+    // prod sandbox WABA: +1 737-237-0900 (WABA 1703736267434336) — separate
+    // Meta App from staging; do NOT use the IL number here.
+    sandboxWhatsAppNumber: '17372370900',
   },
 };
 
@@ -149,6 +161,22 @@ export function getEffectiveWorkosClientId(): string {
 }
 
 /**
+ * Sandbox WhatsApp destination number (digits-only, no '+') the CLI shows in
+ * `sandbox start` output for the bind-code WhatsApp deep link. Per-env: each
+ * env runs an isolated sandbox WABA under its own Meta App, so the number
+ * MUST come from the env profile — staging and prod do not share a number.
+ *
+ *   local + staging → 972557046276 (+972 55 704 6276)
+ *   production      → 17372370900  (+1 737-237-0900)
+ *
+ * No HOOKMYAPP_SANDBOX_WHATSAPP_NUMBER override on purpose — there's no use
+ * case for sending the bind code to anything other than the env's sandbox.
+ */
+export function getEffectiveSandboxWhatsAppNumber(): string {
+  return resolveEnvProfile().sandboxWhatsAppNumber;
+}
+
+/**
  * Resolve the sandbox-proxy base URL. Mirrors getEffectiveApiUrl() precedence:
  *   1. HOOKMYAPP_SANDBOX_PROXY_URL env var (surgical override for local/CI).
  *   2. Env-profile default:
@@ -157,8 +185,9 @@ export function getEffectiveWorkosClientId(): string {
  *        - production → https://sandbox.hookmyapp.com
  *
  * Staging and production target separate Cloud Run services as of Phase 120
- * (each in its own GCP project; shared upstream WABA number). Both services
- * proxy to the same sandbox phone +972557046276 but run isolated runtimes.
+ * (each in its own GCP project) AND separate sandbox WABAs under separate
+ * Meta Apps: staging proxies to +972 55 704 6276 / WABA 1276334778010256,
+ * production proxies to +1 737-237-0900 / WABA 1703736267434336.
  */
 export function getEffectiveSandboxProxyUrl(): string {
   const override = process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
