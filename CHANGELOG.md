@@ -2,6 +2,19 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.9.4] - 2026-04-26
+
+### Added
+
+- **CLI now identifies the PostHog person with email + name on login.**
+  After the once-per-(machine, user) alias fires, `posthogAliasAndIdentify`
+  also calls `client.identify({ distinctId: sub, properties: { email,
+  name, $set: { email, name } } })` so the PostHog Persons UI shows the
+  human identity for CLI events without requiring a separate frontend
+  login. Mirrors the frontend's Phase 125 Plan 06 identify shape. Email
+  comes from the WorkOS authenticate response; name only on the device
+  flow (the bootstrap-code response carries email only).
+
 ## [0.9.3] - 2026-04-26
 
 ### Fixed

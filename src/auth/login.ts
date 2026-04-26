@@ -89,10 +89,15 @@ async function pollForTokens(opts: {
       });
       // Phase 125 — alias machineId → workosSub once per (machine, user) and
       // emit cli_logged_in. Fail-open: a posthog hiccup must never block the
-      // login UX.
+      // login UX. Pass email + name so the PostHog Person profile shows the
+      // human identity for CLI events.
+      const u = data.user ?? {};
+      const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ');
       await posthogAliasAndIdentify({
         jwt: data.access_token,
         loginMethod: 'device',
+        email: u.email,
+        name: fullName.length > 0 ? fullName : undefined,
       });
       console.log(`\n${c.success(icon.success)} Logged in successfully\n`);
       return;
@@ -443,9 +448,13 @@ export async function runBootstrapCodeExchange(
   // Phase 125 — alias machineId → workosSub once per (machine, user) and
   // emit cli_logged_in. workspace publicId is already on disk above so
   // baseline workspace_id resolves. Fail-open: posthog hiccup ≠ blocked login.
+  // Pass email so the PostHog Person profile shows the human identity for CLI
+  // events without requiring a frontend visit. The bootstrap-code response
+  // shape only carries email, not first/last name.
   await posthogAliasAndIdentify({
     jwt: data.accessToken,
     loginMethod: 'code',
+    email: data.user.email,
   });
 
   // NOTE: prior.workspaceSlug is the stored activeWorkspaceSlug (set on line 438
