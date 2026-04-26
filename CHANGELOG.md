@@ -2,6 +2,20 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.9.1] - 2026-04-26
+
+### Added
+
+- **PostHog product analytics (Phase 125).** CLI emits `cli_first_run`,
+  `cli_command_invoked`, `cli_logged_in`, plus `sandbox_listen_*`
+  heartbeat events. `posthog-node` is loaded lazily and only fires when
+  telemetry is on and `HOOKMYAPP_POSTHOG_TOKEN` was baked into the bundle
+  at build time. `HOOKMYAPP_TELEMETRY=off` disables PostHog and Sentry
+  together.
+- **Publish workflow** now passes `HOOKMYAPP_POSTHOG_TOKEN` and
+  `HOOKMYAPP_POSTHOG_HOST` from repo secrets to `node build.mjs`, so the
+  published binary actually carries the bake values.
+
 ## [0.6.1] - 2026-04-18
 
 ### Changed

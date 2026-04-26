@@ -26,6 +26,8 @@ jobs:
         env:
           HOOKMYAPP_SENTRY_DSN: ${{ secrets.HOOKMYAPP_CLI_SENTRY_DSN }}
           HOOKMYAPP_CLI_RELEASE: ${{ github.ref_name }}
+          HOOKMYAPP_POSTHOG_TOKEN: ${{ secrets.HOOKMYAPP_POSTHOG_TOKEN }}
+          HOOKMYAPP_POSTHOG_HOST: ${{ secrets.HOOKMYAPP_POSTHOG_HOST }}
       - name: Verify build
         run: node bin/hookmyapp.js --version
       - name: Publish to npm (OIDC + provenance)
