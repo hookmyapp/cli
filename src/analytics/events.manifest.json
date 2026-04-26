@@ -81,7 +81,7 @@
     },
     {
       "name": "sandbox_instructions_copied",
-      "properties": ["workspace_id"]
+      "properties": ["workspace_id", "session_public_id"]
     },
     {
       "name": "workspace_switched",
