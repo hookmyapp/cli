@@ -90,24 +90,42 @@ export async function runSandboxListenFlow(
   // LISTENER_ACTIVE / PHONE_TAKEN_ANOTHER — let those propagate as
   // ConflictError (exit 6) so users see the remediation text. Non-conflict
   // provisioning failures (5xx, timeouts) still map to exit 3.
+  //
+  // Test-only escape hatch: HOOKMYAPP_E2E_FAKE_TUNNEL=1 short-circuits the
+  // three tunnel-lifecycle backend calls (start/configure/stop) and returns
+  // a synthetic TunnelStartResponse. Used by
+  // test-integration/specs/sandbox-listen.spec.ts so the lifecycle test
+  // doesn't mint a real Cloudflare tunnel per case (would create 3 real CF
+  // resources per CI run + add ~2-4s to teardown via real CF DELETE calls).
+  // Pairs with HOOKMYAPP_CLOUDFLARED_BIN to make the test fully hermetic.
+  // Not advertised in --help.
+  const fakeTunnel = process.env.HOOKMYAPP_E2E_FAKE_TUNNEL === '1';
   const env = resolveEnv();
   let tunnel: TunnelStartResponse;
-  try {
-    tunnel = (await apiClient(
-      `/sandbox/sessions/${session.id}/tunnel/start`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ env }),
-        workspaceId: session.workspaceId,
-      },
-    )) as TunnelStartResponse;
-  } catch (err) {
-    if (err instanceof ConflictError || err instanceof AuthError) {
-      throw err;
+  if (fakeTunnel) {
+    tunnel = {
+      cloudflareTunnelToken: 'fake-e2e-token',
+      hostname: 'fake-e2e.hookmyapp-sandbox.com',
+      webhookPath: '/webhook',
+    };
+  } else {
+    try {
+      tunnel = (await apiClient(
+        `/sandbox/sessions/${session.id}/tunnel/start`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ env }),
+          workspaceId: session.workspaceId,
+        },
+      )) as TunnelStartResponse;
+    } catch (err) {
+      if (err instanceof ConflictError || err instanceof AuthError) {
+        throw err;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Tunnel provisioning failed: ${msg}`);
+      process.exit(3);
     }
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`Tunnel provisioning failed: ${msg}`);
-    process.exit(3);
   }
 
   // Step 7 — bind local proxy; configure ingress; spawn cloudflared.
@@ -117,20 +135,22 @@ export async function runSandboxListenFlow(
     onRequest: (line) => printLogLine(line, listenOpts),
   });
 
-  try {
-    await apiClient(
-      `/sandbox/sessions/${session.id}/tunnel/configure`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ originPort: proxy.port }),
-        workspaceId: session.workspaceId,
-      },
-    );
-  } catch (err) {
-    await proxy.close();
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`Tunnel configure failed: ${msg}`);
-    process.exit(3);
+  if (!fakeTunnel) {
+    try {
+      await apiClient(
+        `/sandbox/sessions/${session.id}/tunnel/configure`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ originPort: proxy.port }),
+          workspaceId: session.workspaceId,
+        },
+      );
+    } catch (err) {
+      await proxy.close();
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Tunnel configure failed: ${msg}`);
+      process.exit(3);
+    }
   }
 
   const child = spawnCloudflared({
@@ -201,10 +221,12 @@ export async function runSandboxListenFlow(
       stopHeartbeat: hb.stop,
       stopPosthogHeartbeat: posthogHb.stop,
       callBackendStop: () =>
-        apiClient(
-          `/sandbox/sessions/${session.id}/tunnel/stop`,
-          { method: 'POST', workspaceId: session.workspaceId },
-        ).then(() => undefined).catch(() => undefined),
+        fakeTunnel
+          ? Promise.resolve()
+          : apiClient(
+              `/sandbox/sessions/${session.id}/tunnel/stop`,
+              { method: 'POST', workspaceId: session.workspaceId },
+            ).then(() => undefined).catch(() => undefined),
     });
   };
 

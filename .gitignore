@@ -7,5 +7,8 @@ test-integration/.cache/
 .DS_Store
 *.log
 
+# Stray persona-state dir created when tests run with HOME=cwd
+.hookmyapp/
+
 # npm pack output
 *.tgz
