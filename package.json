@@ -1,6 +1,6 @@
 {
   "name": "@gethookmyapp/cli",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "HookMyApp CLI, No BS. Just go live.",
   "type": "module",
   "bin": {
@@ -14,8 +14,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts --reporter=verbose",
     "test:integration:nightly": "vitest run --config vitest.nightly.config.ts --reporter=verbose",
     "sync:errors-manifest": "node scripts/sync-errors-manifest.mjs",
-    "sync:errors-manifest:check": "node scripts/sync-errors-manifest.mjs --check",
-    "prepublishOnly": "node build.mjs"
+    "sync:errors-manifest:check": "node scripts/sync-errors-manifest.mjs --check"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
