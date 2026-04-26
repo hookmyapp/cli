@@ -9,6 +9,7 @@
 //   3  tunnel provisioning failed (backend /tunnel/start or /configure)
 //   4  cloudflared download/checksum failed
 //   5  backend unreachable
+//   7  cloudflared child exited unexpectedly while listen was running
 
 import type { Command } from 'commander';
 import { apiClient } from '../../api/client.js';
@@ -174,17 +175,21 @@ export async function runSandboxListenFlow(
     },
   });
 
-  // RESEARCH §Pitfall 6 — if cloudflared dies on its own (crash, OOM, network
-  // blip), the SIGINT/SIGTERM handlers below never fire and the PostHog
-  // heartbeat keeps emitting phantom events for a dead session. Hook the
-  // child's exit event directly to stop the PostHog timer.
-  child.once('exit', () => {
-    posthogHb.stop();
-  });
-
-  // Step 11 — SIGINT/SIGTERM handlers.
+  // Step 11 — block until shutdown signal. Three resolution paths:
+  //   (a) SIGINT  → graceful shutdown, return normally → caller exits 0
+  //   (b) SIGTERM → graceful shutdown, return normally → caller exits 0
+  //   (c) cloudflared child exits unexpectedly → graceful shutdown, exit 7
+  // Re-entrancy: gracefulShutdown runs EXACTLY ONCE no matter how many
+  // signals or exit events arrive (the `shuttingDown` flag below + the
+  // flag inside lifecycle.ts work together).
+  //
+  // This Promise is the ONLY thing keeping the parent process alive after
+  // setup — without it, src/index.ts:219 (`await flushAndExit(0)`) would
+  // run immediately and the listen command would exit. RESEARCH §Pitfall 6
+  // is now subsumed by case (c): the cloudflared-exit handler triggers the
+  // same gracefulShutdown that stops the PostHog heartbeat.
   let shuttingDown = false;
-  const shutdown = async (): Promise<void> => {
+  const runShutdown = async (): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
     if (human) {
@@ -201,10 +206,37 @@ export async function runSandboxListenFlow(
           { method: 'POST', workspaceId: session.workspaceId },
         ).then(() => undefined).catch(() => undefined),
     });
-    process.exit(0);
   };
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+
+  await new Promise<void>((resolve) => {
+    const onSignal = (): void => {
+      void runShutdown().then(() => resolve());
+    };
+    const onChildExit = (
+      code: number | null,
+      signal: NodeJS.Signals | null,
+    ): void => {
+      // Pre-shutdown exit = unexpected. Log, run cleanup, exit non-zero (7).
+      // We can't `resolve()` and let the caller exit 0 because the contract
+      // is "tunnel died → parent dies non-zero".
+      if (shuttingDown) {
+        // We initiated the kill via gracefulShutdown — let runShutdown
+        // resolve the Promise via its onSignal path.
+        return;
+      }
+      process.stderr.write(
+        `cloudflared exited unexpectedly (code=${code ?? 'null'}` +
+          `${signal ? `, signal=${signal}` : ''}) — shutting down listen.\n`,
+      );
+      void runShutdown().then(() => {
+        process.exit(7);
+      });
+    };
+
+    process.on('SIGINT', onSignal);
+    process.on('SIGTERM', onSignal);
+    child.once('exit', onChildExit);
+  });
 }
 
 export function registerListenCommand(sandbox: Command, program: Command): void {
@@ -289,6 +321,7 @@ EXAMPLES:
   $ hookmyapp sandbox listen
   $ hookmyapp sandbox listen --phone +15551234567 --port 3000
   $ hookmyapp sandbox listen --path /webhook --verbose
+  $ nohup hookmyapp sandbox listen --port 3000 &     # background / CI
 `,
   );
 }
