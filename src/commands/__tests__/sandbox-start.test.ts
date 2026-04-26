@@ -147,10 +147,10 @@ describe('sandbox start — Phase 126 bind-code flow', () => {
     const out = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
     expect(out).toContain('abc23456');
     // Raw wa.me URL printed as text fallback.
-    expect(out).toContain('https://wa.me/972557046276?text=abc23456');
+    expect(out).toContain('https://wa.me/17372370900?text=abc23456');
     // QR rendered via qrcode-terminal.
     expect(mocks.qrcodeGenerateMock).toHaveBeenCalledWith(
-      'https://wa.me/972557046276?text=abc23456',
+      'https://wa.me/17372370900?text=abc23456',
       expect.objectContaining({ small: true }),
     );
     // Success spinner line carries phone + accessToken.
