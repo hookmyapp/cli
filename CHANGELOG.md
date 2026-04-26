@@ -2,15 +2,29 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.9.3] - 2026-04-26
+
+### Fixed
+
+- **Drop `prepublishOnly` script that silently broke esbuild secret bakes.**
+  Root cause of `Sentry` + `PostHog` bakes shipping as empty strings in
+  every release since Phase 123: the `prepublishOnly: "node build.mjs"`
+  script in `package.json` re-ran build.mjs DURING `npm publish`, but the
+  workflow's Publish step has no `env:` block, so the rebuild used
+  `process.env.HOOKMYAPP_*=undefined` and clobbered the properly-baked
+  bundle from the explicit Build step. Removing the redundant
+  `prepublishOnly` (the workflow's Build step already builds explicitly)
+  preserves the baked DSN + token through publish.
+
 ## [0.9.2] - 2026-04-26
 
 ### Fixed
 
-- **PostHog token bake.** v0.9.1 was published before the GitHub Actions
-  repo secrets carried real values (the secrets existed but were empty),
-  so esbuild baked empty strings and `initPostHogLazy()` no-op'd. v0.9.2
-  picks up the real `HOOKMYAPP_POSTHOG_TOKEN` + `HOOKMYAPP_POSTHOG_HOST`
-  secret values; CLI events now actually reach PostHog.
+- (Did not work — version bump only; bake still empty due to the
+  `prepublishOnly` clobber documented in 0.9.3.) Attempted to set real
+  `HOOKMYAPP_POSTHOG_TOKEN` + `HOOKMYAPP_POSTHOG_HOST` GitHub Actions
+  repo secrets after discovering 0.9.1 had empty bakes. Real fix is
+  0.9.3.
 
 ## [0.9.1] - 2026-04-26
 
