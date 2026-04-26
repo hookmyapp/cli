@@ -269,6 +269,8 @@ export async function posthogAliasAndIdentify(opts: {
   jwt: string | null;
   workosSub?: string;
   loginMethod: 'device' | 'code';
+  email?: string;
+  name?: string;
 }): Promise<void> {
   try {
     const client = await initPostHogLazy();
@@ -293,6 +295,22 @@ export async function posthogAliasAndIdentify(opts: {
       // Already aliased — just update lastWorkosSub so subsequent emits use
       // the user-scoped distinctId.
       writePosthogConfig({ lastWorkosSub: sub });
+    }
+
+    // Phase 125 follow-up — attach email + name to the PostHog person so the
+    // Persons UI displays the user identity for CLI events without requiring
+    // a frontend visit. Mirrors workspace-context.tsx's identify shape; $set
+    // overwrites every login (email/name can drift). No-op when WorkOS didn't
+    // return them.
+    if (opts.email || opts.name) {
+      const props: Record<string, unknown> = {};
+      if (opts.email) props.email = opts.email;
+      if (opts.name) props.name = opts.name;
+      const $set: Record<string, unknown> = {};
+      if (opts.email) $set.email = opts.email;
+      if (opts.name) $set.name = opts.name;
+      props.$set = $set;
+      client.identify({ distinctId: sub, properties: props });
     }
 
     // Workspace publicId may already be persisted by login.ts (it writes
