@@ -10,6 +10,7 @@
 //       Windows → standalone .exe
 //
 import { mkdir, writeFile, chmod, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -75,8 +76,30 @@ export function resolveAsset(platform: NodeJS.Platform, arch: string): ResolvedA
  * @param opts.force — skip the on-disk check and re-download unconditionally.
  * @returns absolute path to the verified binary.
  * @throws {CliError} BINARY_DOWNLOAD_FAILED or BINARY_CHECKSUM_FAILED (exitCode=4).
+ *
+ * Test-only escape hatch: when `HOOKMYAPP_CLOUDFLARED_BIN` points at an
+ * existing executable, this returns the env-supplied path verbatim — no
+ * download, no checksum. Used by `test-integration/specs/sandbox-listen.spec.ts`
+ * to substitute a `node`-based stub that simulates cloudflared lifetime
+ * without provisioning a real CF tunnel via the local backend. Not advertised
+ * in --help; surfaced as a loud error when the path is missing because that's
+ * a test-config bug, not a user bug.
  */
 export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise<string> {
+  // Test-only escape hatch — checked first so it overrides force/download flow.
+  const overridePath = process.env.HOOKMYAPP_CLOUDFLARED_BIN;
+  if (overridePath) {
+    if (!existsSync(overridePath)) {
+      const err = new CliError(
+        `cloudflared override path does not exist: ${overridePath}`,
+        'CLOUDFLARED_OVERRIDE_MISSING',
+      );
+      err.exitCode = 4;
+      throw err;
+    }
+    return overridePath;
+  }
+
   if (!opts.force) {
     try {
       await stat(BIN_PATH);
