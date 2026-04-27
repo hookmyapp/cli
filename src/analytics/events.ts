@@ -43,7 +43,7 @@ export interface BaselineProperties {
 }
 
 // ---------------------------------------------------------------------------
-// 6 CLI events — CONTEXT.md §5. Every CLI event carries `cli_version`
+// 7 CLI events — CONTEXT.md §5. Every CLI event carries `cli_version`
 // (CONTEXT.md §16 CLI-only baseline) on its event-specific props — the
 // emitter baseline stays cross-surface.
 // ---------------------------------------------------------------------------
@@ -79,10 +79,29 @@ export interface CliSandboxListenStartedProps {
   workspace_public_id: string;
 }
 
-export interface CliSandboxListenHeartbeatProps {
+/**
+ * Coarse liveness ping (every 2h) — backstop for sessions where
+ * `cli_sandbox_listen_stopped` never fires (kill -9, laptop sleep, OOM,
+ * network drop). Lets dashboards upper-bound session duration when stop is
+ * missing. NOT for fine-grained activity tracking — that's `_started` +
+ * `_stopped` with `duration_seconds`.
+ */
+export interface CliSandboxListenLivenessProps {
   cli_version: string;
   session_public_id: string;
-  elapsed_minutes: number;
+  elapsed_seconds: number;
+}
+
+/**
+ * Fires once per session on clean exit (SIGINT/SIGTERM). Carries the full
+ * session duration so dashboards compute "active sandbox time" without
+ * counting heartbeats. Cloudflared-died and other unclean exits do NOT
+ * emit this — the 2h liveness ping is the duration backstop there.
+ */
+export interface CliSandboxListenStoppedProps {
+  cli_version: string;
+  session_public_id: string;
+  duration_seconds: number;
 }
 
 export interface CliErrorShownProps {
@@ -197,12 +216,13 @@ export interface ApiErrorShownProps {
 // ---------------------------------------------------------------------------
 
 export interface EventRegistry {
-  // CLI (6)
+  // CLI (7)
   cli_first_run: CliFirstRunProps;
   cli_logged_in: CliLoggedInProps;
   cli_command_invoked: CliCommandInvokedProps;
   cli_sandbox_listen_started: CliSandboxListenStartedProps;
-  cli_sandbox_listen_heartbeat: CliSandboxListenHeartbeatProps;
+  cli_sandbox_listen_liveness: CliSandboxListenLivenessProps;
+  cli_sandbox_listen_stopped: CliSandboxListenStoppedProps;
   cli_error_shown: CliErrorShownProps;
   // sandbox-proxy (1)
   sandbox_message_sent: SandboxMessageSentProps;
@@ -242,12 +262,13 @@ export type EventProperties<E extends EventName> = EventRegistry[E];
  * Mirrored byte-for-byte into `/Users/ordvir/COD/cli/src/analytics/events.ts`.
  */
 export const EVENT_NAMES_RUNTIME = [
-  // CLI (6)
+  // CLI (7)
   'cli_first_run',
   'cli_logged_in',
   'cli_command_invoked',
   'cli_sandbox_listen_started',
-  'cli_sandbox_listen_heartbeat',
+  'cli_sandbox_listen_liveness',
+  'cli_sandbox_listen_stopped',
   'cli_error_shown',
   // sandbox-proxy (1)
   'sandbox_message_sent',

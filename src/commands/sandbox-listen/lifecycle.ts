@@ -187,13 +187,13 @@ export interface GracefulShutdownArgs {
   proxyClose: () => Promise<void>;
   stopHeartbeat: () => void;
   /**
-   * Phase 125 — stop the PostHog heartbeat timer. Separate from the
-   * tunnel-heartbeat `stopHeartbeat` above because the two are independent:
-   * the tunnel heartbeat pings the backend every 30s, the PostHog heartbeat
-   * emits an analytics event every 5 minutes. Both must be cleared on every
-   * shutdown path.
+   * Stop the PostHog liveness timer. Separate from the tunnel-heartbeat
+   * `stopHeartbeat` above because the two are independent: the tunnel
+   * heartbeat pings the backend every 30s, the PostHog liveness ping emits
+   * an analytics event every 2h as a session-duration backstop. Both must
+   * be cleared on every shutdown path.
    */
-  stopPosthogHeartbeat?: () => void;
+  stopPosthogLiveness?: () => void;
   callBackendStop: () => Promise<void>;
 }
 
@@ -212,12 +212,12 @@ export async function gracefulShutdown(args: GracefulShutdownArgs): Promise<void
   markShuttingDown();
 
   args.stopHeartbeat();
-  // Phase 125 — tear down the PostHog heartbeat alongside the tunnel
-  // heartbeat. Symmetric on every teardown path (Ctrl-C, SIGTERM,
-  // cloudflared-exit handler in src/commands/sandbox-listen/index.ts) —
-  // RESEARCH §Pitfall 6 warns that a dangling timer will emit phantom
-  // heartbeats for dead sessions, corrupting duration analysis.
-  args.stopPosthogHeartbeat?.();
+  // Tear down the PostHog liveness ping alongside the tunnel heartbeat.
+  // Symmetric on every teardown path (Ctrl-C, SIGTERM, cloudflared-exit
+  // handler in src/commands/sandbox-listen/index.ts) — a dangling timer
+  // would emit phantom liveness pings for dead sessions, corrupting
+  // duration backstop analysis.
+  args.stopPosthogLiveness?.();
   try {
     await args.proxyClose();
   } catch {
@@ -242,50 +242,48 @@ export async function gracefulShutdown(args: GracefulShutdownArgs): Promise<void
 }
 
 /**
- * Phase 125 Plan 02 Task 2 — PostHog heartbeat for `sandbox listen`.
+ * PostHog liveness ping for `sandbox listen`.
  *
- * CONTEXT.md §5 + RESEARCH §Pattern 9: every 5 minutes while the listen
- * session is live, emit `cli_sandbox_listen_heartbeat` with the running
- * `elapsed_minutes`. Distinct from the tunnel `startHeartbeat` above — that
- * one pings the backend every 30s and gates the session; this one is pure
- * analytics for "how long did users actually use listen?" correlation
- * post-launch (CONTEXT.md: "Duration is a property available for later
- * correlation, NOT the basis of a pre-built heavy-user cohort").
+ * Coarse 2-hour interval — fires only as a backstop so dashboards can
+ * upper-bound session duration when `cli_sandbox_listen_stopped` never
+ * fires (kill -9, laptop sleep, OOM, network drop). The clean-exit path
+ * emits `cli_sandbox_listen_stopped` with `duration_seconds` directly.
  *
- * Chosen over start/end event pairs because:
- *   - Survives force-kill (Ctrl+C, terminal close, SIGKILL) — a "session_end"
- *     event on SIGKILL never fires.
- *   - Bounded cardinality — 12 heartbeats/hour per session is trivial for
- *     PostHog ingest.
+ * Why 2h: typical sandbox sessions are short (10–30 min), so a longer
+ * interval would wildly distort the inferred duration of crashed sessions
+ * (a 15-min session that dies looks like a 5h session if liveness fires
+ * every 5h). 2h keeps the worst-case overshoot bounded while still
+ * collapsing volume vs. the previous 5-min cadence.
  *
- * Teardown contract (RESEARCH §Pitfall 6): the handle's `.stop()` MUST be
- * called from:
+ * Distinct from the tunnel `startHeartbeat` above — that one pings the
+ * backend every 30s and gates the session; this one is pure analytics.
+ *
+ * Teardown contract: the handle's `.stop()` MUST be called from:
  *   1. gracefulShutdown (Ctrl+C, SIGTERM) — wired via the
- *      `stopPosthogHeartbeat` GracefulShutdownArgs field above.
+ *      `stopPosthogLiveness` GracefulShutdownArgs field above.
  *   2. The cloudflared `child.on('exit')` handler in
  *      src/commands/sandbox-listen/index.ts — otherwise the session is
- *      "dead" but the timer keeps firing phantom heartbeats every 5 min.
+ *      "dead" but the timer keeps firing phantom pings.
  *
  * `timer.unref()` ensures a dangling handle never keeps the event loop
- * alive past the expected listen lifetime (defense in depth — teardown
- * contract above is still the primary guarantee).
+ * alive past the expected listen lifetime (defense in depth).
  */
-export interface PosthogHeartbeatHandle {
+export interface PosthogLivenessHandle {
   stop: () => void;
 }
 
-export function startPosthogHeartbeat(opts: {
+export function startPosthogLiveness(opts: {
   sessionId: string;
   workspaceId: string;
   intervalMs?: number;
-}): PosthogHeartbeatHandle {
-  const interval = opts.intervalMs ?? 300_000; // 5 minutes per CONTEXT §5
+}): PosthogLivenessHandle {
+  const interval = opts.intervalMs ?? 7_200_000; // 2 hours
   const startedAt = Date.now();
   const timer = setInterval(() => {
-    void emit('cli_sandbox_listen_heartbeat', {
+    void emit('cli_sandbox_listen_liveness', {
       cli_version: getCliVersion(),
       session_public_id: opts.sessionId,
-      elapsed_minutes: Math.floor((Date.now() - startedAt) / 60_000),
+      elapsed_seconds: Math.floor((Date.now() - startedAt) / 1000),
     });
   }, interval);
   if (typeof (timer as NodeJS.Timeout).unref === 'function') {

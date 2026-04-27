@@ -26,7 +26,7 @@ import { pickSession, type Session } from './picker.js';
 import {
   spawnCloudflared,
   startHeartbeat,
-  startPosthogHeartbeat,
+  startPosthogLiveness,
   gracefulShutdown,
 } from './lifecycle.js';
 import { checkForNewerCli } from './version-check.js';
@@ -167,16 +167,18 @@ export async function runSandboxListenFlow(
     json: listenOpts.json,
   });
 
-  // Phase 125 — emit cli_sandbox_listen_started once the tunnel is live +
-  // start the PostHog 5-min heartbeat. Both are fire-and-forget from the
-  // UX perspective; fail-open in posthog.ts ensures observability blips
-  // never break the listen command.
+  // Emit cli_sandbox_listen_started once the tunnel is live + start the
+  // 2h PostHog liveness ping (backstop for unclean exits). The clean-exit
+  // path below emits cli_sandbox_listen_stopped with duration_seconds.
+  // All emits are fire-and-forget; fail-open in posthog.ts ensures
+  // observability blips never break the listen command.
+  const listenStartedAt = Date.now();
   void emit('cli_sandbox_listen_started', {
     cli_version: getCliVersion(),
     session_public_id: session.id,
     workspace_public_id: session.workspaceId,
   });
-  const posthogHb = startPosthogHeartbeat({
+  const posthogLiveness = startPosthogLiveness({
     sessionId: session.id,
     workspaceId: session.workspaceId,
   });
@@ -219,7 +221,7 @@ export async function runSandboxListenFlow(
       cloudflaredChild: child,
       proxyClose: () => proxy.close(),
       stopHeartbeat: hb.stop,
-      stopPosthogHeartbeat: posthogHb.stop,
+      stopPosthogLiveness: posthogLiveness.stop,
       callBackendStop: () =>
         fakeTunnel
           ? Promise.resolve()
@@ -232,6 +234,14 @@ export async function runSandboxListenFlow(
 
   await new Promise<void>((resolve) => {
     const onSignal = (): void => {
+      // Clean exit — emit cli_sandbox_listen_stopped with the full session
+      // duration. Cloudflared-died (onChildExit) does NOT emit this; the 2h
+      // liveness ping is the duration backstop for unclean exits.
+      void emit('cli_sandbox_listen_stopped', {
+        cli_version: getCliVersion(),
+        session_public_id: session.id,
+        duration_seconds: Math.floor((Date.now() - listenStartedAt) / 1000),
+      });
       void runShutdown().then(() => resolve());
     };
     const onChildExit = (
