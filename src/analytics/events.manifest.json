@@ -28,8 +28,12 @@
       "properties": ["cli_version", "session_public_id", "workspace_public_id"]
     },
     {
-      "name": "cli_sandbox_listen_heartbeat",
-      "properties": ["cli_version", "session_public_id", "elapsed_minutes"]
+      "name": "cli_sandbox_listen_liveness",
+      "properties": ["cli_version", "session_public_id", "elapsed_seconds"]
+    },
+    {
+      "name": "cli_sandbox_listen_stopped",
+      "properties": ["cli_version", "session_public_id", "duration_seconds"]
     },
     {
       "name": "cli_error_shown",
