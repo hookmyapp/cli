@@ -368,7 +368,7 @@ function printLogLine(line: LogLine, opts: ListenOpts): void {
   );
 }
 
-function printBanner(args: {
+export function printBanner(args: {
   hostname: string;
   localPort: number;
   path: string;
@@ -380,6 +380,9 @@ function printBanner(args: {
   process.stdout.write(`\n✓ Tunnel active:    https://${args.hostname}\n`);
   process.stdout.write(
     `✓ Forwarding to:    http://localhost:${args.localPort}${args.path}\n`,
+  );
+  process.stdout.write(
+    `📋 Logs UI:         http://localhost:${args.localPort}/logs\n`,
   );
   process.stdout.write(
     `  Test phone: ${args.session.phone ?? '(no phone)'} · Workspace: ${workspace}\n`,
