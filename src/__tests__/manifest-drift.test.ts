@@ -33,8 +33,8 @@ describe('CLI events.manifest.json structural contract', () => {
     expect(Array.isArray(manifest.events)).toBe(true);
   });
 
-  it('contains exactly 25 events', () => {
-    expect(manifest.events).toHaveLength(25);
+  it('contains exactly 7 events (CLI-emitted scope only)', () => {
+    expect(manifest.events).toHaveLength(7);
   });
 
   it('event names are unique', () => {
@@ -44,8 +44,8 @@ describe('CLI events.manifest.json structural contract', () => {
 });
 
 describe('CLI manifest ↔ runtime registry drift', () => {
-  it('runtime registry has exactly 25 names', () => {
-    expect(EVENT_NAMES_RUNTIME).toHaveLength(25);
+  it('runtime registry has exactly 7 names (CLI-emitted scope only)', () => {
+    expect(EVENT_NAMES_RUNTIME).toHaveLength(7);
   });
 
   it('every manifest event name is present in EVENT_NAMES_RUNTIME', () => {
