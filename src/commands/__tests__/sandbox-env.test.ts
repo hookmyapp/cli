@@ -48,9 +48,11 @@ vi.mock('node:fs', async () => {
   };
 });
 
+// Proxy host comes from env-profiles default (production → sandbox.hookmyapp.com).
+// Graph API version is server-delivered on the session (whatsappApiVersion).
 const EXPECTED_ENV_BLOCK = `VERIFY_TOKEN=HMAC_yyy
 PORT=3000
-WHATSAPP_API_URL=https://sandbox.hookmyapp.com/v22.0
+WHATSAPP_API_URL=https://sandbox.hookmyapp.com/v24.0
 WHATSAPP_ACCESS_TOKEN=ACT_xxx
 WHATSAPP_PHONE_NUMBER_ID=15551234567
 `;
@@ -64,6 +66,7 @@ function seedSession() {
       hmacSecret: 'HMAC_yyy',
       status: 'active',
       workspaceId: 'ws_TEST0001',
+      whatsappApiVersion: 'v24.0',
     },
   ]);
 }

@@ -49,20 +49,29 @@ interface SandboxSession {
   // every session — populated from backend SANDBOX_PHONE_NUMBER_ID env so
   // the CLI doesn't round-trip through a separate config endpoint.
   sandboxPhoneNumberId: string | null;
+  // Graph API version the CLI should target when composing the sandbox-proxy
+  // URL. Server-delivered from backend META_GRAPH_VERSION so a Meta Graph
+  // bump doesn't require a CLI release.
+  whatsappApiVersion: string;
 }
 
 // Canonical 5-line .env block emitted by `hookmyapp sandbox env`. Must stay
 // in sync with 108-CONTEXT.md §"Env var alignment" — the CLI is the single
 // source of truth for starter-kit developers copy/pasting these values.
+//
+// `whatsappApiVersion` arrives on the session from the backend. Composed with
+// the env-aware proxy host so a Graph API version bump is server-only.
 function buildEnvBlock(session: {
   phone: string | null;
   accessToken: string;
   hmacSecret: string;
+  whatsappApiVersion: string;
 }): string {
+  const proxyBase = getEffectiveSandboxProxyUrl().replace(/\/$/, '');
   return [
     `VERIFY_TOKEN=${session.hmacSecret}`,
     `PORT=3000`,
-    `WHATSAPP_API_URL=https://sandbox.hookmyapp.com/v22.0`,
+    `WHATSAPP_API_URL=${proxyBase}/${session.whatsappApiVersion}`,
     `WHATSAPP_ACCESS_TOKEN=${session.accessToken}`,
     `WHATSAPP_PHONE_NUMBER_ID=${session.phone ?? ''}`,
     '',
@@ -166,12 +175,13 @@ export async function runSandboxSend(opts: SendFlags): Promise<void> {
         v.length > 0 ? true : 'Message cannot be empty',
     }));
   // Env-aware proxy base (Phase 260415-jmg). HOOKMYAPP_SANDBOX_PROXY_URL
-  // still wins as a surgical override.
-  const proxyBase = getEffectiveSandboxProxyUrl();
+  // still wins as a surgical override. Graph API version comes from the
+  // session (server-delivered) — bumps don't require a CLI release.
+  const proxyBase = getEffectiveSandboxProxyUrl().replace(/\/$/, '');
   // CRITICAL: route uses the SANDBOX WABA phone_number_id (shared across
   // workspaces), NOT the customer's test phone — that was the pre-260415-jmg
   // bug. The proxy rewrites this to the real Meta phone number id at egress.
-  const url = `${proxyBase.replace(/\/$/, '')}/v22.0/${session.sandboxPhoneNumberId}/messages`;
+  const url = `${proxyBase}/${session.whatsappApiVersion}/${session.sandboxPhoneNumberId}/messages`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {

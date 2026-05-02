@@ -55,6 +55,7 @@ function seedOneSession() {
       status: 'active',
       workspaceId: 'ws_TEST0001',
       sandboxPhoneNumberId: '1080996501762047',
+        whatsappApiVersion: 'v24.0',
     },
   ]);
 }
@@ -81,7 +82,7 @@ describe('sandbox send', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0];
     expect(String(url)).toBe(
-      'https://sandbox.hookmyapp.com/v22.0/1080996501762047/messages',
+      'https://sandbox.hookmyapp.com/v24.0/1080996501762047/messages',
     );
     const headers = (init?.headers ?? {}) as Record<string, string>;
     expect(headers.Authorization ?? headers.authorization).toBe(
@@ -106,6 +107,7 @@ describe('sandbox send', () => {
         status: 'active',
         workspaceId: 'ws_TEST0001',
         sandboxPhoneNumberId: '1080996501762047',
+        whatsappApiVersion: 'v24.0',
       },
       {
         id: 'sess-2',
@@ -115,6 +117,7 @@ describe('sandbox send', () => {
         status: 'active',
         workspaceId: 'ws_TEST0001',
         sandboxPhoneNumberId: '1080996501762047',
+        whatsappApiVersion: 'v24.0',
       },
     ]);
     selectMock.mockResolvedValueOnce({
@@ -122,6 +125,7 @@ describe('sandbox send', () => {
       phone: '15551234567',
       accessToken: 'ACT_xxx',
       sandboxPhoneNumberId: '1080996501762047',
+        whatsappApiVersion: 'v24.0',
     });
     inputMock.mockResolvedValueOnce('prompted message');
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
@@ -190,6 +194,7 @@ describe('sandbox send', () => {
         status: 'active',
         workspaceId: 'ws_TEST0001',
         sandboxPhoneNumberId: '1080996501762047',
+        whatsappApiVersion: 'v24.0',
       },
     ]);
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
@@ -215,6 +220,7 @@ describe('sandbox send', () => {
       phone: '15551234567',
       accessToken: 'ACT_xxx',
       sandboxPhoneNumberId: '1080996501762047',
+        whatsappApiVersion: 'v24.0',
     });
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -245,6 +251,7 @@ describe('sandbox send', () => {
         status: 'active',
         workspaceId: 'ws_TEST0001',
         sandboxPhoneNumberId: '1080996501762047',
+        whatsappApiVersion: 'v24.0',
       },
     ]);
     await expect(
@@ -262,6 +269,7 @@ describe('sandbox send', () => {
         status: 'active',
         workspaceId: 'ws_TEST0001',
         sandboxPhoneNumberId: '1080996501762047',
+        whatsappApiVersion: 'v24.0',
       },
     ]);
     await expect(
@@ -316,7 +324,7 @@ describe('sandbox send', () => {
       });
       const [url] = fetchSpy.mock.calls[0];
       expect(String(url)).toBe(
-        'https://override.example/v22.0/1080996501762047/messages',
+        'https://override.example/v24.0/1080996501762047/messages',
       );
     } finally {
       if (orig === undefined) delete process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
