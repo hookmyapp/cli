@@ -2,6 +2,13 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.10.0] - 2026-05-02
+
+### Changed
+
+- **Graph API version is now server-delivered.** `sandbox env` and `sandbox send` previously hardcoded `/v22.0/` into the proxy URL, which meant every Meta Graph API bump required a coordinated CLI release. The session response now carries `whatsappApiVersion` (sourced from the backend's `META_GRAPH_VERSION` env), and the CLI composes the proxy URL using that value. A future Graph version bump is a backend-only change. Required against backend ≥ today's `chore(meta): server-deliver whatsappApiVersion` commit.
+- **Default Graph API version is `v24.0`** (up from v22.0) to match the version the backend now serves and the sandbox-proxy now accepts.
+
 ## [0.9.5] - 2026-04-26
 
 ### Fixed
