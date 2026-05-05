@@ -564,6 +564,112 @@ export function registerSandboxCommand(program: Command): void {
       await runSandboxSend({ ...opts, json: !!program.opts().json });
     });
 
+  const sandboxWebhook = sandbox
+    .command('webhook')
+    .description('Manage the destination webhook URL for a sandbox session');
+
+  const sandboxWebhookShow = sandboxWebhook
+    .command('show')
+    .description('Show the current webhook URL on a sandbox session')
+    .argument('[phone]', 'Sandbox phone (omit to auto-pick or prompt)')
+    .action(async (phone: string | undefined) => {
+      const workspaceId = await getDefaultWorkspaceId();
+      const sessions: SandboxSession[] = await apiClient('/sandbox/sessions', {
+        workspaceId,
+      });
+      const session = await pickSessionByPhone<SandboxSession>(sessions, phone);
+      const tunnelUrl = session.hostname
+        ? `https://${session.hostname}/webhook`
+        : null;
+      const usingCli =
+        !session.webhookUrl || session.webhookUrl === tunnelUrl;
+      const result = {
+        sessionId: session.publicId ?? session.id,
+        phone: session.phone,
+        webhookUrl: session.webhookUrl,
+        mode: usingCli ? ('cli' as const) : ('custom' as const),
+        tunnelUrl,
+      };
+      output(result, { json: !!program.opts().json, kind: 'read' });
+    });
+
+  const sandboxWebhookSet = sandboxWebhook
+    .command('set')
+    .description('Point this sandbox session at a custom webhook URL')
+    .argument('[phone]', 'Sandbox phone (omit to auto-pick or prompt)')
+    .option('--url <url>', 'Webhook URL')
+    .action(async (phone: string | undefined, opts: { url?: string }) => {
+      if (!opts.url) {
+        throw new ValidationError(
+          '--url is required. Example: hookmyapp sandbox webhook set +15551234567 --url https://example.com/webhook',
+        );
+      }
+      const workspaceId = await getDefaultWorkspaceId();
+      const sessions: SandboxSession[] = await apiClient('/sandbox/sessions', {
+        workspaceId,
+      });
+      const session = await pickSessionByPhone<SandboxSession>(sessions, phone);
+      const data = await apiClient(
+        `/sandbox/sessions/${session.publicId ?? session.id}/webhook-url`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ webhookUrl: opts.url }),
+        },
+      );
+      const clearArg = session.phone ? ` +${session.phone}` : '';
+      output(data, {
+        json: !!program.opts().json,
+        kind: 'mutation',
+        nudge:
+          'Custom webhook set. Inbound will be forwarded directly to this ' +
+          'URL — `sandbox listen` is blocked while a custom URL is set. ' +
+          `Run \`hookmyapp sandbox webhook clear${clearArg}\` to revert to CLI mode.`,
+      });
+    });
+
+  const sandboxWebhookClear = sandboxWebhook
+    .command('clear')
+    .description(
+      'Clear the custom webhook URL and revert this sandbox session to CLI tunnel mode',
+    )
+    .argument('[phone]', 'Sandbox phone (required when you have multiple sessions)')
+    .action(async (phone: string | undefined) => {
+      const workspaceId = await getDefaultWorkspaceId();
+      const sessions: SandboxSession[] = await apiClient('/sandbox/sessions', {
+        workspaceId,
+      });
+      const session = await pickSessionByPhone<SandboxSession>(sessions, phone);
+      const phoneLabel = session.phone ? `+${session.phone.replace(/^\+/, '')}` : '(unbound)';
+      const tunnelUrl = session.hostname
+        ? `https://${session.hostname}/webhook`
+        : null;
+      // Already in CLI mode — nothing to clear. Friendly no-op so the user
+      // doesn't see a confusing 404/no-op response.
+      if (!session.webhookUrl || session.webhookUrl === tunnelUrl) {
+        const result = {
+          sessionId: session.publicId ?? session.id,
+          phone: session.phone,
+          status: 'already-cli-mode' as const,
+          message: `No custom webhook is set for ${phoneLabel}. You're already in CLI mode — run \`${cliCommandPrefix()} sandbox listen\` to start receiving messages.`,
+        };
+        output(result, {
+          json: !!program.opts().json,
+          kind: 'mutation',
+          nudge: result.message,
+        });
+        return;
+      }
+      const data = await apiClient(
+        `/sandbox/sessions/${session.publicId ?? session.id}/reset-webhook`,
+        { method: 'POST' },
+      );
+      output(data, {
+        json: !!program.opts().json,
+        kind: 'mutation',
+        nudge: `Reverted to CLI mode. Run: ${cliCommandPrefix()} sandbox listen`,
+      });
+    });
+
   addExamples(
     sandbox,
     `
@@ -621,6 +727,44 @@ EXAMPLES:
   $ hookmyapp sandbox send                                          # prompts for session + message
   $ hookmyapp sandbox send --message "hi"                           # prompts only for session
   $ hookmyapp sandbox send --phone +15551234567 --message "hi"      # fully flagged (CI)
+`,
+  );
+
+  addExamples(
+    sandboxWebhook,
+    `
+EXAMPLES:
+  $ hookmyapp sandbox webhook show
+  $ hookmyapp sandbox webhook set +15551234567 --url https://example.com/webhook
+  $ hookmyapp sandbox webhook clear +15551234567
+`,
+  );
+
+  addExamples(
+    sandboxWebhookShow,
+    `
+EXAMPLES:
+  $ hookmyapp sandbox webhook show                        # auto-pick or prompt
+  $ hookmyapp sandbox webhook show +15551234567
+  $ hookmyapp sandbox webhook show +15551234567 --json
+`,
+  );
+
+  addExamples(
+    sandboxWebhookSet,
+    `
+EXAMPLES:
+  $ hookmyapp sandbox webhook set --url https://example.com/webhook
+  $ hookmyapp sandbox webhook set +15551234567 --url https://n8n.cloud/webhook/abc
+`,
+  );
+
+  addExamples(
+    sandboxWebhookClear,
+    `
+EXAMPLES:
+  $ hookmyapp sandbox webhook clear
+  $ hookmyapp sandbox webhook clear +15551234567
 `,
   );
 }
