@@ -13,7 +13,7 @@ export function registerEnvCommand(program: Command): void {
       const tokenData = await apiClient(`/meta/channels/${channel.id}/token`);
 
       process.stdout.write(
-        `WABA_ID=${channel.metaWabaId}\nACCESS_TOKEN=${tokenData.accessToken}\nPHONE_NUMBER_ID=${channel.phoneNumberId}\n`,
+        `WHATSAPP_WABA_ID=${channel.metaWabaId}\nWHATSAPP_ACCESS_TOKEN=${tokenData.accessToken}\nWHATSAPP_PHONE_NUMBER_ID=${channel.phoneNumberId}\n`,
       );
     });
 
