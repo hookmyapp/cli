@@ -52,9 +52,9 @@ describe('env command', () => {
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/token');
 
     const written = mockWrite.mock.calls.map((c) => c[0]).join('');
-    expect(written).toContain('WABA_ID=waba-111');
-    expect(written).toContain('ACCESS_TOKEN=EAABtoken123');
-    expect(written).toContain('PHONE_NUMBER_ID=phone-222');
+    expect(written).toContain('WHATSAPP_WABA_ID=waba-111');
+    expect(written).toContain('WHATSAPP_ACCESS_TOKEN=EAABtoken123');
+    expect(written).toContain('WHATSAPP_PHONE_NUMBER_ID=phone-222');
     mockWrite.mockRestore();
   });
 
