@@ -1,16 +1,12 @@
 import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { output } from '../output/format.js';
-import { AuthError, ValidationError } from '../output/error.js';
+import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import { readCredentials } from '../auth/store.js';
-import { getEffectiveApiUrl, getEffectiveAppUrl } from '../config/env-profiles.js';
+import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import open from 'open';
-
-async function fetchAppConfig(): Promise<{ metaAppId: string; metaConfigId: string }> {
-  return apiClient('/config');
-}
 
 /** Pick only customer-facing fields for CLI display output */
 function pickDisplayFields(channel: any): any {
@@ -42,34 +38,23 @@ export async function resolveChannel(wabaId: string): Promise<any> {
 export async function runChannelsConnect(): Promise<void> {
   // Force a fresh 15-min token right before opening signup
   await forceTokenRefresh();
-  const creds = readCredentials();
-  if (!creds?.accessToken) {
-    throw new AuthError(`Not logged in. Run: ${cliCommandPrefix()} login`);
-  }
 
-  const config = await fetchAppConfig();
-  const appUrl = getEffectiveAppUrl();
-  const redirectUri = `${appUrl}/cli/callback`;
+  // Discover the workspace publicId so we can pass X-Workspace-Id to /meta/oauth/start.
+  const { getDefaultWorkspaceId } = await import('./_helpers.js');
+  const workspaceId = await getDefaultWorkspaceId();
 
-  const extras = JSON.stringify({
-    featureType: 'whatsapp_business_app_onboarding',
-    sessionInfoVersion: '3',
-    version: 'v4',
-  });
-
-  const u = new URL('https://www.facebook.com/v21.0/dialog/oauth');
-  u.searchParams.set('client_id', config.metaAppId);
-  u.searchParams.set('redirect_uri', redirectUri);
-  u.searchParams.set('config_id', config.metaConfigId);
-  u.searchParams.set('response_type', 'code');
-  u.searchParams.set('override_default_response_type', 'true');
-  u.searchParams.set('extras', extras);
-  u.searchParams.set('state', `cli:${creds.accessToken}`);
+  // Server mints OAuth state + PKCE (replaces the previous `state=cli:<jwt>`
+  // URL-construction; JWTs no longer ride in the URL — RFC 6750 fix).
+  const oauthStart = (await apiClient('/meta/oauth/start', {
+    method: 'POST',
+    workspaceId,
+    body: JSON.stringify({ redirectPath: '/cli/callback' }),
+  })) as { state: string; redirectUrl: string; codeChallenge: string };
 
   // Snapshot existing channels before signup
-  const existingChannels = await apiClient('/meta/channels');
+  const existingChannels = await apiClient('/meta/channels', { workspaceId });
   console.log('\nOpening Embedded Signup in browser...\nComplete the signup, then return here.\n');
-  await open(u.toString());
+  await open(oauthStart.redirectUrl);
   console.log('Waiting for channel...');
 
   // Poll for new channel (check every 5s, timeout after 15 min)
