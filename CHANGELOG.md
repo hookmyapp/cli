@@ -2,6 +2,35 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [1.0.0] - 2026-05-06
+
+### Breaking Changes
+
+- **OAuth flow rewrite.** `hookmyapp channels connect` now mints OAuth state
+  via the backend's new `POST /meta/oauth/start` endpoint instead of
+  embedding the CLI's JWT in the OAuth `state` URL parameter. Older CLI
+  versions (`< 1.0.0`) will be rejected by the dashboard's `/cli/callback`
+  page with an "Upgrade required" message.
+
+### Why
+
+- RFC 6750 §5.3 forbids transmitting bearer tokens in URL query parameters.
+  The previous design leaked the CLI's JWT to browser history and Meta's
+  redirect-handler logs.
+- Adds PKCE (RFC 7636) so the OAuth code-for-token exchange is bound to a
+  server-stored verifier.
+- Server-side state replaces fragile `localStorage`/`sessionStorage` nonce
+  storage that broke in popup mode.
+
+### Upgrade
+
+```bash
+npm install -g @gethookmyapp/cli@latest
+```
+
+If you don't upgrade, `hookmyapp channels connect` will redirect to a
+"please upgrade" page instead of completing the flow.
+
 ## [0.10.0] - 2026-05-02
 
 ### Changed
