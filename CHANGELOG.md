@@ -2,15 +2,25 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
-## [1.0.0] - 2026-05-06
+## [0.10.2] - 2026-05-06
 
 ### Breaking Changes
 
 - **OAuth flow rewrite.** `hookmyapp channels connect` now mints OAuth state
   via the backend's new `POST /meta/oauth/start` endpoint instead of
   embedding the CLI's JWT in the OAuth `state` URL parameter. Older CLI
-  versions (`< 1.0.0`) will be rejected by the dashboard's `/cli/callback`
+  versions (`<= 0.10.1`) will be rejected by the dashboard's `/cli/callback`
   page with an "Upgrade required" message.
+- **`hookmyapp env <waba-id>` now prefixes output keys with `WHATSAPP_`.**
+  The dotenv block written/printed by `env` and `sandbox env` uses
+  `WHATSAPP_WABA_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
+  `WHATSAPP_API_URL` instead of the unprefixed names. Update any `.env`
+  files and code that read the old names. `VERIFY_TOKEN` is unchanged
+  (sandbox-session HMAC concept, not a WhatsApp-API value).
+- **`env <waba-id> --write [path]` upserts in place.** The new flag merges
+  the prefixed block into an existing `.env` (or creates one) instead of
+  printing to stdout. Existing `WHATSAPP_*` keys are replaced; unrelated
+  keys are preserved.
 
 ### Why
 
