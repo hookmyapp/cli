@@ -58,3 +58,68 @@ describe('env <waba-id> — WHATSAPP_ prefix', () => {
     writeSpy.mockRestore();
   });
 });
+
+describe('env <waba-id> --write — upsert-merge', () => {
+  it('writes 3 keys when target file is missing', async () => {
+    mocks.existsSyncMock.mockReturnValue(false);
+    await runEnv(['1234567890', '--write', '.env']);
+    expect(mocks.writeFileSyncMock).toHaveBeenCalledTimes(1);
+    const [tmpPath, contents] = mocks.writeFileSyncMock.mock.calls[0];
+    expect(String(tmpPath)).toMatch(/\.env\.tmp$/);
+    expect(String(contents)).toContain('WHATSAPP_WABA_ID=1234567890');
+    expect(String(contents)).toContain('WHATSAPP_ACCESS_TOKEN=ACT_xxx');
+    expect(String(contents)).toContain('WHATSAPP_PHONE_NUMBER_ID=15551234567');
+    expect(mocks.renameSyncMock).toHaveBeenCalledTimes(1);
+    const [from, to] = mocks.renameSyncMock.mock.calls[0];
+    expect(String(from)).toMatch(/\.env\.tmp$/);
+    expect(String(to)).toMatch(/\.env$/);
+  });
+
+  it('preserves unrelated keys and appends the three new keys', async () => {
+    mocks.existsSyncMock.mockReturnValue(true);
+    mocks.readFileSyncMock.mockReturnValue('PORT=4000\nVERIFY_TOKEN=abc\n');
+    await runEnv(['1234567890', '--write', '.env']);
+    const contents = String(mocks.writeFileSyncMock.mock.calls[0][1]);
+    expect(contents).toContain('PORT=4000');
+    expect(contents).toContain('VERIFY_TOKEN=abc');
+    expect(contents).toContain('WHATSAPP_WABA_ID=1234567890');
+    expect(contents).toContain('WHATSAPP_ACCESS_TOKEN=ACT_xxx');
+    expect(contents).toContain('WHATSAPP_PHONE_NUMBER_ID=15551234567');
+  });
+
+  it('replaces a prior WHATSAPP_ACCESS_TOKEN value, leaves others alone', async () => {
+    mocks.existsSyncMock.mockReturnValue(true);
+    mocks.readFileSyncMock.mockReturnValue(
+      'PORT=4000\nWHATSAPP_ACCESS_TOKEN=old\nVERIFY_TOKEN=abc\n',
+    );
+    await runEnv(['1234567890', '--write', '.env']);
+    const contents = String(mocks.writeFileSyncMock.mock.calls[0][1]);
+    expect(contents).toContain('WHATSAPP_ACCESS_TOKEN=ACT_xxx');
+    expect(contents).not.toContain('WHATSAPP_ACCESS_TOKEN=old');
+    expect(contents).toContain('PORT=4000');
+    expect(contents).toContain('VERIFY_TOKEN=abc');
+  });
+
+  it('preserves comments and ordering of unrelated lines', async () => {
+    mocks.existsSyncMock.mockReturnValue(true);
+    mocks.readFileSyncMock.mockReturnValue(
+      '# header comment\nPORT=4000\n\n# section\nVERIFY_TOKEN=abc\n',
+    );
+    await runEnv(['1234567890', '--write', '.env']);
+    const contents = String(mocks.writeFileSyncMock.mock.calls[0][1]);
+    const lines = contents.split('\n');
+    expect(lines[0]).toBe('# header comment');
+    expect(lines[1]).toBe('PORT=4000');
+    expect(lines[2]).toBe('');
+    expect(lines[3]).toBe('# section');
+    expect(lines[4]).toBe('VERIFY_TOKEN=abc');
+  });
+
+  it('writes atomically: writeFileSync to .tmp then renameSync into place', async () => {
+    mocks.existsSyncMock.mockReturnValue(false);
+    await runEnv(['1234567890', '--write', '.env']);
+    const writeOrder = mocks.writeFileSyncMock.mock.invocationCallOrder[0];
+    const renameOrder = mocks.renameSyncMock.mock.invocationCallOrder[0];
+    expect(writeOrder).toBeLessThan(renameOrder);
+  });
+});
