@@ -23,6 +23,15 @@ vi.mock('../commands/workspace.js', () => ({
   registerWorkspaceCommand: vi.fn(),
 }));
 
+// Mock _helpers — its real `getDefaultWorkspaceId` dynamic-imports
+// `../index.js` (the CLI root with commander wiring), which interacts badly
+// with `vi.useFakeTimers()` in the polling tests below. The stub returns the
+// same workspace id the existing tests assume.
+vi.mock('../commands/_helpers.js', () => ({
+  getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0010'),
+  runWithInstrumentation: vi.fn(async (_cmd: string, _sub: string | null, fn: () => Promise<unknown>) => fn()),
+}));
+
 // Mock store
 vi.mock('../auth/store.js', () => ({
   readCredentials: vi.fn().mockReturnValue({ accessToken: 'test-token', refreshToken: 'test-refresh' }),
@@ -175,11 +184,18 @@ describe('channels commands', () => {
     });
   });
 
-  it('connectChannel calls forceTokenRefresh and opens Embedded Signup URL', async () => {
-    // First call: fetchAppConfig -> /config
-    // Second call: snapshot channels -> /meta/channels (the poll will timeout, but we test the initial flow)
+  it('connectChannel calls forceTokenRefresh and opens server-minted Embedded Signup URL', async () => {
+    // Phase plan 12 — `runChannelsConnect` now POSTs `/meta/oauth/start`
+    // (server mints state + PKCE) instead of building the Facebook URL inline
+    // with `state=cli:<jwt>`. The first apiClient call is the OAuth-start POST;
+    // the second is the channel snapshot.
+    const startResponse = {
+      state: 'srv-state-abc',
+      redirectUrl: 'https://www.facebook.com/v21.0/dialog/oauth?client_id=123&state=srv-state-abc',
+      codeChallenge: 'pkce-challenge',
+    };
     mockedApiClient
-      .mockResolvedValueOnce({ metaAppId: '123456', metaConfigId: 'config-1' }) // /config
+      .mockResolvedValueOnce(startResponse) // POST /meta/oauth/start
       .mockResolvedValueOnce([]); // initial snapshot /meta/channels
     // Suppress console.log
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -194,7 +210,15 @@ describe('channels commands', () => {
 
     const { forceTokenRefresh } = await import('../api/client.js');
     expect(forceTokenRefresh).toHaveBeenCalled();
-    expect(mockedOpen).toHaveBeenCalledWith(expect.stringContaining('facebook.com'));
+    // Asserts the new server-side flow: POST /meta/oauth/start with workspace
+    // header + redirectPath body, and opens the server-returned redirectUrl
+    // verbatim (no client-side URL construction, no JWT in the URL).
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/oauth/start', {
+      method: 'POST',
+      workspaceId: 'ws_TEST0010',
+      body: JSON.stringify({ redirectPath: '/cli/callback' }),
+    });
+    expect(mockedOpen).toHaveBeenCalledWith(startResponse.redirectUrl);
 
     // Clean up: restore console.log to stop polling side effects
     vi.mocked(console.log).mockRestore();
@@ -322,9 +346,14 @@ describe('channels connect — npx prefix roll-out (cliCommandPrefix)', () => {
       webhookUrl: null,
     };
 
-    // apiClient call order: /config, snapshot /meta/channels (empty), then inside poll — nothing (uses fetch).
+    // apiClient call order: POST /meta/oauth/start, snapshot /meta/channels (empty),
+    // then inside poll — nothing (uses fetch directly).
     mockedApiClient
-      .mockResolvedValueOnce({ metaAppId: '123', metaConfigId: 'cfg-1' }) // /config
+      .mockResolvedValueOnce({
+        state: 'srv-state-1',
+        redirectUrl: 'https://www.facebook.com/v21.0/dialog/oauth?state=srv-state-1',
+        codeChallenge: 'pkce-1',
+      }) // POST /meta/oauth/start
       .mockResolvedValueOnce([]); // initial snapshot
 
     // Stub global fetch: first polled /meta/channels returns [newChannel].
@@ -365,8 +394,12 @@ describe('channels connect — npx prefix roll-out (cliCommandPrefix)', () => {
     };
 
     mockedApiClient
-      .mockResolvedValueOnce({ metaAppId: '123', metaConfigId: 'cfg-1' })
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce({
+        state: 'srv-state-2',
+        redirectUrl: 'https://www.facebook.com/v21.0/dialog/oauth?state=srv-state-2',
+        codeChallenge: 'pkce-2',
+      }) // POST /meta/oauth/start
+      .mockResolvedValueOnce([]); // initial snapshot
 
     const origFetch = globalThis.fetch;
     globalThis.fetch = vi.fn(async () => ({
