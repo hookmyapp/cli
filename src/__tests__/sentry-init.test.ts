@@ -123,23 +123,27 @@ describe('captureError', () => {
   });
 });
 
-describe('shouldCaptureToSentry filter (single-capture-per-error rule)', () => {
-  it('captures errors with no statusCode (local CLI failures)', () => {
+describe('shouldCaptureToSentry filter — capture every non-null error', () => {
+  // 0.11.0: removed the statusCode-based exclusion. Earlier versions filtered
+  // out backend-response wrappers, but the AppError base derives statusCode
+  // from each subclass's static httpStatus, which meant locally-thrown
+  // ValidationError/AuthError/etc. were ALSO filtered — empty Sentry project
+  // for 30 days. CLI-side perspective is valuable; let Sentry fingerprint
+  // grouping handle any duplication with the backend project.
+  it('captures generic Error', () => {
     expect(shouldCaptureToSentry(new Error('local failure'))).toBe(true);
   });
 
-  it('captures NetworkError (pre-backend failures — DNS, offline)', () => {
+  it('captures NetworkError', () => {
     expect(shouldCaptureToSentry(new NetworkError())).toBe(true);
   });
 
-  it('does NOT capture ApiError (backend-response wrapper — statusCode set)', () => {
-    // ApiError carries statusCode from the response; backend already captured.
-    expect(shouldCaptureToSentry(new ApiError('5xx', 500))).toBe(false);
+  it('captures ApiError (so the CLI-side perspective on backend failures is preserved)', () => {
+    expect(shouldCaptureToSentry(new ApiError('5xx', 500))).toBe(true);
   });
 
-  it('does NOT capture AuthError (401 from backend)', () => {
-    // AuthError.statusCode is 401; it wraps a backend 401 response.
-    expect(shouldCaptureToSentry(new AuthError())).toBe(false);
+  it('captures AuthError (whether thrown locally on missing creds or wrapped from backend 401)', () => {
+    expect(shouldCaptureToSentry(new AuthError())).toBe(true);
   });
 
   it('captures unknown throws (non-AppError — unexpected bugs)', () => {
