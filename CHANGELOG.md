@@ -22,12 +22,23 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 ### Fixed
 
-- **Silent-Sentry bug** that disabled crash reporting for the rest of the
+- **Silent-Sentry bug #1** that disabled crash reporting for the rest of the
   process whenever the disclosure-banner write hit `EPERM`/`EACCES`
   (sandboxed shells, read-only filesystems). The disclosure call is now
-  isolated in its own try/catch outside the init success path. The
-  Sentry CLI project reported zero events for 30 days because of this
-  bug; expect normal volume once 0.11.0 rolls out.
+  isolated in its own try/catch outside the init success path.
+- **Silent-Sentry bug #2: `shouldCaptureToSentry` filter excluded local CLI
+  errors.** The previous heuristic skipped any error with a non-undefined
+  `statusCode`, intended to avoid double-capturing backend-wrapped 5xx
+  errors. But the `AppError` base class derives `statusCode` from each
+  subclass's static `httpStatus` getter — so locally-thrown
+  `ValidationError`/`AuthError`/`PermissionError`/`ConflictError`/
+  `RateLimitError`/`UserBlockingError`/`ConfigurationError` ALL carried a
+  `statusCode` and were silently filtered out. Only `NetworkError` and
+  errors with no `httpStatus` ever reached Sentry. Filter removed in
+  0.11.0; CLI-side perspective is preserved on every error and Sentry's
+  fingerprint grouping handles backend-overlap dedup. Combined with
+  bug #1, this is why the `hookmyapp-cli` Sentry project had zero events
+  for 30 days; expect normal volume once 0.11.0 rolls out.
 
 ### Why
 
