@@ -42,6 +42,24 @@ describe('safeWriteFileSync', () => {
     expect(() => safeWriteFileSync('/blocked/path', 'data')).toThrow(ConfigWriteForbiddenError);
   });
 
+  it('throws ConfigWriteForbiddenError on EROFS (read-only filesystem)', () => {
+    mocks.writeFileSyncMock.mockImplementation(() => {
+      const err = new Error('EROFS') as NodeJS.ErrnoException;
+      err.code = 'EROFS';
+      throw err;
+    });
+    expect(() => safeWriteFileSync('/blocked/path', 'data')).toThrow(ConfigWriteForbiddenError);
+  });
+
+  it('throws ConfigWriteForbiddenError when mkdirSync is denied', () => {
+    mocks.mkdirSyncMock.mockImplementation(() => {
+      const err = new Error('EPERM') as NodeJS.ErrnoException;
+      err.code = 'EPERM';
+      throw err;
+    });
+    expect(() => safeWriteFileSync('/blocked/path', 'data')).toThrow(ConfigWriteForbiddenError);
+  });
+
   it('rethrows other errors as-is', () => {
     mocks.writeFileSyncMock.mockImplementation(() => {
       const err = new Error('ENOSPC') as NodeJS.ErrnoException;
