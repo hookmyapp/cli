@@ -23,6 +23,18 @@ All notable changes to `@gethookmyapp/cli` are documented here.
   config file (the failure mode hit by users running the CLI inside
   sandboxed shells like Claude Code). Surfaces the two recovery paths:
   real terminal, or `HOOKMYAPP_CONFIG_DIR=$PWD/.hookmyapp`.
+- **Sentry offline transport.** Errors thrown while offline persist to
+  `<config-dir>/sentry-offline/` and replay automatically on the next
+  invocation that successfully reaches `ingest.sentry.io`.
+
+### Fixed
+
+- **Silent-Sentry bug** that disabled crash reporting for the rest of the
+  process whenever the disclosure-banner write hit `EPERM`/`EACCES`
+  (sandboxed shells, read-only filesystems). The disclosure call is now
+  isolated in its own try/catch outside the init success path. The
+  Sentry CLI project reported zero events for 30 days because of this
+  bug; expect normal volume once 0.11.0 rolls out.
 
 ### Why
 
