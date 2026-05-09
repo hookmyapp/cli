@@ -215,6 +215,14 @@ async function main(): Promise<void> {
     // command resolves to.
   }
 
+  const { migrateLegacyCredentials } = await import('./storage/secrets.js');
+  const { getLegacyConfigDir } = await import('./storage/path.js');
+  try {
+    await migrateLegacyCredentials(getLegacyConfigDir());
+  } catch {
+    // Same fail-open policy as the config migration.
+  }
+
   // Phase 123 Plan 10 — init Sentry early so top-level throws + unhandled
   // rejections capture before we hit the exit boundary. The function is
   // idempotent + lazy: if telemetry is disabled (HOOKMYAPP_TELEMETRY=off

@@ -1,4 +1,5 @@
 import { readFileSync, chmodSync, unlinkSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { getCredentialsFile, safeWriteFileSync } from './path.js';
 
 /**
@@ -120,4 +121,51 @@ export async function deleteSecrets(): Promise<void> {
 // HOOKMYAPP_DISABLE_KEYCHAIN inside a single test file behaves predictably.
 export function __resetForTests(): void {
   entryClassCache = undefined;
+}
+
+/**
+ * Copy-verify-delete migration of credentials.json from a legacy config
+ * directory into the canonical secrets store (keychain by default, file
+ * fallback if keychain unavailable).
+ *
+ * Order of operations:
+ *   1. Read legacy credentials.json. If parse fails → leave file alone, return.
+ *   2. writeSecrets() to the canonical location.
+ *   3. readSecrets() to verify the round-trip.
+ *   4. ONLY IF verification matches the legacy payload → unlink legacy file.
+ *
+ * If any step fails, the legacy file is left intact so the user retains a
+ * recoverable copy of their credentials.
+ */
+export async function migrateLegacyCredentials(legacyDir: string): Promise<void> {
+  const legacyPath = join(legacyDir, 'credentials.json');
+  if (!existsSync(legacyPath)) return;
+
+  let legacy: Secrets;
+  try {
+    legacy = JSON.parse(readFileSync(legacyPath, 'utf-8')) as Secrets;
+  } catch {
+    return;
+  }
+  if (
+    typeof legacy?.accessToken !== 'string' ||
+    typeof legacy?.refreshToken !== 'string' ||
+    typeof legacy?.expiresAt !== 'number'
+  ) {
+    return;
+  }
+
+  await writeSecrets(legacy);
+  const verify = await readSecrets();
+  if (
+    verify?.accessToken === legacy.accessToken &&
+    verify?.refreshToken === legacy.refreshToken &&
+    verify?.expiresAt === legacy.expiresAt
+  ) {
+    try {
+      unlinkSync(legacyPath);
+    } catch {
+      // Already gone; ignore.
+    }
+  }
 }
