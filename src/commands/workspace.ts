@@ -6,7 +6,7 @@ import { addExamples } from '../output/help.js';
 import type { Workspace } from '../types/workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
-import { getConfigDir, getConfigFile } from '../storage/path.js';
+import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 
 export interface WorkspaceConfig {
   activeWorkspaceId?: string;
@@ -58,7 +58,6 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
       `activeWorkspaceId "${config.activeWorkspaceId}" is not a valid ws_ publicId. This is a bug — callers must pass the server-returned publicId.`,
     );
   }
-  fs.mkdirSync(getConfigDir(), { recursive: true });
   // Merge with existing config so we never clobber env-profiles fields
   // (specifically `env`). See env-profiles.ts for the other half.
   const existing = readFullConfig();
@@ -67,7 +66,7 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
     activeWorkspaceId: config.activeWorkspaceId,
     activeWorkspaceSlug: config.activeWorkspaceSlug,
   };
-  fs.writeFileSync(getConfigFile(), JSON.stringify(merged, null, 2) + '\n');
+  safeWriteFileSync(getConfigFile(), JSON.stringify(merged, null, 2) + '\n');
 }
 
 export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; name: string; role: string }> {
