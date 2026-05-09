@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { migrateConfigDirIfNeeded } from '../path.js';
-import { migrateLegacyCredentials, readSecrets, __resetForTests } from '../secrets.js';
+import { migrateLegacyCredentials, readSecrets } from '../secrets.js';
 
 describe('upgrade from CLI 0.10.x to 0.11.0', () => {
   let legacy: string;
@@ -14,8 +14,6 @@ describe('upgrade from CLI 0.10.x to 0.11.0', () => {
     newDir = mkdtempSync(join(tmpdir(), 'upgrade-new-'));
     rmSync(newDir, { recursive: true, force: true });
     process.env.HOOKMYAPP_CONFIG_DIR = newDir;
-    process.env.HOOKMYAPP_DISABLE_KEYCHAIN = '1';
-    __resetForTests();
   });
 
   afterEach(() => {
