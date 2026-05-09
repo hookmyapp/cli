@@ -1,4 +1,13 @@
 import { build } from 'esbuild';
+import { readFileSync } from 'fs';
+
+// Read package.json version once at build time so we can inline it into the
+// bundle. The bundled file lives at dist/cli.js, where any `new URL('../package.json', import.meta.url)`
+// runtime read resolves to the cli root (works), but `../../package.json` (the
+// path that satisfies the unbundled src/api/version-headers.ts source location)
+// resolves outside the cli root (breaks). Inlining sidesteps that fragility
+// entirely — the same pattern HOOKMYAPP_CLI_RELEASE already uses.
+const PKG_VERSION = JSON.parse(readFileSync('./package.json', 'utf-8')).version;
 
 // Phase 123 Plan 10 — observability build config.
 //
@@ -53,6 +62,9 @@ await build({
     'process.env.HOOKMYAPP_POSTHOG_HOST': JSON.stringify(
       process.env.HOOKMYAPP_POSTHOG_HOST ?? '',
     ),
+    // CLI semver baked at build time. Read by src/api/version-headers.ts when
+    // present; falls back to a runtime package.json read in dev/test contexts.
+    __HOOKMYAPP_CLI_PKG_VERSION__: JSON.stringify(PKG_VERSION),
   },
   // Keep @sentry/node + posthog-node external — real runtime deps (not
   // devDeps), resolved from the installed node_modules tree. Inlining

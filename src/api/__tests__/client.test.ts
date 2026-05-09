@@ -5,6 +5,7 @@ import {
   ConflictError,
   ApiError,
   NetworkError,
+  ClientOutdatedError,
 } from '../../output/error.js';
 
 // Wave 0 RED: exercises the FUTURE `mapApiError` helper and the
@@ -100,5 +101,121 @@ describe('apiClient network failure — Wave 0 RED', () => {
       );
     await expect(apiClient('/workspaces')).rejects.toBeInstanceOf(NetworkError);
     fetchSpy.mockRestore();
+  });
+});
+
+// --- Phase 2 of CLI + skill version enforcement (spec 2026-05-06) ---
+
+function mkOk(status = 200, body: unknown = {}, headers: Record<string, string> = {}): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: 'OK',
+    headers: new Headers(headers),
+    json: async () => body,
+  } as unknown as Response;
+}
+
+describe('apiClient injects version-enforcement headers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('every request carries User-Agent + X-HookMyApp-CLI-Version + lang/runtime/arch/os', async () => {
+    const { apiClient } = await import('../client.js');
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(mkOk(200, { ok: true }));
+    await apiClient('/workspaces');
+
+    const sent = fetchSpy.mock.calls[0][1] as RequestInit;
+    const headers = sent.headers as Record<string, string>;
+    expect(headers['User-Agent']).toMatch(/^hookmyapp-cli\/\d+\.\d+\.\d+ \(node\//);
+    expect(headers['X-HookMyApp-CLI-Version']).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(headers['X-HookMyApp-Lang']).toBe('node');
+    expect(headers['X-HookMyApp-Runtime-Version']).toBe(process.versions.node);
+    expect(headers['X-HookMyApp-Arch']).toBe(process.arch);
+    expect(headers['X-HookMyApp-OS']).toBe(process.platform);
+  });
+});
+
+describe('apiClient — 426 Upgrade Required handler', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('throws ClientOutdatedError carrying messages[] from the body', async () => {
+    const { apiClient } = await import('../client.js');
+    const body = {
+      code: 'CLIENT_OUTDATED',
+      outdated: ['skill'],
+      minVersions: { cli: '1.4.0', skill: '1.2.0' },
+      messages: [
+        'Your agent skill is outdated (installed 1.0.0, required 1.2.0).',
+        'Run: npx skills add hookmyapp/agent-skills@latest',
+      ],
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mkOk(426, body));
+
+    try {
+      await apiClient('/workspaces');
+      expect.fail('expected ClientOutdatedError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ClientOutdatedError);
+      const err = e as ClientOutdatedError;
+      expect(err.messages).toEqual(body.messages);
+      expect(err.code).toBe('CLIENT_OUTDATED');
+      expect(err.exitCode).toBe(1);
+    }
+  });
+
+  it('falls back to a generic message when 426 body is malformed', async () => {
+    const { apiClient } = await import('../client.js');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mkOk(426, { malformed: true }));
+
+    try {
+      await apiClient('/workspaces');
+      expect.fail('expected ClientOutdatedError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ClientOutdatedError);
+      const err = e as ClientOutdatedError;
+      expect(err.messages.length).toBeGreaterThan(0);
+      expect(err.messages.join(' ')).toMatch(/upgrade/i);
+    }
+  });
+});
+
+describe('apiClient — soft-warn banner via X-HookMyApp-Client-Outdated', () => {
+  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.NO_UPDATE_NOTIFIER;
+  });
+
+  it('prints a CLI banner when the response carries x-hookmyapp-client-outdated: cli', async () => {
+    // Reset module state so the bannerPrinted singleton starts fresh.
+    vi.resetModules();
+    const { apiClient } = await import('../client.js');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mkOk(200, { ok: true }, { 'x-hookmyapp-client-outdated': 'cli' }),
+    );
+    stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    await apiClient('/workspaces');
+    const printed = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(printed).toMatch(/newer hookmyapp CLI/i);
+    expect(printed).toMatch(/npm install -g @gethookmyapp\/cli/);
+  });
+
+  it('NO_UPDATE_NOTIFIER=1 suppresses the banner', async () => {
+    vi.resetModules();
+    process.env.NO_UPDATE_NOTIFIER = '1';
+    const { apiClient } = await import('../client.js');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mkOk(200, { ok: true }, { 'x-hookmyapp-client-outdated': 'cli,skill' }),
+    );
+    stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    await apiClient('/workspaces');
+    const printed = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(printed).toBe('');
   });
 });

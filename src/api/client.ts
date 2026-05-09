@@ -2,6 +2,7 @@ import { readCredentials, saveCredentials } from '../auth/store.js';
 import {
   AuthError,
   ApiError,
+  ClientOutdatedError,
   NetworkError,
   PermissionError,
   ConflictError,
@@ -15,6 +16,7 @@ import {
   getEffectiveApiUrl,
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
+import { buildVersionHeaders } from './version-headers.js';
 
 function decodeJwtExp(token: string): number {
   try {
@@ -196,6 +198,7 @@ export async function apiClient(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
+    ...buildVersionHeaders(),
     ...(fetchOptions.headers as Record<string, string> ?? {}),
   };
 
@@ -214,6 +217,18 @@ export async function apiClient(
       throw new NetworkError();
     }
     throw err;
+  }
+
+  // Soft-warn — server signals "client below min_recommended" via the response
+  // header. Banner is informational; the underlying response continues to flow.
+  // Suppressed by NO_UPDATE_NOTIFIER=1 (npm/AWS CDK/Vue CLI/Yeoman convention).
+  maybePrintOutdatedBanner(res);
+
+  // Hard block — 426 Upgrade Required (RFC 9110 §15.5.16). Spec payload shape:
+  // { code, outdated[], minVersions{}, messages[] }. Print the messages, throw
+  // a ClientOutdatedError so the top-level mapper exits 1 cleanly.
+  if (res.status === 426) {
+    throw await parseClientOutdated(res);
   }
 
   if (!res.ok) {
@@ -266,4 +281,58 @@ export async function getBindCode(
     method: 'GET',
     workspaceId,
   })) as BindCodeResponse;
+}
+
+// --- Phase 2 of CLI + skill version enforcement (spec 2026-05-06) ---
+
+/**
+ * Print the soft-warn banner if the response carries `X-HookMyApp-Client-Outdated`.
+ * Header value is a comma-separated list of components (e.g. "cli", "skill",
+ * "cli,skill"). Banner is suppressed when NO_UPDATE_NOTIFIER=1.
+ *
+ * Banner is informational only — the original response continues to flow.
+ * Printed once per process (a single CLI command makes O(1) backend calls,
+ * but we still de-dupe defensively in case of paginated/poll loops).
+ */
+let bannerPrinted = false;
+function maybePrintOutdatedBanner(res: Response): void {
+  if (bannerPrinted) return;
+  if (process.env.NO_UPDATE_NOTIFIER === '1') return;
+  // Defensive: tests use minimal Response mocks that may omit `headers`. The
+  // real fetch() always populates it, but `?.get` keeps the soft-warn path
+  // crash-proof when the mock skips the field.
+  const outdated = res.headers?.get('x-hookmyapp-client-outdated');
+  if (!outdated) return;
+  const parts = outdated.split(',').map((s) => s.trim()).filter(Boolean);
+  const lines: string[] = [];
+  if (parts.includes('cli')) {
+    lines.push('A newer hookmyapp CLI is available. Update: npm install -g @gethookmyapp/cli@latest');
+  }
+  if (parts.includes('skill')) {
+    lines.push('A newer integrate-hookmyapp skill is available. Update: npx skills add hookmyapp/agent-skills@latest');
+  }
+  if (lines.length === 0) return;
+  process.stderr.write('\n' + lines.join('\n') + '\n\n');
+  bannerPrinted = true;
+}
+
+interface ClientOutdatedPayload {
+  code?: string;
+  outdated?: string[];
+  minVersions?: { cli?: string; skill?: string };
+  messages?: string[];
+}
+
+/**
+ * Parse a 426 body into a ClientOutdatedError. Defensive against malformed
+ * payloads — falls back to a generic upgrade-required message so the CLI
+ * never crashes on a server-side regression in payload shape.
+ */
+async function parseClientOutdated(res: Response): Promise<ClientOutdatedError> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body: ClientOutdatedPayload = (await res.json().catch(() => ({}))) as any;
+  const messages = Array.isArray(body.messages) && body.messages.length > 0
+    ? body.messages.filter((m): m is string => typeof m === 'string')
+    : ['HookMyApp CLI or skill needs an upgrade. Run: npm install -g @gethookmyapp/cli@latest'];
+  return new ClientOutdatedError(messages, body.code ?? 'CLIENT_OUTDATED');
 }
