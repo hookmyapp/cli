@@ -10,7 +10,7 @@ const FIXTURE = {
   expiresAt: 1730000000000,
 };
 
-describe('secrets (file fallback path under HOOKMYAPP_DISABLE_KEYCHAIN=1)', () => {
+describe('secrets (file-only storage)', () => {
   let dir: string;
   let originalConfigDir: string | undefined;
 
@@ -18,7 +18,6 @@ describe('secrets (file fallback path under HOOKMYAPP_DISABLE_KEYCHAIN=1)', () =
     dir = mkdtempSync(join(tmpdir(), 'secrets-test-'));
     originalConfigDir = process.env.HOOKMYAPP_CONFIG_DIR;
     process.env.HOOKMYAPP_CONFIG_DIR = dir;
-    process.env.HOOKMYAPP_DISABLE_KEYCHAIN = '1';
   });
 
   afterEach(() => {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { migrateLegacyCredentials, readSecrets, __resetForTests } from '../secrets.js';
+import { migrateLegacyCredentials, readSecrets } from '../secrets.js';
 
 describe('migrateLegacyCredentials', () => {
   let legacyDir: string;
@@ -12,8 +12,6 @@ describe('migrateLegacyCredentials', () => {
     legacyDir = mkdtempSync(join(tmpdir(), 'legacy-creds-'));
     newDir = mkdtempSync(join(tmpdir(), 'new-creds-'));
     process.env.HOOKMYAPP_CONFIG_DIR = newDir;
-    process.env.HOOKMYAPP_DISABLE_KEYCHAIN = '1';
-    __resetForTests();
   });
 
   afterEach(() => {

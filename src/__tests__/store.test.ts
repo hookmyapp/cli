@@ -5,8 +5,6 @@ import { tmpdir } from 'node:os';
 import { mkdtempSync, rmSync } from 'node:fs';
 
 // Fork an isolated config dir so tests never touch ~/.config/hookmyapp or ~/.hookmyapp.
-// HOOKMYAPP_DISABLE_KEYCHAIN is already set by vitest.setup.ts so all reads/writes
-// go to the file fallback (credentials.json inside the config dir).
 let TEST_CONFIG_DIR: string;
 const SAVED_CONFIG_DIR = process.env.HOOKMYAPP_CONFIG_DIR;
 
