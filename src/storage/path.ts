@@ -37,9 +37,9 @@ export function getCredentialsFile(): string {
 }
 
 /**
- * writeFileSync wrapper that catches EPERM/EACCES and re-throws as
+ * writeFileSync wrapper that catches EPERM/EACCES/EROFS and re-throws as
  * ConfigWriteForbiddenError so callers get the actionable user message.
- * Auto-creates the parent directory (also EPERM-aware).
+ * Auto-creates the parent directory (also error-translated).
  */
 export function safeWriteFileSync(path: string, data: string): void {
   try {
@@ -47,7 +47,7 @@ export function safeWriteFileSync(path: string, data: string): void {
     writeFileSync(path, data);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
-    if (code === 'EPERM' || code === 'EACCES') {
+    if (code === 'EPERM' || code === 'EACCES' || code === 'EROFS') {
       throw new ConfigWriteForbiddenError(path);
     }
     throw err;
