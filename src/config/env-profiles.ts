@@ -1,7 +1,6 @@
 import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
 import { isValidPublicId } from '../lib/publicId.js';
+import { getConfigDir, getConfigFile } from '../storage/path.js';
 
 export type EnvName = 'local' | 'staging' | 'production';
 
@@ -56,14 +55,6 @@ export function isValidEnv(name: string): name is EnvName {
   return (VALID_ENV_NAMES as string[]).includes(name);
 }
 
-function configDir(): string {
-  return process.env.HOOKMYAPP_CONFIG_DIR ?? path.join(os.homedir(), '.hookmyapp');
-}
-
-function configPath(): string {
-  return path.join(configDir(), 'config.json');
-}
-
 interface PersistedConfig {
   activeWorkspaceId?: string;
   activeWorkspaceSlug?: string;
@@ -72,7 +63,7 @@ interface PersistedConfig {
 
 function readConfig(): PersistedConfig {
   try {
-    return JSON.parse(fs.readFileSync(configPath(), 'utf-8'));
+    return JSON.parse(fs.readFileSync(getConfigFile(), 'utf-8'));
   } catch {
     return {};
   }
@@ -97,8 +88,8 @@ export function getValidPersistedWorkspaceId(): string | undefined {
 }
 
 function writeConfig(cfg: PersistedConfig): void {
-  fs.mkdirSync(configDir(), { recursive: true });
-  fs.writeFileSync(configPath(), JSON.stringify(cfg, null, 2) + '\n');
+  fs.mkdirSync(getConfigDir(), { recursive: true });
+  fs.writeFileSync(getConfigFile(), JSON.stringify(cfg, null, 2) + '\n');
 }
 
 export function getPersistedEnv(): EnvName | undefined {
