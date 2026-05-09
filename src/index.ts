@@ -232,7 +232,16 @@ async function main(): Promise<void> {
   // Phase 125 Plan 02 — emit cli_first_run on the first-ever invocation per
   // machine. Idempotent: subsequent invocations short-circuit on the
   // persisted machine-id presence. Skipped silently when telemetry is off.
-  await maybeEmitFirstRun();
+  // Wrapped: telemetry must NEVER block the CLI. ConfigWriteForbiddenError
+  // from a sandboxed config dir would otherwise escape to the
+  // unhandledRejection handler and surface as the generic "Something went
+  // wrong" message — losing the actionable error from the actual command
+  // the user ran below.
+  try {
+    await maybeEmitFirstRun();
+  } catch {
+    // Same fail-open policy as the migration calls above.
+  }
 
   const startedAt = Date.now();
   try {
