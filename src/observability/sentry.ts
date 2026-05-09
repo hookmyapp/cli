@@ -30,6 +30,22 @@
 // 5. DEFAULT-ON + DISCLOSURE. After Sentry.init succeeds, print the one-time
 //    first-run disclosure (stderr). `isTelemetryEnabled()` reads the override
 //    chain (HOOKMYAPP_TELEMETRY=off env var OR `config set telemetry off`).
+//
+// 6. INIT IS FILESYSTEM-WRITE-FREE. As of 0.11.0, no syscall in the init
+//    path requires a writable filesystem. Audit table:
+//
+//      isTelemetryEnabled      → read-only, try/catch wraps existsSync+readFileSync
+//      resolveDsn/Release/Env  → env-var reads only
+//      await import(@sentry)   → module-loader read of node_modules
+//      sentryModule.init()     → in-memory; tracesSampleRate:0 disables profiling I/O
+//      maybePrintFirstRunDisclosure  → writes config.json BUT IS ISOLATED in its
+//                                       own try/catch outside the init success path
+//                                       (see initSentryLazy below)
+//
+//    Do NOT introduce a filesystem write inside the init success path. If a
+//    future feature needs post-init filesystem work, isolate it the same way
+//    the disclosure call is isolated. The Tomer-class regression that hid every
+//    CLI error pre-0.11.0 was caused by violating this rule.
 
 import { isTelemetryEnabled, maybePrintFirstRunDisclosure } from './telemetry.js';
 import { decodeJwtSub } from './jwt-light.js';
