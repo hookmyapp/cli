@@ -2,6 +2,34 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.11.0] - 2026-05-09
+
+### Breaking Changes
+
+- **Config directory moved to `~/.config/hookmyapp/`** (XDG Base Directory
+  Spec). Existing `~/.hookmyapp/` installations are migrated transparently
+  on the first invocation of any `hookmyapp` command. No re-login required.
+  `HOOKMYAPP_CONFIG_DIR` continues to override.
+- **Credentials moved to OS keychain** (macOS Keychain / Linux Secret
+  Service / Windows Credential Manager) via `@napi-rs/keyring`. Tokens are
+  no longer stored in `~/.hookmyapp/credentials.json` by default. Users
+  who depend on the file form for scripts can opt out with
+  `HOOKMYAPP_DISABLE_KEYCHAIN=1`, which preserves the previous behavior at
+  `<config-dir>/credentials.json` (mode `0o600`).
+
+### Added
+
+- **Actionable error message on `EPERM`/`EACCES`/`EROFS`** writing the
+  config file (the failure mode hit by users running the CLI inside
+  sandboxed shells like Claude Code). Surfaces the two recovery paths:
+  real terminal, or `HOOKMYAPP_CONFIG_DIR=$PWD/.hookmyapp`.
+
+### Why
+
+- Aligns with modern CLI conventions (`gh`, `gcloud`, `stripe`, `vercel`).
+- Closes a real security gap: token files in `$HOME` were readable by any
+  process running as the user, including unaudited npm postinstall scripts.
+
 ## [0.10.3] - 2026-05-09
 
 ### Added
