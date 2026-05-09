@@ -12,3 +12,6 @@ test-integration/.cache/
 
 # npm pack output
 *.tgz
+
+# superpowers skill worktrees
+.worktrees/
