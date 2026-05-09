@@ -21,11 +21,9 @@
 
 import {
   readFileSync,
-  writeFileSync,
-  mkdirSync,
   existsSync,
 } from 'node:fs';
-import { getConfigDir, getConfigFile } from '../storage/path.js';
+import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 
 /**
  * The full on-disk config shape — narrow type for the keys this module reads /
@@ -84,8 +82,7 @@ function readFullConfig(): FullConfig {
 }
 
 function writeFullConfig(next: FullConfig): void {
-  mkdirSync(getConfigDir(), { recursive: true });
-  writeFileSync(getConfigFile(), JSON.stringify(next, null, 2));
+  safeWriteFileSync(getConfigFile(), JSON.stringify(next, null, 2));
 }
 
 /** Read-only snapshot of the PostHog slice (callers ignore other keys). */
