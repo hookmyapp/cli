@@ -9,3 +9,10 @@ import { join } from 'node:path';
 if (!process.env.HOOKMYAPP_CONFIG_DIR) {
   process.env.HOOKMYAPP_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'hookmyapp-cli-test-'));
 }
+
+// Keep tests off the real OS keychain so vitest never prompts for keychain
+// access on macOS and never times out waiting for a kwallet/secret-service
+// daemon on Linux CI. Tests exercise the file-fallback path.
+if (!process.env.HOOKMYAPP_DISABLE_KEYCHAIN) {
+  process.env.HOOKMYAPP_DISABLE_KEYCHAIN = '1';
+}
