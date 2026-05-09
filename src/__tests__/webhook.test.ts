@@ -19,8 +19,8 @@ vi.mock('../commands/workspace.js', () => ({
 
 // Mock store (needed by webhook set command)
 vi.mock('../auth/store.js', () => ({
-  readCredentials: vi.fn().mockReturnValue({ accessToken: 'test-token', refreshToken: 'test-refresh' }),
-  saveCredentials: vi.fn(),
+  readCredentials: vi.fn().mockResolvedValue({ accessToken: 'test-token', refreshToken: 'test-refresh' }),
+  saveCredentials: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => {});

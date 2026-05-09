@@ -82,7 +82,7 @@ async function pollForTokens(opts: {
 
     if (res.ok) {
       const data = await res.json();
-      saveCredentials({
+      await saveCredentials({
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
         expiresAt: Math.floor(Date.now() / 1000) + 900,
@@ -418,7 +418,7 @@ export async function runBootstrapCodeExchange(
   const { mapApiError, isNetworkFailure } = await import('../api/client.js');
   const { writeWorkspaceConfig } = await import('../commands/workspace.js');
 
-  const prior = peekIdentity();
+  const prior = await peekIdentity();
 
   const baseUrl = getEffectiveApiUrl();
   let res: Response;
@@ -436,7 +436,7 @@ export async function runBootstrapCodeExchange(
 
   const data = (await res.json()) as ExchangeBootstrapResponseDto;
 
-  saveCredentials({
+  await saveCredentials({
     accessToken: data.accessToken,
     refreshToken: data.refreshToken,
     expiresAt: data.expiresAt,

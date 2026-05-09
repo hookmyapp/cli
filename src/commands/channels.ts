@@ -68,7 +68,7 @@ export async function runChannelsConnect(): Promise<void> {
     await new Promise((r) => setTimeout(r, pollInterval));
     try {
       await forceTokenRefresh();
-      const freshCreds = readCredentials();
+      const freshCreds = await readCredentials();
       if (!freshCreds) continue;
 
       const res = await fetch(`${baseUrl}/meta/channels`, {

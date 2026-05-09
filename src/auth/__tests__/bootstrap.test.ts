@@ -147,7 +147,7 @@ afterEach(() => {
 describe('peekIdentity()', () => {
   test('returns null when no credentials file exists', async () => {
     const { peekIdentity } = await import('../store.js');
-    expect(peekIdentity()).toBeNull();
+    expect(await peekIdentity()).toBeNull();
   });
 
   test('returns null when credentials exist but no active workspace', async () => {
@@ -157,7 +157,7 @@ describe('peekIdentity()', () => {
       refreshToken: 'r',
       expiresAt: 9999999999,
     });
-    expect(peekIdentity()).toBeNull();
+    expect(await peekIdentity()).toBeNull();
   });
 
   test('returns { email, workspaceSlug } when JWT carries email claim and workspace is active', async () => {
@@ -171,7 +171,7 @@ describe('peekIdentity()', () => {
       activeWorkspaceId: 'ws_ABCD1234',
       activeWorkspaceSlug: "Or's Workspace",
     });
-    expect(peekIdentity()).toEqual({
+    expect(await peekIdentity()).toEqual({
       email: 'info@ordvir.com',
       workspaceSlug: "Or's Workspace",
     });
@@ -188,7 +188,7 @@ describe('peekIdentity()', () => {
       activeWorkspaceId: 'ws_ABCD1234',
       activeWorkspaceSlug: 'Anything',
     });
-    expect(peekIdentity()).toBeNull();
+    expect(await peekIdentity()).toBeNull();
   });
 
   test('returns null when JWT lacks an email claim', async () => {
@@ -202,7 +202,7 @@ describe('peekIdentity()', () => {
       activeWorkspaceId: 'ws_ABCD1234',
       activeWorkspaceSlug: 'Anything',
     });
-    expect(peekIdentity()).toBeNull();
+    expect(await peekIdentity()).toBeNull();
   });
 });
 
