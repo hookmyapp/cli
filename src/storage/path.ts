@@ -1,4 +1,4 @@
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { ConfigWriteForbiddenError } from './errors.js';
@@ -52,4 +52,42 @@ export function safeWriteFileSync(path: string, data: string): void {
     }
     throw err;
   }
+}
+
+/**
+ * One-shot migration of config.json from the legacy ~/.hookmyapp/ dir to the
+ * XDG-canonical dir. Idempotent — safe to call on every CLI invocation.
+ *
+ * Cases:
+ *   - only old exists  → atomic rename old → new
+ *   - only new exists  → no-op
+ *   - both exist       → prefer new, warn user, leave old alone
+ *   - neither exists   → no-op
+ *
+ * Credentials migration is handled separately in src/storage/secrets.ts so
+ * the keychain write+verify sequence runs only when secrets exist.
+ */
+export function migrateConfigDirIfNeeded(
+  legacyDir: string = getLegacyConfigDir(),
+  newDir: string = getConfigDir(),
+): void {
+  const oldFile = join(legacyDir, 'config.json');
+  const newFile = join(newDir, 'config.json');
+  const oldExists = existsSync(oldFile);
+  const newExists = existsSync(newFile);
+
+  if (!oldExists && !newExists) return;
+  if (!oldExists && newExists) return;
+
+  if (oldExists && newExists) {
+    process.stderr.write(
+      `\n⚠ Both ~/.hookmyapp/config.json and ${newFile} exist.\n` +
+        `  Using the new location. Consider manual cleanup of ~/.hookmyapp/.\n\n`,
+    );
+    return;
+  }
+
+  // oldExists && !newExists → migrate.
+  mkdirSync(newDir, { recursive: true });
+  renameSync(oldFile, newFile);
 }
