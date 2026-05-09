@@ -50,6 +50,7 @@
 import { isTelemetryEnabled, maybePrintFirstRunDisclosure } from './telemetry.js';
 import { decodeJwtSub } from './jwt-light.js';
 import { shutdownPostHog } from './posthog.js';
+import { getConfigDir } from '../storage/path.js';
 
 // Module-level state — one init per process, one Sentry module instance.
 let initialized = false;
@@ -102,6 +103,63 @@ export async function initSentryLazy(): Promise<void> {
     // Dynamic import — @sentry/node ONLY loads when telemetry is enabled +
     // DSN is present. Build tree-shakes __SENTRY_TRACING__=false + debug.
     sentryModule = await import('@sentry/node');
+    const { makeOfflineTransport } = await import('@sentry/core');
+    const { makeNodeTransport } = sentryModule;
+    const { mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } = await import('node:fs');
+    const { join } = await import('node:path');
+
+    // Prepare the offline queue directory. A read-only FS (Tomer-class) is
+    // handled gracefully: the mkdir is best-effort; if it fails the offline
+    // transport falls back to in-memory queuing only (events still ship live
+    // when the network is up — just not persisted across process exits).
+    const offlineDir = join(getConfigDir(), 'sentry-offline');
+    try {
+      mkdirSync(offlineDir, { recursive: true });
+    } catch {
+      // Read-only FS — in-memory queue only; no persistence across exits.
+    }
+
+    // File-backed envelope store. Each queued envelope is written as a
+    // JSON file named by monotonic timestamp. shift() pops the oldest file.
+    // unshift() re-queues a failed retry at the front (lowest timestamp - 1).
+    function createFileStore() {
+      return {
+        async push(env: unknown): Promise<void> {
+          try {
+            const name = join(offlineDir, `${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+            writeFileSync(name, JSON.stringify(env));
+          } catch {
+            // Write failure is non-fatal — event lost on disk but telemetry
+            // must never block the CLI.
+          }
+        },
+        async unshift(env: unknown): Promise<void> {
+          // Re-queue at front by using a timestamp slightly before now.
+          try {
+            const name = join(offlineDir, `${Date.now() - 1}-${Math.random().toString(36).slice(2)}.json`);
+            writeFileSync(name, JSON.stringify(env));
+          } catch {
+            // Non-fatal.
+          }
+        },
+        async shift(): Promise<unknown | undefined> {
+          try {
+            const files = readdirSync(offlineDir)
+              .filter((f) => f.endsWith('.json'))
+              .sort();
+            if (files.length === 0) return undefined;
+            const oldest = files[0];
+            const full = join(offlineDir, oldest);
+            const raw = readFileSync(full, 'utf-8');
+            unlinkSync(full);
+            return JSON.parse(raw) as unknown;
+          } catch {
+            return undefined;
+          }
+        },
+      };
+    }
+
     sentryModule.init({
       dsn,
       release: resolveRelease(),
@@ -109,6 +167,10 @@ export async function initSentryLazy(): Promise<void> {
       enableLogs: true,
       // No tracing in CLI — we're short-lived, don't ship span data.
       tracesSampleRate: 0,
+      transport: makeOfflineTransport(makeNodeTransport),
+      transportOptions: {
+        createStore: createFileStore,
+      },
     });
     sentryModule.setTag('service', 'cli');
     initialized = true;
