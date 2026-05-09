@@ -25,16 +25,7 @@ import {
   mkdirSync,
   existsSync,
 } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
-
-function configDir(): string {
-  return process.env.HOOKMYAPP_CONFIG_DIR ?? join(homedir(), '.hookmyapp');
-}
-
-function configFile(): string {
-  return join(configDir(), 'config.json');
-}
+import { getConfigDir, getConfigFile } from '../storage/path.js';
 
 /**
  * The full on-disk config shape — narrow type for the keys this module reads /
@@ -83,9 +74,9 @@ interface FullConfig extends PosthogConfigSlice {
 }
 
 function readFullConfig(): FullConfig {
-  if (!existsSync(configFile())) return {};
+  if (!existsSync(getConfigFile())) return {};
   try {
-    const parsed = JSON.parse(readFileSync(configFile(), 'utf-8')) as unknown;
+    const parsed = JSON.parse(readFileSync(getConfigFile(), 'utf-8')) as unknown;
     return typeof parsed === 'object' && parsed !== null ? (parsed as FullConfig) : {};
   } catch {
     return {};
@@ -93,8 +84,8 @@ function readFullConfig(): FullConfig {
 }
 
 function writeFullConfig(next: FullConfig): void {
-  mkdirSync(configDir(), { recursive: true });
-  writeFileSync(configFile(), JSON.stringify(next, null, 2));
+  mkdirSync(getConfigDir(), { recursive: true });
+  writeFileSync(getConfigFile(), JSON.stringify(next, null, 2));
 }
 
 /** Read-only snapshot of the PostHog slice (callers ignore other keys). */
