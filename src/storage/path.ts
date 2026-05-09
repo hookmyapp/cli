@@ -1,5 +1,7 @@
-import { join } from 'node:path';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
+import { ConfigWriteForbiddenError } from './errors.js';
 
 /**
  * Single source of truth for the CLI's config directory.
@@ -32,4 +34,22 @@ export function getConfigFile(): string {
 /** Path to credentials.json inside the resolved config dir (file fallback only). */
 export function getCredentialsFile(): string {
   return join(getConfigDir(), 'credentials.json');
+}
+
+/**
+ * writeFileSync wrapper that catches EPERM/EACCES and re-throws as
+ * ConfigWriteForbiddenError so callers get the actionable user message.
+ * Auto-creates the parent directory (also EPERM-aware).
+ */
+export function safeWriteFileSync(path: string, data: string): void {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, data);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code === 'EPERM' || code === 'EACCES') {
+      throw new ConfigWriteForbiddenError(path);
+    }
+    throw err;
+  }
 }
