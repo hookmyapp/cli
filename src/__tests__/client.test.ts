@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock store module
 vi.mock('../auth/store.js', () => ({
-  readCredentials: vi.fn(),
-  saveCredentials: vi.fn(),
+  readCredentials: vi.fn().mockResolvedValue(null),
+  saveCredentials: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock global fetch
@@ -44,7 +44,7 @@ describe('apiClient', () => {
     const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
     const fakeJwt = `header.${payload}.sig`;
 
-    mockedReadCredentials.mockReturnValue({
+    mockedReadCredentials.mockResolvedValue({
       accessToken: fakeJwt,
       refreshToken: 'rt',
       expiresAt: futureExp,
@@ -69,7 +69,7 @@ describe('apiClient', () => {
   });
 
   it('throws AuthError when no credentials stored', async () => {
-    mockedReadCredentials.mockReturnValue(null);
+    mockedReadCredentials.mockResolvedValue(null);
 
     try {
       await apiClient('/test');
@@ -91,7 +91,7 @@ describe('apiClient', () => {
     const newPayload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
     const newJwt = `header.${newPayload}.sig`;
 
-    mockedReadCredentials.mockReturnValue({
+    mockedReadCredentials.mockResolvedValue({
       accessToken: expiredJwt,
       refreshToken: 'rt-old',
       expiresAt: pastExp,
@@ -127,7 +127,7 @@ describe('apiClient', () => {
     const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
     const fakeJwt = `header.${payload}.sig`;
 
-    mockedReadCredentials.mockReturnValue({
+    mockedReadCredentials.mockResolvedValue({
       accessToken: fakeJwt,
       refreshToken: 'rt',
       expiresAt: futureExp,
@@ -161,7 +161,7 @@ describe('apiClient', () => {
     const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
     const fakeJwt = `header.${payload}.sig`;
 
-    mockedReadCredentials.mockReturnValue({
+    mockedReadCredentials.mockResolvedValue({
       accessToken: fakeJwt,
       refreshToken: 'rt',
       expiresAt: futureExp,
@@ -176,7 +176,7 @@ describe('apiClient', () => {
     const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
     const fakeJwt = `header.${payload}.sig`;
 
-    mockedReadCredentials.mockReturnValue({
+    mockedReadCredentials.mockResolvedValue({
       accessToken: fakeJwt,
       refreshToken: 'rt',
       expiresAt: futureExp,
@@ -206,7 +206,7 @@ describe('apiClient', () => {
     const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
     const fakeJwt = `header.${payload}.sig`;
 
-    mockedReadCredentials.mockReturnValue({
+    mockedReadCredentials.mockResolvedValue({
       accessToken: fakeJwt,
       refreshToken: 'rt',
       expiresAt: futureExp,

@@ -34,8 +34,8 @@ vi.mock('../commands/_helpers.js', () => ({
 
 // Mock store
 vi.mock('../auth/store.js', () => ({
-  readCredentials: vi.fn().mockReturnValue({ accessToken: 'test-token', refreshToken: 'test-refresh' }),
-  saveCredentials: vi.fn(),
+  readCredentials: vi.fn().mockResolvedValue({ accessToken: 'test-token', refreshToken: 'test-refresh' }),
+  saveCredentials: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => {});

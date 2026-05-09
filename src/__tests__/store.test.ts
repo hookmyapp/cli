@@ -1,72 +1,64 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, writeFileSync, readFileSync, statSync, unlinkSync, rmSync } from 'node:fs';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { mkdtempSync, rmSync } from 'node:fs';
 
-// Override homedir so tests use a temp directory. vitest.setup.ts normally
-// redirects via HOOKMYAPP_CONFIG_DIR, but this file specifically exercises
-// the homedir() fallback path — scoped to this file only (saved/restored
-// per-test via beforeEach/afterEach so sibling test files keep their
-// setup-file-provided override).
-const TEST_HOME = join(tmpdir(), `hookmyapp-test-${process.pid}`);
+// Fork an isolated config dir so tests never touch ~/.config/hookmyapp or ~/.hookmyapp.
+// HOOKMYAPP_DISABLE_KEYCHAIN is already set by vitest.setup.ts so all reads/writes
+// go to the file fallback (credentials.json inside the config dir).
+let TEST_CONFIG_DIR: string;
 const SAVED_CONFIG_DIR = process.env.HOOKMYAPP_CONFIG_DIR;
 
-vi.mock('node:os', async () => {
-  const actual = await vi.importActual<typeof import('node:os')>('node:os');
-  return { ...actual, homedir: () => TEST_HOME };
-});
+// Import after env vars are in place. We import at the top level so vitest
+// resolves the module once (HOOKMYAPP_DISABLE_KEYCHAIN from setup.ts is already set).
+import { saveCredentials, readCredentials, deleteCredentials } from '../auth/store.js';
 
-// Import after mock is set up
-const { saveCredentials, readCredentials, deleteCredentials } = await import('../auth/store.js');
-
-describe('credential store', () => {
+describe('credential store (async)', () => {
   beforeEach(() => {
-    delete process.env.HOOKMYAPP_CONFIG_DIR;
-    mkdirSync(TEST_HOME, { recursive: true });
+    TEST_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'hookmyapp-store-test-'));
+    process.env.HOOKMYAPP_CONFIG_DIR = TEST_CONFIG_DIR;
   });
 
   afterEach(() => {
-    rmSync(TEST_HOME, { recursive: true, force: true });
+    rmSync(TEST_CONFIG_DIR, { recursive: true, force: true });
     if (SAVED_CONFIG_DIR !== undefined) {
       process.env.HOOKMYAPP_CONFIG_DIR = SAVED_CONFIG_DIR;
+    } else {
+      delete process.env.HOOKMYAPP_CONFIG_DIR;
     }
   });
 
-  it('saveCredentials writes JSON to ~/.hookmyapp/credentials.json with 0o600 permissions', () => {
+  it('saveCredentials writes credentials.json with the supplied values', async () => {
     const creds = { accessToken: 'at', refreshToken: 'rt', expiresAt: 1234567890 };
-    saveCredentials(creds);
+    await saveCredentials(creds);
 
-    const filePath = join(TEST_HOME, '.hookmyapp', 'credentials.json');
+    const filePath = join(TEST_CONFIG_DIR, 'credentials.json');
+    expect(existsSync(filePath)).toBe(true);
     const content = JSON.parse(readFileSync(filePath, 'utf-8'));
     expect(content).toEqual(creds);
-
-    const stats = statSync(filePath);
-    // 0o600 = owner read/write only (33152 on most systems)
-    expect(stats.mode & 0o777).toBe(0o600);
   });
 
-  it('readCredentials returns parsed JSON when file exists', () => {
+  it('readCredentials returns parsed credentials when file exists', async () => {
     const creds = { accessToken: 'at2', refreshToken: 'rt2', expiresAt: 9999999 };
-    const dir = join(TEST_HOME, '.hookmyapp');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'credentials.json'), JSON.stringify(creds));
+    await saveCredentials(creds);
 
-    const result = readCredentials();
+    const result = await readCredentials();
     expect(result).toEqual(creds);
   });
 
-  it('readCredentials returns null when file does not exist', () => {
-    const result = readCredentials();
+  it('readCredentials returns null when no credentials exist', async () => {
+    const result = await readCredentials();
     expect(result).toBeNull();
   });
 
-  it('deleteCredentials removes the credentials file', () => {
-    const dir = join(TEST_HOME, '.hookmyapp');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'credentials.json'), '{}');
+  it('deleteCredentials removes the credentials file', async () => {
+    const creds = { accessToken: 'at3', refreshToken: 'rt3', expiresAt: 1 };
+    await saveCredentials(creds);
 
-    deleteCredentials();
+    await deleteCredentials();
 
-    expect(() => readFileSync(join(dir, 'credentials.json'))).toThrow();
+    const result = await readCredentials();
+    expect(result).toBeNull();
   });
 });

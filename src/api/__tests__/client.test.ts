@@ -15,13 +15,15 @@ import {
 
 // Mock store so apiClient doesn't hit the real config dir during import.
 vi.mock('../../auth/store.js', () => ({
-  readCredentials: vi.fn(() => ({
-    accessToken: 'test-token',
-    refreshToken: 'refresh',
-    // far in the future so no refresh is attempted
-    expiresAt: Math.floor(Date.now() / 1000) + 3600,
-  })),
-  saveCredentials: vi.fn(),
+  readCredentials: vi.fn(() =>
+    Promise.resolve({
+      accessToken: 'test-token',
+      refreshToken: 'refresh',
+      // far in the future so no refresh is attempted
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    }),
+  ),
+  saveCredentials: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -38,7 +38,7 @@ export function registerWebhookCommand(program: Command): void {
 
       // Check if webhook config already exists
       const baseUrl = getEffectiveApiUrl();
-      const creds = readCredentials();
+      const creds = await readCredentials();
       const checkRes = await fetch(`${baseUrl}/webhook-config/${channel.id}`, {
         headers: { Authorization: `Bearer ${creds!.accessToken}` },
       });

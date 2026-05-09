@@ -6,8 +6,8 @@ export function logoutCommand(program: Command): void {
   const logout = program
     .command('logout')
     .description('Remove stored credentials')
-    .action(() => {
-      deleteCredentials();
+    .action(async () => {
+      await deleteCredentials();
       console.log('\n✓ Logged out\n');
     });
 
