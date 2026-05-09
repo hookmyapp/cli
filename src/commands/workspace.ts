@@ -6,19 +6,7 @@ import { addExamples } from '../output/help.js';
 import type { Workspace } from '../types/workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
-
-// HOOKMYAPP_CONFIG_DIR lets tests (and power users) redirect config away from
-// the real $HOME/.hookmyapp dir. Resolved per-call so vitest setup files that
-// set the env var at process start are honored even if this module was
-// imported first. See src/auth/store.ts for the full rationale.
-function configDir(): string {
-  return process.env.HOOKMYAPP_CONFIG_DIR ?? path.join(os.homedir(), '.hookmyapp');
-}
-function configPath(): string {
-  return path.join(configDir(), 'config.json');
-}
+import { getConfigDir, getConfigFile } from '../storage/path.js';
 
 export interface WorkspaceConfig {
   activeWorkspaceId?: string;
@@ -39,7 +27,7 @@ interface FullPersistedConfig {
 
 function readFullConfig(): FullPersistedConfig {
   try {
-    return JSON.parse(fs.readFileSync(configPath(), 'utf-8'));
+    return JSON.parse(fs.readFileSync(getConfigFile(), 'utf-8'));
   } catch {
     return {};
   }
@@ -70,7 +58,7 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
       `activeWorkspaceId "${config.activeWorkspaceId}" is not a valid ws_ publicId. This is a bug — callers must pass the server-returned publicId.`,
     );
   }
-  fs.mkdirSync(configDir(), { recursive: true });
+  fs.mkdirSync(getConfigDir(), { recursive: true });
   // Merge with existing config so we never clobber env-profiles fields
   // (specifically `env`). See env-profiles.ts for the other half.
   const existing = readFullConfig();
@@ -79,7 +67,7 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
     activeWorkspaceId: config.activeWorkspaceId,
     activeWorkspaceSlug: config.activeWorkspaceSlug,
   };
-  fs.writeFileSync(configPath(), JSON.stringify(merged, null, 2) + '\n');
+  fs.writeFileSync(getConfigFile(), JSON.stringify(merged, null, 2) + '\n');
 }
 
 export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; name: string; role: string }> {
