@@ -66,14 +66,17 @@ await build({
     // present; falls back to a runtime package.json read in dev/test contexts.
     __HOOKMYAPP_CLI_PKG_VERSION__: JSON.stringify(PKG_VERSION),
   },
-  // Keep @sentry/node + posthog-node external — real runtime deps (not
-  // devDeps), resolved from the installed node_modules tree. Inlining
-  // @sentry/node would add ~416KB gzip (OpenTelemetry fan-out); posthog-node
-  // is smaller but following the same pattern keeps the dist/cli.js bundle
-  // under the Plan 10 target of ≤ 100KB gzip delta and the dynamic-import
-  // fast path in posthog.ts loads it only when telemetry is enabled + token
-  // baked.
-  external: ['@sentry/node', 'posthog-node'],
+  // Keep @sentry/node + posthog-node + @napi-rs/keyring external — real
+  // runtime deps (not devDeps), resolved from the installed node_modules
+  // tree. Inlining @sentry/node would add ~416KB gzip (OpenTelemetry
+  // fan-out); posthog-node is smaller but following the same pattern keeps
+  // the dist/cli.js bundle under the Plan 10 target of ≤ 100KB gzip delta
+  // and the dynamic-import fast path in posthog.ts loads it only when
+  // telemetry is enabled + token baked. @napi-rs/keyring is a native
+  // addon (.node binary per platform-arch via optionalDependencies); it
+  // cannot be bundled by esbuild and must be loaded from node_modules
+  // at runtime — src/storage/secrets.ts dynamic-imports it lazily.
+  external: ['@sentry/node', 'posthog-node', '@napi-rs/keyring'],
 });
 
 console.log('Built dist/cli.js');
