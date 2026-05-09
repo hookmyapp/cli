@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { isValidPublicId } from '../lib/publicId.js';
-import { getConfigDir, getConfigFile } from '../storage/path.js';
+import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 
 export type EnvName = 'local' | 'staging' | 'production';
 
@@ -88,8 +88,7 @@ export function getValidPersistedWorkspaceId(): string | undefined {
 }
 
 function writeConfig(cfg: PersistedConfig): void {
-  fs.mkdirSync(getConfigDir(), { recursive: true });
-  fs.writeFileSync(getConfigFile(), JSON.stringify(cfg, null, 2) + '\n');
+  safeWriteFileSync(getConfigFile(), JSON.stringify(cfg, null, 2) + '\n');
 }
 
 export function getPersistedEnv(): EnvName | undefined {

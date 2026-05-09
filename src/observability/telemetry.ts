@@ -15,8 +15,8 @@
 // Decision persists in the same `~/.hookmyapp/config.json` the rest of the
 // CLI uses (workspace state, env-profile). Respects `HOOKMYAPP_CONFIG_DIR`
 // which vitest.setup.ts forks to a tmp dir for test isolation.
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { getConfigDir, getConfigFile } from '../storage/path.js';
+import { readFileSync, existsSync } from 'node:fs';
+import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 
 type TelemetryFlag = 'on' | 'off';
 
@@ -39,8 +39,7 @@ function readConfig(): Config {
 }
 
 function writeConfig(next: Config): void {
-  mkdirSync(getConfigDir(), { recursive: true });
-  writeFileSync(getConfigFile(), JSON.stringify(next, null, 2));
+  safeWriteFileSync(getConfigFile(), JSON.stringify(next, null, 2));
 }
 
 /**
