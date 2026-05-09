@@ -1,20 +1,15 @@
 import { readFileSync } from 'fs';
-import { homedir } from 'os';
 import { join } from 'path';
+import { getConfigDir } from '../storage/path.js';
 
 /**
  * XDG-style marker file written by the agent-skills installer at install time.
- * One source of truth for "which version of the integrate-hookmyapp skill is
- * installed on this machine" — read on every CLI invocation, sent as
- * `X-HookMyApp-Skill-Version` so the backend can gate skill-version
- * compatibility.
+ * Resolved through the canonical getConfigDir() so HOOKMYAPP_CONFIG_DIR and
+ * XDG_CONFIG_HOME are honored consistently with every other config file.
  */
-export const SKILL_MARKER_PATH = join(
-  homedir(),
-  '.config',
-  'hookmyapp',
-  'skill-version',
-);
+export function getSkillMarkerPath(): string {
+  return join(getConfigDir(), 'skill-version');
+}
 
 // Strict semver: major.minor.patch with optional -prerelease and +build.
 // Mirrors https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
@@ -38,7 +33,7 @@ const SEMVER_RE =
 export function readSkillVersion(): string | undefined {
   let raw: string;
   try {
-    raw = readFileSync(SKILL_MARKER_PATH, 'utf-8');
+    raw = readFileSync(getSkillMarkerPath(), 'utf-8');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     return 'invalid';

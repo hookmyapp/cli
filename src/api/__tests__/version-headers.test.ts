@@ -1,14 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-const tmpHome = mkdtempSync(join(tmpdir(), 'hookmyapp-version-headers-test-'));
-const markerDir = join(tmpHome, '.config', 'hookmyapp');
+// Each test gets its own isolated config dir via HOOKMYAPP_CONFIG_DIR so
+// getConfigDir() (used by getSkillMarkerPath) resolves to our temp dir.
+let configDir: string;
 
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os');
-  return { ...actual, homedir: () => tmpHome };
+beforeEach(() => {
+  configDir = mkdtempSync(join(tmpdir(), 'hookmyapp-version-headers-test-'));
+  process.env.HOOKMYAPP_CONFIG_DIR = configDir;
+});
+
+afterEach(() => {
+  try {
+    rmSync(configDir, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
+  delete process.env.HOOKMYAPP_CONFIG_DIR;
 });
 
 describe('buildVersionHeaders', () => {
@@ -36,16 +46,14 @@ describe('buildVersionHeaders', () => {
   });
 
   it('sets X-HookMyApp-Skill-Version to the marker value when valid', async () => {
-    mkdirSync(markerDir, { recursive: true });
-    writeFileSync(join(markerDir, 'skill-version'), '0.6.1\n', 'utf-8');
+    writeFileSync(join(configDir, 'skill-version'), '0.6.1\n', 'utf-8');
     vi.resetModules();
     const { buildVersionHeaders } = await import('../version-headers.js');
     expect(buildVersionHeaders()['X-HookMyApp-Skill-Version']).toBe('0.6.1');
   });
 
   it("sets X-HookMyApp-Skill-Version to 'invalid' when marker is corrupt", async () => {
-    mkdirSync(markerDir, { recursive: true });
-    writeFileSync(join(markerDir, 'skill-version'), 'not-a-semver', 'utf-8');
+    writeFileSync(join(configDir, 'skill-version'), 'not-a-semver', 'utf-8');
     vi.resetModules();
     const { buildVersionHeaders } = await import('../version-headers.js');
     expect(buildVersionHeaders()['X-HookMyApp-Skill-Version']).toBe('invalid');
