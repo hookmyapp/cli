@@ -2,6 +2,40 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.10.3] - 2026-05-09
+
+### Added
+
+- **Version-enforcement headers.** Every backend request now carries
+  `User-Agent: hookmyapp-cli/<v> (node/<v>; <arch>; <os>)`,
+  `X-HookMyApp-CLI-Version`, `X-HookMyApp-Lang`, `X-HookMyApp-Runtime-Version`,
+  `X-HookMyApp-Arch`, `X-HookMyApp-OS`, and (when the marker file is present)
+  `X-HookMyApp-Skill-Version`. Mirrors the Stainless `x-stainless-*` headers
+  used by the OpenAI and Anthropic SDKs. Server uses these to gate
+  compatibility (soft-warn at `min_recommended`, hard 426 at `min_required`).
+- **Skill marker reader at `~/.config/hookmyapp/skill-version`.** Three states:
+  absent → header omitted; parseable semver → header carries value; corrupt /
+  empty / non-semver / unreadable → `invalid` sentinel (server treats as
+  definitively outdated). Distinguishing "absent" from "corrupt" closes the
+  bypass where a damaged marker file would silently disable the skill-version
+  gate.
+- **Soft-warn banner** when the response carries `X-HookMyApp-Client-Outdated`.
+  Suppressed by `NO_UPDATE_NOTIFIER=1` (npm/AWS CDK/Vue CLI/Yeoman convention).
+- **426 Upgrade Required handler.** Server-returned `messages[]` are printed
+  verbatim and the CLI exits 1. No per-command code path — handled in the
+  shared HTTP client, applies to every command family (auth, workspace,
+  channels, sandbox, env, token, webhook, health, billing).
+
+### Why
+
+- Backend interceptor (Phase 1) shipped 2026-05-06 but had no client to honour
+  the header contract — it was failing-open on every request. This release
+  closes the loop.
+- Pre-emptive groundwork for any future breaking change to the CLI's API
+  contract: bump `min_recommended` on release, bump `min_required` 2-4 weeks
+  later after watching usage logs drop. Industry-standard staged rollout
+  (Stripe, AWS, Heroku, gcloud all converge on this shape).
+
 ## [0.10.2] - 2026-05-06
 
 ### Breaking Changes
