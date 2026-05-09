@@ -220,31 +220,22 @@ export async function setCliUserFromCreds(): Promise<void> {
 /**
  * Decide whether to forward an error to Sentry.
  *
- * - Local validation/auth/permission errors from the CLI → captured (they
- *   represent unexpected CLI-side failures worth tracking).
- * - NetworkError (pre-backend fetch failures) → captured (DNS / offline;
- *   might indicate a bug in URL handling or env resolution).
- * - ApiError (backend returned non-2xx) → NOT captured (backend already has
- *   it). Per CONTEXT.md §single-capture-per-error.
- * - AuthError + PermissionError + ValidationError + ConflictError +
- *   RateLimitError when they wrap a backend response → NOT captured (backend
- *   captured them already with full request context).
+ * Capture every non-null error. The CLI-side perspective (user, CLI version,
+ * OS, invoked command) is valuable enough to keep even when the backend
+ * already captured the same failure on its end. Sentry's automatic
+ * fingerprint-based grouping handles any duplication.
  *
- * Simple heuristic: if the error has a non-undefined `statusCode` attribute
- * (meaning it wraps an HTTP response), don't double-capture. Otherwise, do.
+ * Earlier versions used a `statusCode` heuristic to exclude backend-response
+ * wrappers from re-capture. That was unsafe: the AppError base class derives
+ * `statusCode` from each subclass's static `httpStatus` field via an instance
+ * getter, so locally-thrown ValidationError/AuthError/ConflictError/etc. ALL
+ * carried statusCode and were silently filtered out — which is why the CLI's
+ * Sentry project was empty for 30 days despite real users hitting real
+ * errors. Removed in 0.11.0.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function shouldCaptureToSentry(err: any): boolean {
-  if (err == null) return false;
-  // NetworkError is CLI-local (no response from backend). Capture it.
-  if (err?.code === 'NETWORK_ERROR') return true;
-  // Any error that carries a statusCode came from a backend response —
-  // backend already captured it.
-  if (typeof err === 'object' && 'statusCode' in err && err.statusCode !== undefined) {
-    return false;
-  }
-  // Everything else — including AppError subclasses thrown locally — captures.
-  return true;
+  return err != null;
 }
 
 /**
