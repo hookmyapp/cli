@@ -96,11 +96,23 @@ export async function initSentryLazy(): Promise<void> {
     });
     sentryModule.setTag('service', 'cli');
     initialized = true;
-    maybePrintFirstRunDisclosure();
   } catch {
     // Swallow all init errors. Telemetry must NEVER break the CLI.
     sentryModule = null;
     initialized = false;
+    return;
+  }
+
+  // Disclosure is intentionally OUTSIDE the init try/catch and inside its own
+  // try/catch. A filesystem write EPERM from the disclosure helper MUST NOT
+  // disable Sentry for the rest of the process (that was the silent-failure
+  // mode that hid every CLI error before 0.11.0).
+  try {
+    maybePrintFirstRunDisclosure();
+  } catch {
+    // Disclosure-write failures (read-only FS, sandboxed shell) silently
+    // skip the banner. The next successful run will print it. No impact
+    // on Sentry capture for the rest of this process.
   }
 }
 
