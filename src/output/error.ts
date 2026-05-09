@@ -216,6 +216,28 @@ export class SessionWindowError extends CliError {
 }
 
 /**
+ * 426 Upgrade Required from the backend's ClientVersionInterceptor (RFC 9110
+ * §15.5.16). Spec contract: server returns a structured payload with
+ * `messages[]` listing the user-facing instructions and the exact upgrade
+ * commands. The CLI prints those messages verbatim via outputError and exits 1.
+ *
+ * We override outputError-bound printing in src/api/client.ts so the messages
+ * array is emitted as-is rather than collapsed into a single userMessage line.
+ */
+export class ClientOutdatedError extends CliError {
+  static readonly severity = 'sev3' as const;
+  static readonly httpStatus = 426;
+  public readonly messages: string[];
+  constructor(messages: string[], code = 'CLIENT_OUTDATED') {
+    // userMessage is the joined messages so the default outputError path is
+    // still readable when called through the generic mapper.
+    super(messages.join('\n'), code, 426);
+    this.messages = messages;
+    this.exitCode = 1;
+  }
+}
+
+/**
  * Map any thrown value to a CLI exit code. Phase 108's exit-code contract is
  * preserved via a lookup on the subclass identity:
  *   AuthError → 4, PermissionError → 3, ValidationError → 2, ConflictError → 6,
