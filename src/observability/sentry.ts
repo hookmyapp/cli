@@ -119,7 +119,7 @@ export async function setCliUserFromCreds(): Promise<void> {
   // Lazy-import the store to avoid loading it during CLI commands that don't
   // touch credentials (--help, --version).
   const { readCredentials } = await import('../auth/store.js');
-  const creds = readCredentials();
+  const creds = await readCredentials();
   if (!creds?.accessToken) return;
 
   const sub = decodeJwtSub(creds.accessToken);

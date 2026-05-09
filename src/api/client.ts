@@ -63,13 +63,13 @@ async function refreshToken(
 }
 
 export async function forceTokenRefresh(organizationId?: string): Promise<void> {
-  const creds = readCredentials();
+  const creds = await readCredentials();
   if (!creds) {
     throw new AuthError('Not logged in. Run: hookmyapp login');
   }
   try {
     const refreshed = await refreshToken(creds.refreshToken, organizationId);
-    saveCredentials(refreshed);
+    await saveCredentials(refreshed);
   } catch {
     throw new AuthError('Session expired. Run: hookmyapp login');
   }
@@ -160,7 +160,7 @@ export async function apiClient(
   path: string,
   options?: RequestInit & { workspaceId?: string },
 ): Promise<any> {
-  const creds = readCredentials();
+  const creds = await readCredentials();
   if (!creds) {
     throw new AuthError('Not logged in. Run: hookmyapp login');
   }
@@ -184,7 +184,7 @@ export async function apiClient(
   if (exp > 0 && Date.now() / 1000 > exp - 60) {
     try {
       const refreshed = await refreshToken(creds.refreshToken);
-      saveCredentials(refreshed);
+      await saveCredentials(refreshed);
       accessToken = refreshed.accessToken;
     } catch {
       throw new AuthError('Session expired. Run: hookmyapp login');

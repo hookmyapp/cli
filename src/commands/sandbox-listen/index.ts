@@ -309,7 +309,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       // Step 1 — auth gate. Throw AuthError so main() maps it to exit 4
       // (auth-required) rather than a blanket exit 1 that masks the real
       // condition from CI scripts.
-      if (!readCredentials()) {
+      if (!(await readCredentials())) {
         throw new AuthError(`Not logged in. Run: ${cliCommandPrefix()} login`);
       }
 
