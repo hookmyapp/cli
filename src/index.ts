@@ -203,6 +203,18 @@ async function emitCommandInvoked(
 }
 
 async function main(): Promise<void> {
+  // Storage migration — moves legacy ~/.hookmyapp/config.json to the
+  // XDG-canonical location on first invocation. Idempotent. Cheap (a single
+  // stat() of a non-existent path is microseconds).
+  const { migrateConfigDirIfNeeded } = await import('./storage/path.js');
+  try {
+    migrateConfigDirIfNeeded();
+  } catch {
+    // Migration failures must NEVER block the CLI. Worst case: legacy and new
+    // both stay where they are; user keeps working with whichever the active
+    // command resolves to.
+  }
+
   // Phase 123 Plan 10 — init Sentry early so top-level throws + unhandled
   // rejections capture before we hit the exit boundary. The function is
   // idempotent + lazy: if telemetry is disabled (HOOKMYAPP_TELEMETRY=off
