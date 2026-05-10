@@ -258,6 +258,14 @@ async function main(): Promise<void> {
       }
     } else if (err instanceof CommanderError) {
       if (err.exitCode === 0) await flushAndExit(0); // --help, --version
+      // Emit cli_parse_error for non-zero parse failures BEFORE the
+      // emitCommandInvoked early-return swallows the signal (invokedCommand
+      // is null on parse failures because the action handler never ran).
+      const { emitParseError } = await import('./observability/posthog.js');
+      await emitParseError({
+        errorCode: err.code ?? 'commander.unknown',
+        argv: process.argv,
+      });
       // Arg errors already formatted by configureOutput — exit via
       // flushAndExit below so any early Sentry events drain.
     } else {
