@@ -67,4 +67,34 @@ describe('emitParseError', () => {
     });
     expect(fakeCapture).not.toHaveBeenCalled();
   });
+
+  it('skips --workspace value to avoid leaking workspace slug as a positional', async () => {
+    await emitParseError({
+      errorCode: 'commander.missingArgument',
+      argv: ['/usr/bin/node', '/usr/bin/hookmyapp', '--workspace', 'customer-acme', 'config', 'get'],
+    });
+    const args = fakeCapture.mock.calls[0][0];
+    expect(args.properties.argv_first_token).toBe('config');
+    expect(args.properties.argv_second_token).toBe('get');
+  });
+
+  it('skips --env value to avoid leaking the environment profile name as a positional', async () => {
+    await emitParseError({
+      errorCode: 'commander.missingArgument',
+      argv: ['/usr/bin/node', '/usr/bin/hookmyapp', '--env', 'staging', 'config', 'get'],
+    });
+    const args = fakeCapture.mock.calls[0][0];
+    expect(args.properties.argv_first_token).toBe('config');
+    expect(args.properties.argv_second_token).toBe('get');
+  });
+
+  it('handles --workspace and --env interleaved with boolean flags', async () => {
+    await emitParseError({
+      errorCode: 'commander.missingArgument',
+      argv: ['/usr/bin/node', '/usr/bin/hookmyapp', '--debug', '--workspace', 'foo', '--env', 'staging', 'config', 'get'],
+    });
+    const args = fakeCapture.mock.calls[0][0];
+    expect(args.properties.argv_first_token).toBe('config');
+    expect(args.properties.argv_second_token).toBe('get');
+  });
 });

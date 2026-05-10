@@ -228,9 +228,26 @@ export async function emitParseError(opts: {
   errorCode: string;
   argv: readonly string[];
 }): Promise<void> {
-  const userTokens = opts.argv
-    .slice(2)
-    .filter((t) => !t.startsWith('-'));
+  // Global value-taking flags whose immediately-following positional must
+  // be skipped — otherwise their values (workspace slug, env name) leak as
+  // argv_first_token. These match the program.option('--workspace <slug>')
+  // and program.option('--env <name>') definitions in src/index.ts:42-49.
+  // Workspace identity is already tagged on every PostHog event via
+  // readActiveWorkspacePublicId() in buildBaseline(); we don't need argv
+  // to carry it.
+  const VALUE_TAKING_GLOBAL_FLAGS = new Set(['--workspace', '--env']);
+
+  const userTokens: string[] = [];
+  const tail = opts.argv.slice(2);
+  for (let i = 0; i < tail.length; i++) {
+    const t = tail[i];
+    if (VALUE_TAKING_GLOBAL_FLAGS.has(t)) {
+      i++; // skip this flag's value
+      continue;
+    }
+    if (t.startsWith('-')) continue; // boolean flags
+    userTokens.push(t);
+  }
   await emit('cli_parse_error', {
     cli_version: getCliVersion(),
     error_code: opts.errorCode,
