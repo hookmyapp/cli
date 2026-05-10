@@ -215,6 +215,33 @@ export async function emit<E extends EventName>(
 }
 
 /**
+ * Emit `cli_parse_error` from index.ts's CommanderError branch. Splits out
+ * the argv-token extraction so the unit test can drive it directly without
+ * spinning up the full main() flow.
+ *
+ * argv shape: [node-binary, hookmyapp-binary, ...user-tokens]
+ * We extract the first two non-flag tokens to keep the funnel signal sharp
+ * while not logging full argv (which can carry user data on
+ * `config set <key> <value>`).
+ */
+export async function emitParseError(opts: {
+  errorCode: string;
+  argv: readonly string[];
+}): Promise<void> {
+  const userTokens = opts.argv
+    .slice(2)
+    .filter((t) => !t.startsWith('-'));
+  await emit('cli_parse_error', {
+    cli_version: getCliVersion(),
+    error_code: opts.errorCode,
+    argv_first_token: userTokens[0] ?? null,
+    argv_second_token: userTokens[1] ?? null,
+    node_version: process.version,
+    platform: process.platform,
+  });
+}
+
+/**
  * Skip-list filter for `cli_command_invoked` (CONTEXT.md §5). Help / version
  * / pure-meta commands are no-ops on the user's mental model — emitting
  * `cli_command_invoked` for them inflates volume + skews the funnel.
