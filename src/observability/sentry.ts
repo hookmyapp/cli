@@ -232,10 +232,26 @@ export async function setCliUserFromCreds(): Promise<void> {
  * carried statusCode and were silently filtered out — which is why the CLI's
  * Sentry project was empty for 30 days despite real users hitting real
  * errors. Removed in 0.11.0.
+ *
+ * One narrow exception: `commander.*` argv-parse errors (missingArgument,
+ * invalidArgument, invalidOptionArgument, unknownOption, unknownCommand,
+ * helpDisplayed, version). Commander throws these BEFORE any action handler
+ * runs — by definition the user typed argv wrong and Commander rejected it,
+ * the environment didn't break anything. These are user-typo / discoverability
+ * signals, not engineering errors; they belong in PostHog (`cli_parse_error`
+ * event), not Sentry. Duck-typed on `code.startsWith('commander.')` to keep
+ * `commander` out of this module's import graph. Tomer-class
+ * ConfigWriteForbiddenError (EPERM on a CORRECT command) is unaffected — it
+ * carries code `CONFIG_WRITE_FORBIDDEN`, no commander prefix, regression
+ * pinned in the test suite.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function shouldCaptureToSentry(err: any): boolean {
-  return err != null;
+  if (err == null) return false;
+  if (typeof err?.code === 'string' && err.code.startsWith('commander.')) {
+    return false;
+  }
+  return true;
 }
 
 /**

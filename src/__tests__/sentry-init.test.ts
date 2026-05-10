@@ -155,6 +155,38 @@ describe('shouldCaptureToSentry filter — capture every non-null error', () => 
     expect(shouldCaptureToSentry(null)).toBe(false);
     expect(shouldCaptureToSentry(undefined)).toBe(false);
   });
+
+  it('rejects CommanderError so user-typos do not pollute Sentry', () => {
+    const { CommanderError } = require('commander');
+    const err = new CommanderError(1, 'commander.missingArgument', "error: missing required argument 'key'");
+    expect(shouldCaptureToSentry(err)).toBe(false);
+  });
+
+  it('rejects every commander.* code variant', () => {
+    const { CommanderError } = require('commander');
+    for (const code of [
+      'commander.missingArgument',
+      'commander.invalidArgument',
+      'commander.invalidOptionArgument',
+      'commander.unknownOption',
+      'commander.unknownCommand',
+      'commander.helpDisplayed',
+      'commander.version',
+    ]) {
+      const err = new CommanderError(1, code, `synthetic ${code}`);
+      expect(shouldCaptureToSentry(err)).toBe(false);
+    }
+  });
+
+  it('STILL captures Tomer-class ConfigWriteForbiddenError (regression guard)', async () => {
+    const { ConfigWriteForbiddenError } = await import('../storage/errors.js');
+    const err = new ConfigWriteForbiddenError('/tmp/config.json');
+    expect(shouldCaptureToSentry(err)).toBe(true);
+  });
+
+  it('does not match objects whose code happens to start with "command." (no false positive)', () => {
+    expect(shouldCaptureToSentry({ code: 'command.timeout', message: 'x' })).toBe(true);
+  });
 });
 
 describe('flushAndExit', () => {
