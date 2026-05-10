@@ -2,6 +2,22 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.11.1] - 2026-05-10
+
+### Fixed
+
+- **Sentry no longer reports user typos as production errors.** Commander
+  argv-parse failures (`missingArgument`, `invalidArgument`, `unknownOption`,
+  `unknownCommand`, etc.) now route to PostHog as `cli_parse_error` events
+  instead of Sentry exceptions. Previously, `hookmyapp config get` (no key)
+  would page on-call as a "production CommanderError"; now it lands in
+  PostHog's funnel where you can answer "which subcommand pair gets mistyped
+  most" without polluting the engineering-error project.
+
+  Tomer-class `ConfigWriteForbiddenError` (EPERM on config write) and every
+  other `AppError` subclass remain captured by Sentry. The filter targets
+  ONLY error codes prefixed `commander.`. Regression test pinned.
+
 ## [0.11.0] - 2026-05-09
 
 ### Breaking Changes
