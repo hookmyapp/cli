@@ -115,6 +115,20 @@ export interface CliErrorShownProps {
   command: string;
 }
 
+/**
+ * Fires when Commander rejects argv before any action handler runs.
+ * Routed to PostHog (behavior signal) instead of Sentry (engineering signal).
+ * Mirrors monorepo packages/observability/src/analytics/events.ts.
+ */
+export interface CliParseErrorProps {
+  cli_version: string;
+  error_code: string;
+  argv_first_token: string | null;
+  argv_second_token: string | null;
+  node_version: string;
+  platform: NodeJS.Platform;
+}
+
 // ---------------------------------------------------------------------------
 // Event-name → property-shape map (compile-time gate for `emit()`)
 // ---------------------------------------------------------------------------
@@ -127,6 +141,7 @@ export interface EventRegistry {
   cli_sandbox_listen_liveness: CliSandboxListenLivenessProps;
   cli_sandbox_listen_stopped: CliSandboxListenStoppedProps;
   cli_error_shown: CliErrorShownProps;
+  cli_parse_error: CliParseErrorProps;
 }
 
 export type EventName = keyof EventRegistry;
@@ -149,6 +164,7 @@ export const EVENT_NAMES_RUNTIME = [
   'cli_sandbox_listen_liveness',
   'cli_sandbox_listen_stopped',
   'cli_error_shown',
+  'cli_parse_error',
 ] as const satisfies readonly EventName[];
 
 export type RuntimeEventName = (typeof EVENT_NAMES_RUNTIME)[number];
