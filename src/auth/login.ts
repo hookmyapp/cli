@@ -226,6 +226,77 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
     return;
   }
 
+  // CLI 0.12.0 — when the workspace has ≥1 forwarding-enabled channel,
+  // offer a 3-option interactive branch (spec D6 + plan Task 6). This lets
+  // a returning user with a real WABA jump straight into `channels listen`
+  // (the 24/7 OpenClaude-style use case) instead of re-typing the command.
+  //
+  // Skipped in --json mode and when the user passed --next exit (script
+  // escape hatches). Skipped when no eligible channel exists so we keep
+  // today's "print guide" behavior for first-run / sandbox-only users.
+  if (!opts.json && opts.next !== 'exit') {
+    try {
+      const allChannels = (await apiClient('/meta/channels', {
+        workspaceId: activeWorkspaceId,
+      })) as Array<{
+        id: string;
+        workspaceId: string;
+        metaWabaId?: string | null;
+        wabaName?: string | null;
+        displayPhoneNumber?: string | null;
+        forwardingEnabled: boolean;
+      }>;
+      const eligible = allChannels.filter((c) => c.forwardingEnabled);
+      if (eligible.length > 0) {
+        type Branch = 'channel' | 'sandbox' | 'guide';
+        const branch = (await select<Branch>({
+          message: 'What would you like to do?',
+          default: 'channel',
+          choices: [
+            {
+              value: 'channel',
+              name: 'Listen On A Real Channel (HookMyAppCLI)',
+              description:
+                'Stream inbound webhooks from a connected WABA to localhost',
+            },
+            {
+              value: 'sandbox',
+              name: 'Try The Sandbox (Shared WhatsApp Number)',
+              description: 'Bind a test phone to the shared sandbox WABA',
+            },
+            {
+              value: 'guide',
+              name: 'Show Me Commands',
+              description: 'Print next-steps guide and exit',
+            },
+          ],
+        })) as Branch;
+        if (branch === 'channel') {
+          const { pickChannel } = await import(
+            '../commands/channels-listen/picker.js'
+          );
+          const { runChannelListenFlow } = await import(
+            '../commands/channels-listen/index.js'
+          );
+          const chosen = await pickChannel(eligible, {});
+          await runChannelListenFlow(
+            { ...chosen, workspaceId: chosen.workspaceId ?? activeWorkspaceId },
+            { json: opts.json ?? false },
+          );
+          return;
+        }
+        if (branch === 'sandbox') {
+          await runSandboxFlow({ phone: opts.phone, json: opts.json });
+          return;
+        }
+        // 'guide' falls through to the printed guide below.
+      }
+    } catch {
+      // Channel-list fetch failed — fall back silently to the printed guide.
+      // This is a UX-enhancement path; never block login on its failure.
+    }
+  }
+
   // Default path: a printed next-steps guide. No interactive prompt.
   // When invoked via `npx` (npm >= 7 sets npm_command=exec), the bare
   // `hookmyapp` binary isn't on PATH, so cliCommandPrefix() returns
@@ -234,6 +305,7 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
   const entries: ReadonlyArray<readonly [string, string]> = [
     ['sandbox start', 'create a sandbox session and get a WhatsApp test number'],
     ['channels connect', 'connect a real WhatsApp Business channel'],
+    ['channels listen', 'stream a real channel\'s webhooks to localhost'],
     ['help', 'see all commands'],
   ];
   const col = cmd.length + 1 + Math.max(...entries.map(([s]) => s.length)) + 4;
