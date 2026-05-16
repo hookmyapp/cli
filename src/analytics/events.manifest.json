@@ -36,6 +36,18 @@
       "properties": ["cli_version", "session_public_id", "duration_seconds"]
     },
     {
+      "name": "cli_channel_listen_started",
+      "properties": ["cli_version", "channel_public_id", "workspace_public_id"]
+    },
+    {
+      "name": "cli_channel_listen_liveness",
+      "properties": ["cli_version", "channel_public_id", "elapsed_seconds"]
+    },
+    {
+      "name": "cli_channel_listen_stopped",
+      "properties": ["cli_version", "channel_public_id", "duration_seconds"]
+    },
+    {
       "name": "cli_error_shown",
       "properties": ["cli_version", "error_code", "exit_code", "command"]
     },
