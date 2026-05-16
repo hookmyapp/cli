@@ -7,6 +7,7 @@ import { cliCommandPrefix } from '../output/cli-self.js';
 import { readCredentials } from '../auth/store.js';
 import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import open from 'open';
+import { registerChannelsListenCommand } from './channels-listen/index.js';
 
 /** Pick only customer-facing fields for CLI display output */
 function pickDisplayFields(channel: any): any {
@@ -114,6 +115,10 @@ export async function runChannelsConnect(): Promise<void> {
 
 export function registerChannelsCommand(program: Command): void {
   const channels = program.command('channels').description('Manage WhatsApp channels');
+
+  // `hookmyapp channels listen` — spec 2026-05-15. Mounts under the existing
+  // plural parent (D10): real-channel CLI tunnel mirroring `sandbox listen`.
+  registerChannelsListenCommand(channels, program);
 
   const channelsList = channels
     .command('list')
