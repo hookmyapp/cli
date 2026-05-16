@@ -108,6 +108,35 @@ export interface CliSandboxListenStoppedProps {
   duration_seconds: number;
 }
 
+export interface CliChannelListenStartedProps {
+  cli_version: string;
+  channel_public_id: string;
+  workspace_public_id: string;
+}
+
+/**
+ * Coarse liveness ping (every 2h) — backstop for sessions where
+ * `cli_channel_listen_stopped` never fires (kill -9, laptop sleep, OOM).
+ * Mirrors the sandbox liveness shape, parallel surface for real channels.
+ */
+export interface CliChannelListenLivenessProps {
+  cli_version: string;
+  channel_public_id: string;
+  elapsed_seconds: number;
+}
+
+/**
+ * Fires once per channel-listen session on clean exit — both signal-driven
+ * SIGINT/SIGTERM AND `410 CHANNEL_TUNNEL_RECLAIMED` from the backend (spec
+ * D3). Carries full duration so dashboards compute "real-channel CLI time"
+ * without counting heartbeats.
+ */
+export interface CliChannelListenStoppedProps {
+  cli_version: string;
+  channel_public_id: string;
+  duration_seconds: number;
+}
+
 export interface CliErrorShownProps {
   cli_version: string;
   error_code: string;
@@ -140,6 +169,9 @@ export interface EventRegistry {
   cli_sandbox_listen_started: CliSandboxListenStartedProps;
   cli_sandbox_listen_liveness: CliSandboxListenLivenessProps;
   cli_sandbox_listen_stopped: CliSandboxListenStoppedProps;
+  cli_channel_listen_started: CliChannelListenStartedProps;
+  cli_channel_listen_liveness: CliChannelListenLivenessProps;
+  cli_channel_listen_stopped: CliChannelListenStoppedProps;
   cli_error_shown: CliErrorShownProps;
   cli_parse_error: CliParseErrorProps;
 }
@@ -163,6 +195,9 @@ export const EVENT_NAMES_RUNTIME = [
   'cli_sandbox_listen_started',
   'cli_sandbox_listen_liveness',
   'cli_sandbox_listen_stopped',
+  'cli_channel_listen_started',
+  'cli_channel_listen_liveness',
+  'cli_channel_listen_stopped',
   'cli_error_shown',
   'cli_parse_error',
 ] as const satisfies readonly EventName[];
