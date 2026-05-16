@@ -2,6 +2,39 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## [0.12.0] - 2026-05-16
+
+### Added
+
+- **`hookmyapp channels listen`** — listen for inbound WhatsApp webhooks
+  on a real onboarded channel via a per-channel Cloudflare Tunnel. Same
+  mechanics as `sandbox listen`, but for production WABAs (no customer
+  HTTPS URL required). Tunnels can stay up indefinitely — 24/7 use is
+  supported and expected (e.g. OpenClaude-style local agents).
+
+  ```bash
+  hookmyapp channels listen --channel ch_XXXXXXXX --port 3000
+  ```
+
+  When the CLI is running, the channel's dashboard destination shows as
+  **HookMyAppCLI**. Stop with Ctrl-C — the destination returns to its
+  default (HookMyAppCLI awaiting a CLI, or your previously-configured
+  webhook URL if one was set).
+
+  If you set a webhook URL in the dashboard while the CLI is mid-listen,
+  the CLI exits cleanly with a notice on its next heartbeat — the URL
+  wins (spec D3, surfaced as `410 CHANNEL_TUNNEL_RECLAIMED`).
+
+- **Wizard branch after `hookmyapp login`.** When the active workspace has
+  ≥1 forwarding-enabled channel, the post-login flow offers a three-way
+  select: real-channel listen, sandbox, or print the next-steps guide.
+  Default selection is real-channel. First-run / sandbox-only users
+  keep today's printed-guide behavior.
+
+- **PostHog events:** `cli_channel_listen_started`,
+  `cli_channel_listen_liveness` (2h backstop), `cli_channel_listen_stopped`
+  — parallels the existing `cli_sandbox_listen_*` event shape.
+
 ## [0.11.1] - 2026-05-10
 
 ### Fixed

@@ -25,6 +25,32 @@ hookmyapp login
 hookmyapp channels connect
 ```
 
+## Listening for webhooks on localhost
+
+Two flavors — pick based on which kind of WhatsApp number you have.
+
+**Sandbox** — a shared WABA managed by HookMyApp, for dev and testing:
+
+```bash
+hookmyapp sandbox listen --phone +<your-phone> --port 3000
+```
+
+**Real channel** — your own onboarded WABA, no customer-owned HTTPS URL
+required. The CLI provisions a per-channel Cloudflare Tunnel and pipes
+inbound webhooks straight to localhost:
+
+```bash
+hookmyapp channels listen --channel ch_XXXXXXXX --port 3000
+```
+
+While the CLI is running, the channel's dashboard destination shows as
+**HookMyAppCLI**. Press Ctrl-C to stop — the destination returns to its
+default. Real-channel tunnels can stay up indefinitely (24/7 use is
+supported and expected, e.g. for local self-hosted AI agents).
+
+If you set a webhook URL in the dashboard while the CLI is mid-listen,
+the URL wins — the CLI exits cleanly on its next heartbeat with a notice.
+
 ## Identifiers
 
 Starting with v0.5.0, every id flag takes a Stripe-style publicId instead of
