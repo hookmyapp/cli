@@ -477,7 +477,7 @@ describe('channels connect — npx prefix roll-out (cliCommandPrefix)', () => {
     mockConsoleLog.mockRestore();
   });
 
-  it('connect flow after channel detected without webhook prints "npx hookmyapp webhook set" + "npx hookmyapp env" hints', async () => {
+  it('connect flow after channel detected without webhook prints canonical "npx hookmyapp channels webhook set" + "npx hookmyapp channels env" hints', async () => {
     // Speed up the 5s poll interval by stubbing setTimeout.
     vi.useFakeTimers();
 
@@ -516,16 +516,20 @@ describe('channels connect — npx prefix roll-out (cliCommandPrefix)', () => {
       await p;
 
       const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
-      expect(logged).toContain('npx hookmyapp webhook set waba-new');
-      expect(logged).toContain('npx hookmyapp env waba-new');
+      // Canonical D9 nested form, channel.id (NOT metaWabaId) in copy-paste hints.
+      expect(logged).toContain('npx hookmyapp channels webhook set new-ch');
+      expect(logged).toContain('npx hookmyapp channels env new-ch');
       // No bare-hookmyapp hint at line-start
-      expect(logged).not.toMatch(/^\s{2}hookmyapp (webhook|env) /m);
+      expect(logged).not.toMatch(/^\s{2}hookmyapp (webhook|env|channels) /m);
+      // The deprecated top-level forms must NOT appear post-D9.
+      expect(logged).not.toMatch(/hookmyapp webhook set \S/);
+      expect(logged).not.toMatch(/hookmyapp env \S/);
     } finally {
       globalThis.fetch = origFetch;
     }
   }, 10000);
 
-  it('connect flow after channel detected WITH webhook prints "npx hookmyapp env" hint', async () => {
+  it('connect flow after channel detected WITH webhook prints canonical "npx hookmyapp channels env" hint', async () => {
     vi.useFakeTimers();
 
     const newChannel = {
@@ -557,8 +561,11 @@ describe('channels connect — npx prefix roll-out (cliCommandPrefix)', () => {
       await p;
 
       const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
-      expect(logged).toContain('npx hookmyapp env waba-hook');
+      // Canonical D9 nested form, channel.id (NOT metaWabaId) in copy-paste hints.
+      expect(logged).toContain('npx hookmyapp channels env new-ch-2');
       expect(logged).not.toContain('hookmyapp webhook set'); // webhook already set
+      // The deprecated top-level `hookmyapp env` form must NOT appear post-D9.
+      expect(logged).not.toMatch(/hookmyapp env \S/);
     } finally {
       globalThis.fetch = origFetch;
     }
