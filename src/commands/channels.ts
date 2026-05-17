@@ -251,7 +251,25 @@ export function registerChannelsCommand(program: Command): void {
       const workspaceId = await getDefaultWorkspaceId();
       const data = await apiClient('/meta/channels', { workspaceId });
       const connectedChannels = data.filter((c: any) => c.metaConnected !== false);
-      output(connectedChannels.map(pickDisplayFields), { human: !program.opts().json });
+      const json = !!program.opts().json;
+      if (json) {
+        // JSON mode: pass through the raw API response (incl. `id`, `type`,
+        // `metaWabaId`, `phoneNumberId`, …) — scripts depend on the wire shape.
+        output(connectedChannels, { json: true });
+        return;
+      }
+      // Default human-readable mode (Task 8): explicit column projection with
+      // friendly headers. `Channel ID` (publicId, ch_xxxxxxxx) + `type` are the
+      // primary columns; `metaWabaId` is intentionally dropped from the table.
+      const rows = connectedChannels.map((c: any) => ({
+        'Channel ID': c.id,
+        type: c.type ?? '',
+        name: c.wabaName ?? '',
+        phone: c.displayPhoneNumber ?? '',
+        forwarding: c.forwardingEnabled ?? '',
+        connected: c.metaConnected ?? '',
+      }));
+      output(rows, { human: true });
     });
 
   const channelsShow = channels
