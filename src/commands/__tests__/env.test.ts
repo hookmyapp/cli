@@ -23,6 +23,20 @@ vi.mock('node:fs', async () => {
   };
 });
 
+// runChannelEnv now consumes the generic /meta/channels/:id/env payload —
+// { channelType, values, defaults }. `values` are always overwritten on
+// --write; `defaults` are preserve-if-exists. See env.ts for the wire-shape
+// contract and Task 7 of the channel-id migration plan.
+const ENV_PAYLOAD = {
+  channelType: 'whatsapp',
+  values: {
+    WHATSAPP_WABA_ID: '1234567890',
+    WHATSAPP_ACCESS_TOKEN: 'ACT_xxx',
+    WHATSAPP_PHONE_NUMBER_ID: '15551234567',
+  },
+  defaults: { PORT: '3000' },
+};
+
 async function runEnv(args: string[]) {
   vi.resetModules();
   const { registerEnvCommand } = await import('../env.js');
@@ -38,16 +52,17 @@ beforeEach(() => {
   mocks.readFileSyncMock.mockReturnValue('');
   mocks.resolveChannelMock.mockResolvedValue({
     id: 'ch_1',
+    workspaceId: 'ws_TEST0001',
     metaWabaId: '1234567890',
     phoneNumberId: '15551234567',
   });
-  mocks.apiClientMock.mockResolvedValue({ accessToken: 'ACT_xxx' });
+  mocks.apiClientMock.mockResolvedValue(ENV_PAYLOAD);
 });
 
-describe('env <waba-id> — WHATSAPP_ prefix', () => {
+describe('env <channel> — WHATSAPP_ prefix', () => {
   it('prints all three keys with WHATSAPP_ prefix to stdout', async () => {
     const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    await runEnv(['1234567890']);
+    await runEnv(['ch_1']);
     const out = writeSpy.mock.calls.flat().join('');
     expect(out).toContain('WHATSAPP_WABA_ID=1234567890');
     expect(out).toContain('WHATSAPP_ACCESS_TOKEN=ACT_xxx');
@@ -59,10 +74,10 @@ describe('env <waba-id> — WHATSAPP_ prefix', () => {
   });
 });
 
-describe('env <waba-id> --write — upsert-merge', () => {
+describe('env <channel> --write — upsert-merge', () => {
   it('writes 3 keys when target file is missing', async () => {
     mocks.existsSyncMock.mockReturnValue(false);
-    await runEnv(['1234567890', '--write', '.env']);
+    await runEnv(['ch_1', '--write', '.env']);
     expect(mocks.writeFileSyncMock).toHaveBeenCalledTimes(1);
     const [tmpPath, contents] = mocks.writeFileSyncMock.mock.calls[0];
     expect(String(tmpPath)).toMatch(/\.env\.tmp$/);
@@ -78,7 +93,7 @@ describe('env <waba-id> --write — upsert-merge', () => {
   it('preserves unrelated keys and appends the three new keys', async () => {
     mocks.existsSyncMock.mockReturnValue(true);
     mocks.readFileSyncMock.mockReturnValue('PORT=4000\nVERIFY_TOKEN=abc\n');
-    await runEnv(['1234567890', '--write', '.env']);
+    await runEnv(['ch_1', '--write', '.env']);
     const contents = String(mocks.writeFileSyncMock.mock.calls[0][1]);
     expect(contents).toContain('PORT=4000');
     expect(contents).toContain('VERIFY_TOKEN=abc');
@@ -92,7 +107,7 @@ describe('env <waba-id> --write — upsert-merge', () => {
     mocks.readFileSyncMock.mockReturnValue(
       'PORT=4000\nWHATSAPP_ACCESS_TOKEN=old\nVERIFY_TOKEN=abc\n',
     );
-    await runEnv(['1234567890', '--write', '.env']);
+    await runEnv(['ch_1', '--write', '.env']);
     const contents = String(mocks.writeFileSyncMock.mock.calls[0][1]);
     expect(contents).toContain('WHATSAPP_ACCESS_TOKEN=ACT_xxx');
     expect(contents).not.toContain('WHATSAPP_ACCESS_TOKEN=old');
@@ -105,7 +120,7 @@ describe('env <waba-id> --write — upsert-merge', () => {
     mocks.readFileSyncMock.mockReturnValue(
       '# header comment\nPORT=4000\n\n# section\nVERIFY_TOKEN=abc\n',
     );
-    await runEnv(['1234567890', '--write', '.env']);
+    await runEnv(['ch_1', '--write', '.env']);
     const contents = String(mocks.writeFileSyncMock.mock.calls[0][1]);
     const lines = contents.split('\n');
     expect(lines[0]).toBe('# header comment');
@@ -117,7 +132,7 @@ describe('env <waba-id> --write — upsert-merge', () => {
 
   it('writes atomically: writeFileSync to .tmp then renameSync into place', async () => {
     mocks.existsSyncMock.mockReturnValue(false);
-    await runEnv(['1234567890', '--write', '.env']);
+    await runEnv(['ch_1', '--write', '.env']);
     const writeOrder = mocks.writeFileSyncMock.mock.invocationCallOrder[0];
     const renameOrder = mocks.renameSyncMock.mock.invocationCallOrder[0];
     expect(writeOrder).toBeLessThan(renameOrder);
