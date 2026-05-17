@@ -8,6 +8,14 @@ import { readCredentials } from '../auth/store.js';
 import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import open from 'open';
 import { registerChannelsListenCommand } from './channels-listen/index.js';
+import { runChannelEnv } from './env.js';
+import { runChannelToken } from './token.js';
+import { runChannelHealth } from './health.js';
+import {
+  runChannelWebhookShow,
+  runChannelWebhookSet,
+  type WebhookSetOptions,
+} from './webhook.js';
 
 /**
  * Minimal wire-shape mirror of the `/meta/channels` response used by the
@@ -206,22 +214,25 @@ export async function runChannelsConnect(): Promise<void> {
 
   const name = newChannel.phoneVerifiedName ?? newChannel.wabaName ?? '';
   console.log(`\n✓ Channel connected`);
-  console.log(`  waba:  ${newChannel.metaWabaId}`);
-  console.log(`  phone: ${newChannel.displayPhoneNumber}`);
-  if (name) console.log(`  name:  ${name}`);
+  console.log(`  channel: ${newChannel.id}`);
+  console.log(`  phone:   ${newChannel.displayPhoneNumber}`);
+  if (name) console.log(`  name:    ${name}`);
 
-  // Check if webhook is configured
+  // Canonical post-signup hints use the nested `channels ...` form (spec D9).
+  // The copy-paste commands reference channel.id (ch_xxxxxxxx), NOT
+  // metaWabaId, because the resolver's first-match step is the publicId
+  // pattern.
   if (!newChannel.webhookUrl) {
     console.log(`\n→ Next, configure your webhook to receive WhatsApp messages.`);
     console.log(`  The webhook URL should be a publicly accessible HTTPS`);
     console.log(`  endpoint that returns 200 OK.\n`);
-    console.log(`  ${cliCommandPrefix()} webhook set ${newChannel.metaWabaId} --url <your-webhook-url>\n`);
+    console.log(`  ${cliCommandPrefix()} channels webhook set ${newChannel.id} --url <your-webhook-url>\n`);
     console.log(`→ Then get your credentials:`);
-    console.log(`  ${cliCommandPrefix()} env ${newChannel.metaWabaId}\n`);
+    console.log(`  ${cliCommandPrefix()} channels env ${newChannel.id}\n`);
   } else {
     console.log(`\n✓ Webhook configured: ${newChannel.webhookUrl}`);
     console.log(`\n→ Get your credentials:`);
-    console.log(`  ${cliCommandPrefix()} env ${newChannel.metaWabaId}\n`);
+    console.log(`  ${cliCommandPrefix()} channels env ${newChannel.id}\n`);
   }
 }
 
@@ -246,9 +257,9 @@ export function registerChannelsCommand(program: Command): void {
   const channelsShow = channels
     .command('show')
     .description('Show channel details')
-    .argument('<waba-id>', 'WABA ID')
-    .action(async (wabaId: string) => {
-      const channel = await resolveChannel(wabaId);
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .action(async (channelRef: string) => {
+      const channel = await resolveChannel(channelRef);
       const detail = await apiClient(`/meta/channels/${channel.id}`);
       output(pickDisplayFields(detail), { human: !program.opts().json });
     });
@@ -263,9 +274,9 @@ export function registerChannelsCommand(program: Command): void {
   const channelsDisconnect = channels
     .command('disconnect')
     .description('Disconnect a channel')
-    .argument('<waba-id>', 'WABA ID')
-    .action(async (wabaId: string) => {
-      const channel = await resolveChannel(wabaId);
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .action(async (channelRef: string) => {
+      const channel = await resolveChannel(channelRef);
       const result = await apiClient(`/meta/channels/${channel.id}/disconnect`, {
         method: 'POST',
         workspaceId: channel.workspaceId,
@@ -276,9 +287,9 @@ export function registerChannelsCommand(program: Command): void {
   const channelsEnable = channels
     .command('enable')
     .description('Enable forwarding for a channel')
-    .argument('<waba-id>', 'WABA ID')
-    .action(async (wabaId: string) => {
-      const channel = await resolveChannel(wabaId);
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .action(async (channelRef: string) => {
+      const channel = await resolveChannel(channelRef);
       const result = await apiClient(`/meta/channels/${channel.id}/enable`, {
         method: 'POST',
         workspaceId: channel.workspaceId,
@@ -289,14 +300,69 @@ export function registerChannelsCommand(program: Command): void {
   const channelsDisable = channels
     .command('disable')
     .description('Disable forwarding for a channel')
-    .argument('<waba-id>', 'WABA ID')
-    .action(async (wabaId: string) => {
-      const channel = await resolveChannel(wabaId);
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .action(async (channelRef: string) => {
+      const channel = await resolveChannel(channelRef);
       const result = await apiClient(`/meta/channels/${channel.id}/disable`, {
         method: 'POST',
         workspaceId: channel.workspaceId,
       });
       output(result, { human: !program.opts().json });
+    });
+
+  // ─── Canonical nested commands (D9) ────────────────────────────────────
+  // env / token / health / webhook{show|set} live under `channels` as the
+  // canonical surface. Top-level forms in env.ts/token.ts/health.ts/webhook.ts
+  // are deprecated aliases that delegate to these handlers.
+
+  const channelsEnv = channels
+    .command('env')
+    .description('Pull env values for a channel and optionally write to .env')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .option(
+      '--write [path]',
+      'Upsert credentials into a .env file (default ./.env). Replaces existing WHATSAPP_* keys, preserves everything else.',
+    )
+    .action(async (channelRef: string, options: { write?: string | boolean }) => {
+      await runChannelEnv(channelRef, options);
+    });
+
+  const channelsToken = channels
+    .command('token')
+    .description('Reveal access token for a channel')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .action(async (channelRef: string) => {
+      await runChannelToken(channelRef);
+    });
+
+  const channelsHealth = channels
+    .command('health')
+    .description('Health check for a channel')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .action(async (channelRef: string) => {
+      await runChannelHealth(channelRef, { human: !program.opts().json });
+    });
+
+  const channelsWebhook = channels
+    .command('webhook')
+    .description("Manage a channel's configured webhook URL");
+
+  const channelsWebhookShow = channelsWebhook
+    .command('show')
+    .description('Show the configured webhook URL for a channel')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .action(async (channelRef: string) => {
+      await runChannelWebhookShow(channelRef, { json: !!program.opts().json });
+    });
+
+  const channelsWebhookSet = channelsWebhook
+    .command('set')
+    .description('Set the configured webhook URL for a channel')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .option('--url <url>', 'Webhook URL')
+    .option('--verify-token <token>', 'Verify token (auto-generated if omitted)')
+    .action(async (channelRef: string, opts: WebhookSetOptions) => {
+      await runChannelWebhookSet(channelRef, opts, { json: !!program.opts().json });
     });
 
   addExamples(
@@ -305,7 +371,7 @@ export function registerChannelsCommand(program: Command): void {
 EXAMPLES:
   $ hookmyapp channels list
   $ hookmyapp channels connect
-  $ hookmyapp channels disconnect 1234567890
+  $ hookmyapp channels disconnect ch_AAAAAAAA
 `,
   );
 
@@ -322,8 +388,8 @@ EXAMPLES:
     channelsShow,
     `
 EXAMPLES:
-  $ hookmyapp channels show 1234567890
-  $ hookmyapp channels show 1234567890 --json
+  $ hookmyapp channels show ch_AAAAAAAA
+  $ hookmyapp channels show ch_AAAAAAAA --json
 `,
   );
 
@@ -340,8 +406,8 @@ EXAMPLES:
     channelsDisconnect,
     `
 EXAMPLES:
-  $ hookmyapp channels disconnect 1234567890
-  $ hookmyapp channels disconnect 1234567890 --workspace acme-corp
+  $ hookmyapp channels disconnect ch_AAAAAAAA
+  $ hookmyapp channels disconnect ch_AAAAAAAA --workspace acme-corp
 `,
   );
 
@@ -349,8 +415,8 @@ EXAMPLES:
     channelsEnable,
     `
 EXAMPLES:
-  $ hookmyapp channels enable 1234567890
-  $ hookmyapp channels enable 1234567890 --workspace acme-corp
+  $ hookmyapp channels enable ch_AAAAAAAA
+  $ hookmyapp channels enable ch_AAAAAAAA --workspace acme-corp
 `,
   );
 
@@ -358,8 +424,62 @@ EXAMPLES:
     channelsDisable,
     `
 EXAMPLES:
-  $ hookmyapp channels disable 1234567890
-  $ hookmyapp channels disable 1234567890 --workspace acme-corp
+  $ hookmyapp channels disable ch_AAAAAAAA
+  $ hookmyapp channels disable ch_AAAAAAAA --workspace acme-corp
+`,
+  );
+
+  addExamples(
+    channelsEnv,
+    `
+EXAMPLES:
+  $ hookmyapp channels env ch_AAAAAAAA
+  $ hookmyapp channels env ch_AAAAAAAA --write .env
+`,
+  );
+
+  addExamples(
+    channelsToken,
+    `
+EXAMPLES:
+  $ hookmyapp channels token ch_AAAAAAAA
+  $ hookmyapp channels token ch_AAAAAAAA --workspace acme-corp
+`,
+  );
+
+  addExamples(
+    channelsHealth,
+    `
+EXAMPLES:
+  $ hookmyapp channels health ch_AAAAAAAA
+  $ hookmyapp channels health ch_AAAAAAAA --json
+`,
+  );
+
+  addExamples(
+    channelsWebhook,
+    `
+EXAMPLES:
+  $ hookmyapp channels webhook show ch_AAAAAAAA
+  $ hookmyapp channels webhook set ch_AAAAAAAA --url https://example.com/hook
+`,
+  );
+
+  addExamples(
+    channelsWebhookShow,
+    `
+EXAMPLES:
+  $ hookmyapp channels webhook show ch_AAAAAAAA
+  $ hookmyapp channels webhook show ch_AAAAAAAA --json
+`,
+  );
+
+  addExamples(
+    channelsWebhookSet,
+    `
+EXAMPLES:
+  $ hookmyapp channels webhook set ch_AAAAAAAA --url https://example.com/hook
+  $ hookmyapp channels webhook set ch_AAAAAAAA --url https://example.com/hook --verify-token my-secret
 `,
   );
 }

@@ -6,7 +6,7 @@ import { addExamples } from '../output/help.js';
 import { ValidationError } from '../output/error.js';
 import { resolveChannel } from './channels.js';
 
-interface EnvOptions {
+export interface EnvOptions {
   write?: string | boolean;
 }
 
@@ -54,52 +54,72 @@ function upsertEnvFile(targetPath: string, updates: Map<string, string>): void {
   renameSync(tmp, targetPath);
 }
 
+/**
+ * Canonical handler for `hookmyapp channels env <channel>` (D9). Also invoked
+ * by the deprecated top-level `hookmyapp env <channel>` alias.
+ */
+export async function runChannelEnv(
+  channelRef: string,
+  options: EnvOptions,
+): Promise<void> {
+  const channel = await resolveChannel(channelRef);
+  if (!channel.phoneNumberId) {
+    throw new ValidationError(
+      `channel ${channel.id} has no phoneNumberId yet (signup not finished). Re-run \`hookmyapp channels list\` and try again once it appears.`,
+    );
+  }
+  const tokenData = await apiClient(`/meta/channels/${channel.id}/token`);
+
+  const values: Record<(typeof ENV_KEYS)[number], string> = {
+    WHATSAPP_WABA_ID: channel.metaWabaId,
+    WHATSAPP_ACCESS_TOKEN: tokenData.accessToken,
+    WHATSAPP_PHONE_NUMBER_ID: channel.phoneNumberId,
+  };
+
+  if (options.write !== undefined && options.write !== false) {
+    const target = resolvePath(
+      typeof options.write === 'string' ? options.write : '.env',
+    );
+    const updates = new Map<string, string>(
+      ENV_KEYS.map((k) => [k, values[k]]),
+    );
+    upsertEnvFile(target, updates);
+    return;
+  }
+
+  process.stdout.write(
+    `WHATSAPP_WABA_ID=${values.WHATSAPP_WABA_ID}\nWHATSAPP_ACCESS_TOKEN=${values.WHATSAPP_ACCESS_TOKEN}\nWHATSAPP_PHONE_NUMBER_ID=${values.WHATSAPP_PHONE_NUMBER_ID}\n`,
+  );
+}
+
+/**
+ * Deprecated top-level `hookmyapp env` alias. Emits a stderr deprecation
+ * warning and delegates to {@link runChannelEnv}. Canonical form is
+ * `hookmyapp channels env <channel>`.
+ */
 export function registerEnvCommand(program: Command): void {
   const env = program
     .command('env')
-    .description('Output credentials as .env format')
-    .argument('<waba-id>', 'WABA ID')
+    .description('[deprecated] Use `hookmyapp channels env <channel>` instead.')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
     .option(
       '--write [path]',
       'Upsert credentials into a .env file (default ./.env). Replaces existing WHATSAPP_* keys, preserves everything else.',
     )
-    .action(async (wabaId: string, options: EnvOptions) => {
-      const channel = await resolveChannel(wabaId);
-      if (!channel.phoneNumberId) {
-        throw new ValidationError(
-          `channel ${channel.id} has no phoneNumberId yet (signup not finished). Re-run \`hookmyapp channels list\` and try again once it appears.`,
-        );
-      }
-      const tokenData = await apiClient(`/meta/channels/${channel.id}/token`);
-
-      const values: Record<(typeof ENV_KEYS)[number], string> = {
-        WHATSAPP_WABA_ID: channel.metaWabaId,
-        WHATSAPP_ACCESS_TOKEN: tokenData.accessToken,
-        WHATSAPP_PHONE_NUMBER_ID: channel.phoneNumberId,
-      };
-
-      if (options.write !== undefined && options.write !== false) {
-        const target = resolvePath(
-          typeof options.write === 'string' ? options.write : '.env',
-        );
-        const updates = new Map<string, string>(
-          ENV_KEYS.map((k) => [k, values[k]]),
-        );
-        upsertEnvFile(target, updates);
-        return;
-      }
-
-      process.stdout.write(
-        `WHATSAPP_WABA_ID=${values.WHATSAPP_WABA_ID}\nWHATSAPP_ACCESS_TOKEN=${values.WHATSAPP_ACCESS_TOKEN}\nWHATSAPP_PHONE_NUMBER_ID=${values.WHATSAPP_PHONE_NUMBER_ID}\n`,
+    .action(async (channelRef: string, options: EnvOptions) => {
+      console.warn(
+        '[deprecated] `hookmyapp env` will be removed in a future release. ' +
+          'Use: hookmyapp channels env <channel>',
       );
+      await runChannelEnv(channelRef, options);
     });
 
   addExamples(
     env,
     `
 EXAMPLES:
-  $ hookmyapp env 1234567890
-  $ hookmyapp env 1234567890 --write .env
+  $ hookmyapp channels env ch_AAAAAAAA
+  $ hookmyapp channels env ch_AAAAAAAA --write .env
 `,
   );
 }

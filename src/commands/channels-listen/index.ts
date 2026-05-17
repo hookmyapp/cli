@@ -34,7 +34,6 @@ import { startChannelHeartbeat } from './lifecycle.js';
 export interface ChannelListenOpts {
   port: number;
   path: string;
-  channel?: string;
   verbose: boolean;
   json: boolean;
   reinstallTunnelBinary: boolean;
@@ -61,7 +60,6 @@ export async function runChannelListenFlow(
   const listenOpts: ChannelListenOpts = {
     port: opts.port ?? 3000,
     path: opts.path ?? '/webhook',
-    channel: opts.channel,
     verbose: opts.verbose ?? false,
     json: opts.json ?? false,
     reinstallTunnelBinary: opts.reinstallTunnelBinary ?? false,
@@ -256,9 +254,9 @@ export function registerChannelsListenCommand(
       3000,
     )
     .option('--path <p>', 'Webhook path on your app', '/webhook')
-    .option(
-      '--channel <id>',
-      'Channel publicId (ch_XXXXXXXX) to listen on (skip picker)',
+    .argument(
+      '[channel]',
+      'Channel ID (ch_xxxxxxxx). If omitted, an interactive picker is shown.',
     )
     .option('--verbose', 'Print full request/response bodies', false)
     .option('--json', 'Machine-readable event log', false)
@@ -267,12 +265,12 @@ export function registerChannelsListenCommand(
       'Force re-download of cloudflared',
       false,
     )
-    .action(async (opts: ChannelListenOpts) => {
+    .action(async (channelRef: string | undefined, opts: ChannelListenOpts) => {
       const human = !program.opts().json && !opts.json;
 
-      if (opts.channel && !isValidPublicId(opts.channel, 'ch')) {
+      if (channelRef && !isValidPublicId(channelRef, 'ch')) {
         throw new ValidationError(
-          `--channel "${opts.channel}" must be a publicId (ch_<8-char>). Run: ${cliCommandPrefix()} channels list`,
+          `"${channelRef}" must be a publicId (ch_<8-char>). Run: ${cliCommandPrefix()} channels list`,
         );
       }
 
@@ -289,7 +287,7 @@ export function registerChannelsListenCommand(
       })) as Channel[];
 
       const chosen = await pickChannel(allChannels, {
-        channelFlag: opts.channel,
+        channelFlag: channelRef,
       });
 
       // Ensure workspaceId is populated — list endpoint returns it but the
@@ -311,8 +309,8 @@ export function registerChannelsListenCommand(
     listen,
     `
 EXAMPLES:
-  $ hookmyapp channels listen
-  $ hookmyapp channels listen --channel ch_AAAAAAAA --port 3000
+  $ hookmyapp channels listen                          # interactive picker (no arg)
+  $ hookmyapp channels listen ch_AAAAAAAA --port 3000
   $ hookmyapp channels listen --path /webhook --verbose
   $ nohup hookmyapp channels listen --port 3000 &     # background / 24-7
 `,

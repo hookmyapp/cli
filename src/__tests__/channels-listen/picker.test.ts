@@ -48,7 +48,7 @@ describe('pickChannel', () => {
     });
   });
 
-  describe('When --channel flag matches a forwarding-enabled channel', () => {
+  describe('When channelFlag opt (positional channelRef) matches a forwarding-enabled channel', () => {
     it('then returns that channel without prompting', async () => {
       const a = makeChannel({ id: 'ch_AAAAAAAA', wabaName: 'A' });
       const b = makeChannel({ id: 'ch_BBBBBBBB', wabaName: 'B' });
@@ -60,7 +60,7 @@ describe('pickChannel', () => {
     });
   });
 
-  describe('When --channel flag does not match any channel', () => {
+  describe('When channelFlag opt (positional channelRef) does not match any channel', () => {
     it('then throws CliError CHANNEL_MISMATCH with exitCode 2', async () => {
       const channels = [makeChannel({ id: 'ch_AAAAAAAA' })];
 
