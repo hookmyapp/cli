@@ -14,6 +14,7 @@ process.env.HOOKMYAPP_CONFIG_DIR = CONFIG_DIR;
 vi.mock('../api/client.js', () => ({
   apiClient: vi.fn(),
   forceTokenRefresh: vi.fn(),
+  setWorkspaceContext: vi.fn(),
 }));
 
 vi.mock('../auth/store.js', () => ({

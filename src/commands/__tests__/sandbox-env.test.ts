@@ -22,6 +22,7 @@ vi.mock('@inquirer/prompts', () => ({
 vi.mock('../../api/client.js', () => ({
   apiClient: mocks.apiClientMock,
   forceTokenRefresh: vi.fn(),
+  setWorkspaceContext: vi.fn(),
 }));
 
 // Seed an active workspace so `_helpers.getDefaultWorkspaceId` resolves from

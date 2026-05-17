@@ -30,6 +30,7 @@ vi.mock('../../api/client.js', () => ({
   apiClient: mocks.apiClientMock,
   getBindCode: mocks.getBindCodeMock,
   forceTokenRefresh: vi.fn(),
+  setWorkspaceContext: vi.fn(),
 }));
 
 vi.mock('@inquirer/prompts', () => ({
