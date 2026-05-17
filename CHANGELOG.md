@@ -2,6 +2,27 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.12.1 — 2026-05-17
+
+### Breaking
+
+- Channel identifier syntax changed from Meta WABA ID to HookMyApp Channel ID (`ch_xxxxxxxx`). Run `hookmyapp channels list` to see your channel IDs. All `<waba-id>` positional args now take `<channel>`. The CLI also accepts `phoneNumberId`, display phone numbers, and display names. Passing an old wabaId returns a helpful error pointing at `channels list`.
+- `hookmyapp channels listen --channel <id>` → positional `hookmyapp channels listen [channel]`. Omit the arg to get the interactive picker.
+
+### Added
+
+- **Canonical command surface nested under `channels`:** all channel-scoped commands now live under `hookmyapp channels` — `channels env`, `channels token`, `channels health`, `channels webhook show`, `channels webhook set`. Top-level forms (`hookmyapp env`, `hookmyapp token`, `hookmyapp health`, `hookmyapp webhook`) continue to work as deprecated aliases for ONE release; they emit a stderr warning and delegate to the canonical handler. They'll be removed in a future release.
+- `channels list` table now shows "Channel ID" and "type" columns. `metaWabaId` remains in `--json` output for back-compat.
+- `hookmyapp channels env <channel> --write .env` writes `HOOKMYAPP_CHANNEL_ID=ch_xxx` alongside existing `WHATSAPP_WABA_ID=` (additive).
+
+### Fixed
+
+- `--workspace` flag now properly injects `X-Workspace-Id` on every authenticated endpoint, including `env`. Previously, only some subcommands honored it.
+
+### Deprecated
+
+- `hookmyapp env`, `hookmyapp token`, `hookmyapp health`, `hookmyapp webhook show`, `hookmyapp webhook set` — use the canonical nested form (`hookmyapp channels env`, etc.).
+
 ## [0.12.0] - 2026-05-16
 
 ### Added

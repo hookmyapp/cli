@@ -74,6 +74,41 @@ hookmyapp sandbox listen --session ssn_3Bq8RkP2
 Raw UUID input (from pre-0.5.0 scripts) is rejected with a typed error —
 upgrade your automation to the publicId shape.
 
+Starting with v0.12.1, `<channel>` positional args take a HookMyApp Channel
+ID (`ch_xxxxxxxx`) instead of a Meta WABA ID. The resolver also accepts a
+`phoneNumberId`, the display phone number, or the display name (when
+unambiguous). Run `hookmyapp channels list` to see your channel IDs;
+passing a stale wabaId returns a typed error pointing at the same list.
+
+## Channel commands
+
+All channel-scoped operations live under `hookmyapp channels`:
+
+```bash
+hookmyapp channels list
+hookmyapp channels show ch_xxxxxxxx
+hookmyapp channels env ch_xxxxxxxx --write .env
+hookmyapp channels token ch_xxxxxxxx
+hookmyapp channels health ch_xxxxxxxx
+hookmyapp channels webhook show ch_xxxxxxxx
+hookmyapp channels webhook set ch_xxxxxxxx --url https://example.com/webhook
+hookmyapp channels listen ch_xxxxxxxx --port 3000
+```
+
+### Deprecated top-level forms
+
+The following top-level commands still work but are deprecated and will be
+removed in a future release. They emit a stderr warning and delegate to the
+canonical nested handler:
+
+| Deprecated form                       | Canonical replacement                       |
+| ------------------------------------- | ------------------------------------------- |
+| `hookmyapp env <channel>`             | `hookmyapp channels env <channel>`          |
+| `hookmyapp token <channel>`           | `hookmyapp channels token <channel>`        |
+| `hookmyapp health <channel>`          | `hookmyapp channels health <channel>`       |
+| `hookmyapp webhook show <channel>`    | `hookmyapp channels webhook show <channel>` |
+| `hookmyapp webhook set <channel>`     | `hookmyapp channels webhook set <channel>`  |
+
 ## Telemetry
 
 Starting with v0.8.0, HookMyApp CLI reports crashes to our Sentry project so
