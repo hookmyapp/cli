@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { apiClient } from '../api/client.js';
 import { addExamples } from '../output/help.js';
+import { ValidationError } from '../output/error.js';
 import { resolveChannel } from './channels.js';
 
 interface EnvOptions {
@@ -64,6 +65,11 @@ export function registerEnvCommand(program: Command): void {
     )
     .action(async (wabaId: string, options: EnvOptions) => {
       const channel = await resolveChannel(wabaId);
+      if (!channel.phoneNumberId) {
+        throw new ValidationError(
+          `channel ${channel.id} has no phoneNumberId yet (signup not finished). Re-run \`hookmyapp channels list\` and try again once it appears.`,
+        );
+      }
       const tokenData = await apiClient(`/meta/channels/${channel.id}/token`);
 
       const values: Record<(typeof ENV_KEYS)[number], string> = {
