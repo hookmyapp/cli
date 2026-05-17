@@ -1,4 +1,4 @@
-import { apiClient } from '../api/client.js';
+import { apiClient, setWorkspaceContext } from '../api/client.js';
 import { AuthError, CliError, NetworkError, ValidationError, exitCodeFor } from '../output/error.js';
 import { readWorkspaceConfig, writeWorkspaceConfig } from './workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
@@ -81,11 +81,17 @@ export async function getDefaultWorkspaceId(): Promise<string> {
         `Unknown workspace: ${flag}. Available: ${available}`,
       );
     }
+    // Publish to the module-level apiClient context so subsequent
+    // apiClient(...) calls automatically carry X-Workspace-Id without each
+    // call site having to pass `{ workspaceId }`. Explicit per-call overrides
+    // still win.
+    setWorkspaceContext({ workspaceId: match.id });
     return match.id;
   }
 
   const config = readWorkspaceConfig();
   if (config.activeWorkspaceId) {
+    setWorkspaceContext({ workspaceId: config.activeWorkspaceId });
     return config.activeWorkspaceId;
   }
 
@@ -98,6 +104,7 @@ export async function getDefaultWorkspaceId(): Promise<string> {
       activeWorkspaceId: only.id,
       activeWorkspaceSlug: only.name,
     });
+    setWorkspaceContext({ workspaceId: only.id });
     return only.id;
   }
 

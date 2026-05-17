@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Mock apiClient
 vi.mock('../api/client.js', () => ({
   apiClient: vi.fn(),
+  setWorkspaceContext: vi.fn(),
 }));
 
 // Mock open
