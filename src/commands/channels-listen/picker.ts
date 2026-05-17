@@ -57,16 +57,41 @@ export async function pickChannel(
 
   if (eligible.length === 1) return eligible[0];
 
-  return select<Channel>({
-    message: 'Choose a channel to listen on',
-    choices: eligible.map((c) => ({
+  return selectChannel(eligible, 'Choose a channel to listen on');
+}
+
+/**
+ * Forwarding-agnostic interactive selector. Given a non-empty channel list,
+ * prompts the user via @inquirer/prompts/select and returns the chosen
+ * channel. Does NOT filter by `forwardingEnabled` — callers that need that
+ * filter (e.g. `channels listen`, post-login wizard) should use `pickChannel`
+ * which delegates here after filtering.
+ *
+ * Generic over the channel shape so the resolver in `channels.ts` can pass
+ * its own `ApiChannel` (where `forwardingEnabled` is optional) without
+ * needing a structural cast — only the display fields are required.
+ */
+export async function selectChannel<
+  T extends {
+    id: string;
+    displayPhoneNumber?: string | null;
+    wabaName?: string | null;
+  },
+>(channels: T[], message = 'Choose a channel'): Promise<T> {
+  return select<T>({
+    message,
+    choices: channels.map((c) => ({
       name: renderRow(c),
       value: c,
     })),
   });
 }
 
-function renderRow(c: Channel): string {
+function renderRow(c: {
+  id: string;
+  displayPhoneNumber?: string | null;
+  wabaName?: string | null;
+}): string {
   const phone = c.displayPhoneNumber ?? '(no phone)';
   const name = c.wabaName ?? c.id;
   return `${phone}   ${name}`;

@@ -9,6 +9,26 @@ import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import open from 'open';
 import { registerChannelsListenCommand } from './channels-listen/index.js';
 
+/**
+ * Minimal wire-shape mirror of the `/meta/channels` response used by the
+ * resolver. Only the fields the resolver actually reads are typed; the
+ * permissive index signature keeps it forward-compatible with API additions
+ * (resolver doesn't need them, but downstream callers that receive the
+ * resolved channel do).
+ */
+export interface ApiChannel {
+  id: string;
+  type?: 'whatsapp' | 'instagram' | 'messenger';
+  workspaceId: string;
+  metaWabaId: string;
+  phoneNumberId?: string | null;
+  displayPhoneNumber?: string | null;
+  wabaName?: string | null;
+  forwardingEnabled?: boolean;
+  // additional fields exist on the wire but the resolver doesn't need them
+  [key: string]: unknown;
+}
+
 /** Pick only customer-facing fields for CLI display output */
 function pickDisplayFields(channel: any): any {
   const { id, workspaceId, qualityRating, ...display } = channel;
@@ -58,35 +78,35 @@ export class AmbiguousChannelError extends CliError {
  *   6. /^\d{15,16}$/ → friendly "looks like a Meta WABA ID" hard-break error
  *   7. generic not-found
  */
-export async function resolveChannel(ref: string): Promise<any> {
+export async function resolveChannel(ref: string): Promise<ApiChannel> {
   const { getDefaultWorkspaceId } = await import('./_helpers.js');
   const workspaceId = await getDefaultWorkspaceId();
-  const channels = await apiClient('/meta/channels', { workspaceId });
+  const channels: ApiChannel[] = await apiClient('/meta/channels', { workspaceId });
 
   // 1. publicId pattern → wire field is `id`
   if (PUBLIC_ID_PATTERN.test(ref)) {
-    const match = channels.find((c: any) => c.id === ref);
+    const match = channels.find((c: ApiChannel) => c.id === ref);
     if (match) return match;
   }
 
   // 2. exact phone_number_id
-  const byPhoneId = channels.find((c: any) => c.phoneNumberId === ref);
+  const byPhoneId = channels.find((c: ApiChannel) => c.phoneNumberId === ref);
   if (byPhoneId) return byPhoneId;
 
   // 3. exact display phone (stripped match)
   const stripped = stripPhone(ref);
   const byPhone = channels.find(
-    (c: any) => c.displayPhoneNumber && stripPhone(c.displayPhoneNumber) === stripped,
+    (c: ApiChannel) => !!c.displayPhoneNumber && stripPhone(c.displayPhoneNumber) === stripped,
   );
   if (byPhone) return byPhone;
 
   // 4. exact wabaName (the API field; rendered as "channel name" in UI)
-  const byNameExact = channels.find((c: any) => c.wabaName === ref);
+  const byNameExact = channels.find((c: ApiChannel) => c.wabaName === ref);
   if (byNameExact) return byNameExact;
 
   // 5. fuzzy wabaName (case-insensitive substring)
   const fuzzyMatches = channels.filter(
-    (c: any) =>
+    (c: ApiChannel) =>
       typeof c.wabaName === 'string' &&
       c.wabaName.toLowerCase().includes(ref.toLowerCase()),
   );
@@ -94,12 +114,17 @@ export async function resolveChannel(ref: string): Promise<any> {
   if (fuzzyMatches.length > 1) {
     if (!process.stdout.isTTY) {
       throw new AmbiguousChannelError(
-        fuzzyMatches.map((c: any) => ({ id: c.id, wabaName: c.wabaName })),
+        fuzzyMatches.map((c: ApiChannel) => ({ id: c.id, wabaName: c.wabaName })),
       );
     }
-    // Interactive picker — reuse `pickChannel` from channels-listen.
-    const { pickChannel } = await import('./channels-listen/picker.js');
-    return await pickChannel(fuzzyMatches);
+    // Interactive picker — use `selectChannel` (forwarding-agnostic). We MUST
+    // NOT use `pickChannel` here because resolveChannel is shared by
+    // enable/disable/show/disconnect/env/token/health/webhook — those commands
+    // legitimately operate on channels with forwardingEnabled=false (e.g.
+    // `channels enable` exists precisely to flip that flag). `pickChannel`'s
+    // forwarding-enabled filter is correct for `channels listen` only.
+    const { selectChannel } = await import('./channels-listen/picker.js');
+    return await selectChannel<ApiChannel>(fuzzyMatches);
   }
 
   // 6. Looks-like-wabaId hard-break

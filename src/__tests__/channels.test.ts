@@ -361,6 +361,58 @@ describe('resolveChannel — strict resolver order (Task 5)', () => {
       (process.stdout as any).isTTY = prevTTY;
     }
   });
+
+  // Regression for the Task 5 bug — TTY fuzzy-match used to call
+  // `pickChannel`, which silently filters out `forwardingEnabled !== true`
+  // candidates. That's wrong for `channels enable/disable/show/disconnect`
+  // because the entire point of those commands is to operate on a channel
+  // regardless of (or to flip) the forwarding flag. The resolver must hand
+  // every fuzzy match to the user-facing picker; the picker must not silently
+  // shrink the list.
+  it('TTY fuzzy match delegates to selectChannel without forwardingEnabled filter', async () => {
+    const prevTTY = process.stdout.isTTY;
+    (process.stdout as any).isTTY = true;
+    // Mix forwarding-enabled and disabled channels — BOTH must reach the
+    // picker. Pre-fix, the disabled one would be silently dropped and the
+    // enabled one auto-selected (`pickChannel` short-circuits at length===1
+    // after its filter).
+    const mixedFixtures = [
+      { ...fixtures[0], forwardingEnabled: true, wabaName: 'tomer office' },
+      { ...fixtures[1], forwardingEnabled: false, wabaName: 'tomer second office' },
+    ];
+    mockedApiClient.mockReset();
+    mockedApiClient.mockResolvedValue(mixedFixtures);
+
+    const selectChannelMock = vi.fn().mockResolvedValue(mixedFixtures[1]);
+    vi.doMock('../commands/channels-listen/picker.js', () => ({
+      selectChannel: selectChannelMock,
+      // Keep `pickChannel` exported so other code paths importing the module
+      // (e.g. via vi.resetModules state) don't blow up at load time.
+      pickChannel: vi.fn(),
+    }));
+
+    try {
+      // Re-import resolveChannel AFTER doMock so the dynamic-imported picker
+      // module resolves to our mock.
+      vi.resetModules();
+      const mod = await import('../commands/channels.js');
+      const c = await mod.resolveChannel('tomer');
+
+      // The disabled channel was returned — proving the picker didn't filter.
+      expect(c.id).toBe(mixedFixtures[1].id);
+      // BOTH candidates were passed in, not just the enabled one.
+      expect(selectChannelMock).toHaveBeenCalledTimes(1);
+      const passedChannels = selectChannelMock.mock.calls[0][0];
+      expect(passedChannels).toHaveLength(2);
+      expect(passedChannels.map((x: { id: string }) => x.id)).toEqual([
+        mixedFixtures[0].id,
+        mixedFixtures[1].id,
+      ]);
+    } finally {
+      (process.stdout as any).isTTY = prevTTY;
+      vi.doUnmock('../commands/channels-listen/picker.js');
+    }
+  });
 });
 
 describe('health command', () => {
