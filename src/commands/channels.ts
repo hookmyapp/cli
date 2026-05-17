@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { output } from '../output/format.js';
-import { ValidationError } from '../output/error.js';
+import { CliError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import { readCredentials } from '../auth/store.js';
@@ -18,16 +18,103 @@ function pickDisplayFields(channel: any): any {
   return display;
 }
 
-/** Resolve a WABA ID to the full channel object with workspaceId */
-export async function resolveChannel(wabaId: string): Promise<any> {
+const PUBLIC_ID_PATTERN = /^ch_[a-z0-9]{8}$/i;
+const NUMERIC_WABA_PATTERN = /^\d{15,16}$/;
+
+function stripPhone(s: string): string {
+  return s.replace(/[\s\-+()]/g, '');
+}
+
+/**
+ * Thrown when a fuzzy wabaName match returns 2+ candidates in a non-TTY
+ * (non-interactive) context. The CLI cannot prompt, so callers must re-run
+ * with a more specific reference. The `matches` array lets structured callers
+ * (e.g. JSON output, tests) render the alternatives without parsing the
+ * message string.
+ */
+export class AmbiguousChannelError extends CliError {
+  public matches: Array<{ id: string; wabaName: string | null | undefined }>;
+  constructor(matches: Array<{ id: string; wabaName: string | null | undefined }>) {
+    super(
+      `Multiple channels match. Use one of:\n` +
+        matches.map((m) => `  ${m.id}\t${m.wabaName ?? '(no name)'}`).join('\n'),
+      'CHANNEL_AMBIGUOUS',
+    );
+    this.matches = matches;
+    this.exitCode = 2;
+  }
+}
+
+/**
+ * Resolve a user-supplied channel reference to the full channel object.
+ *
+ * Resolver order (first match wins):
+ *   1. publicId pattern (ch_xxxxxxxx) → channel.id
+ *   2. exact phoneNumberId
+ *   3. exact display phone (raw or stripped E.164)
+ *   4. exact wabaName
+ *   5. fuzzy wabaName (case-insensitive substring) — single match auto-selects;
+ *      2+ matches throw AmbiguousChannelError in non-TTY, else interactive picker
+ *   6. /^\d{15,16}$/ → friendly "looks like a Meta WABA ID" hard-break error
+ *   7. generic not-found
+ */
+export async function resolveChannel(ref: string): Promise<any> {
   const { getDefaultWorkspaceId } = await import('./_helpers.js');
   const workspaceId = await getDefaultWorkspaceId();
   const channels = await apiClient('/meta/channels', { workspaceId });
-  const channel = channels.find((c: any) => c.metaWabaId === wabaId);
-  if (!channel) {
-    throw new ValidationError(`channel not found for WABA ID ${wabaId}`);
+
+  // 1. publicId pattern → wire field is `id`
+  if (PUBLIC_ID_PATTERN.test(ref)) {
+    const match = channels.find((c: any) => c.id === ref);
+    if (match) return match;
   }
-  return channel;
+
+  // 2. exact phone_number_id
+  const byPhoneId = channels.find((c: any) => c.phoneNumberId === ref);
+  if (byPhoneId) return byPhoneId;
+
+  // 3. exact display phone (stripped match)
+  const stripped = stripPhone(ref);
+  const byPhone = channels.find(
+    (c: any) => c.displayPhoneNumber && stripPhone(c.displayPhoneNumber) === stripped,
+  );
+  if (byPhone) return byPhone;
+
+  // 4. exact wabaName (the API field; rendered as "channel name" in UI)
+  const byNameExact = channels.find((c: any) => c.wabaName === ref);
+  if (byNameExact) return byNameExact;
+
+  // 5. fuzzy wabaName (case-insensitive substring)
+  const fuzzyMatches = channels.filter(
+    (c: any) =>
+      typeof c.wabaName === 'string' &&
+      c.wabaName.toLowerCase().includes(ref.toLowerCase()),
+  );
+  if (fuzzyMatches.length === 1) return fuzzyMatches[0];
+  if (fuzzyMatches.length > 1) {
+    if (!process.stdout.isTTY) {
+      throw new AmbiguousChannelError(
+        fuzzyMatches.map((c: any) => ({ id: c.id, wabaName: c.wabaName })),
+      );
+    }
+    // Interactive picker — reuse `pickChannel` from channels-listen.
+    const { pickChannel } = await import('./channels-listen/picker.js');
+    return await pickChannel(fuzzyMatches);
+  }
+
+  // 6. Looks-like-wabaId hard-break
+  if (NUMERIC_WABA_PATTERN.test(ref)) {
+    throw new ValidationError(
+      `"${ref}" looks like a Meta WABA ID. The CLI now uses channel IDs (ch_xxxxxxxx).\n` +
+        `  Run: ${cliCommandPrefix()} channels list\n` +
+        `  Then re-run with the channel ID from the output.`,
+    );
+  }
+
+  // 7. Generic fallback
+  throw new ValidationError(
+    `channel not found: ${ref}. Run: ${cliCommandPrefix()} channels list`,
+  );
 }
 
 /**

@@ -56,6 +56,7 @@ const fakeChannels = [
     metaWabaId: 'waba-1',
     wabaName: 'Test WABA',
     displayPhoneNumber: '+1 234 567 890',
+    phoneNumberId: 'phone-1',
     phoneVerifiedName: 'Test Verified',
     connectionType: 'cloud_api',
     metaConnected: true,
@@ -70,6 +71,7 @@ const fakeChannels = [
     metaWabaId: 'waba-2',
     wabaName: 'Another WABA',
     displayPhoneNumber: '+1 987 654 321',
+    phoneNumberId: 'phone-2',
     phoneVerifiedName: null,
     connectionType: 'coexistence',
     metaConnected: true,
@@ -144,7 +146,7 @@ describe('channels commands', () => {
 
     const program = new Command();
     registerChannelsCommand(program);
-    await program.parseAsync(['channels', 'show', 'waba-2'], { from: 'user' });
+    await program.parseAsync(['channels', 'show', 'ch_TEST0002'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0002');
@@ -165,7 +167,7 @@ describe('channels commands', () => {
     registerChannelsCommand(program);
 
     await expect(
-      program.parseAsync(['channels', 'show', '999'], { from: 'user' }),
+      program.parseAsync(['channels', 'show', 'nonsense-xyz'], { from: 'user' }),
     ).rejects.toThrow('channel not found');
   });
 
@@ -176,7 +178,7 @@ describe('channels commands', () => {
 
     const program = new Command();
     registerChannelsCommand(program);
-    await program.parseAsync(['channels', 'disconnect', 'waba-1'], { from: 'user' });
+    await program.parseAsync(['channels', 'disconnect', 'ch_TEST0001'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/disconnect', {
@@ -232,7 +234,7 @@ describe('channels commands', () => {
 
     const program = new Command();
     registerChannelsCommand(program);
-    await program.parseAsync(['channels', 'enable', 'waba-2'], { from: 'user' });
+    await program.parseAsync(['channels', 'enable', 'ch_TEST0002'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0002/enable', {
@@ -248,7 +250,7 @@ describe('channels commands', () => {
 
     const program = new Command();
     registerChannelsCommand(program);
-    await program.parseAsync(['channels', 'disable', 'waba-2'], { from: 'user' });
+    await program.parseAsync(['channels', 'disable', 'ch_TEST0002'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0002/disable', {
@@ -270,6 +272,94 @@ describe('channels commands', () => {
     await expect(
       program.parseAsync(['accounts', 'list'], { from: 'user' }),
     ).rejects.toThrow(/unknown command|accounts/i);
+  });
+});
+
+describe('resolveChannel — strict resolver order (Task 5)', () => {
+  let resolveChannel: typeof import('../commands/channels.js').resolveChannel;
+
+  // Fixtures match the actual /meta/channels wire shape:
+  //   `id` carries the publicId value (ch_xxxxxxxx)
+  //   `wabaName` (NOT displayName)
+  const fixtures = [
+    {
+      id: 'ch_abc12345',
+      type: 'whatsapp',
+      metaWabaId: '1248091060795230',
+      phoneNumberId: '979105081963262',
+      displayPhoneNumber: '+972 55-727-7945',
+      wabaName: 'tomer office',
+    },
+    {
+      id: 'ch_def67890',
+      type: 'whatsapp',
+      metaWabaId: '9999999999999999',
+      phoneNumberId: '888888888888888',
+      displayPhoneNumber: '+1 555-000-0000',
+      wabaName: 'tomer second office',
+    },
+  ];
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mockedApiClient.mockReset();
+    mockedApiClient.mockResolvedValue(fixtures);
+    const mod = await import('../commands/channels.js');
+    resolveChannel = mod.resolveChannel;
+  });
+
+  // NOTE: do NOT use vi.restoreAllMocks() here — it wipes the module-level
+  // mocks (mockConsoleError, mockedApiClient, mockedOutput, mockedOpen) that
+  // sibling describe blocks rely on. Per-test mocks are scoped to this block
+  // via mockReset() in the next beforeEach.
+
+  it('resolves by publicId pattern (channel.id field)', async () => {
+    const c = await resolveChannel('ch_abc12345');
+    expect(c.id).toBe('ch_abc12345');
+  });
+
+  it('resolves by exact phoneNumberId', async () => {
+    const c = await resolveChannel('979105081963262');
+    expect(c.id).toBe('ch_abc12345');
+  });
+
+  it('resolves by exact display phone (E.164 with plus)', async () => {
+    const c = await resolveChannel('+972557277945');
+    expect(c.id).toBe('ch_abc12345');
+  });
+
+  it('resolves by exact display phone (stripped)', async () => {
+    const c = await resolveChannel('972557277945');
+    expect(c.id).toBe('ch_abc12345');
+  });
+
+  it('resolves by exact wabaName', async () => {
+    const c = await resolveChannel('tomer office');
+    expect(c.id).toBe('ch_abc12345');
+  });
+
+  it('throws helpful WABA error when input looks like wabaId', async () => {
+    await expect(resolveChannel('1248091060795230')).rejects.toThrow(
+      /looks like a Meta WABA ID.*ch_xxxxxxxx.*channels list/s,
+    );
+  });
+
+  it('throws generic not-found for unmatched input', async () => {
+    await expect(resolveChannel('nonsense-xyz')).rejects.toThrow(
+      /channel not found.*channels list/s,
+    );
+  });
+
+  it('returns CHANNEL_AMBIGUOUS in non-interactive context for fuzzy match', async () => {
+    const prevTTY = process.stdout.isTTY;
+    (process.stdout as any).isTTY = false;
+    try {
+      await expect(resolveChannel('tomer')).rejects.toMatchObject({
+        code: 'CHANNEL_AMBIGUOUS',
+      });
+    } finally {
+      (process.stdout as any).isTTY = prevTTY;
+    }
   });
 });
 
@@ -296,7 +386,7 @@ describe('health command', () => {
 
     const program = new Command();
     registerHealthCommand(program);
-    await program.parseAsync(['health', 'waba-1'], { from: 'user' });
+    await program.parseAsync(['health', 'ch_TEST0001'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/refresh', {
