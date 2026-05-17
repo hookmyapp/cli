@@ -18,6 +18,7 @@ const apiClientMock = vi.fn();
 vi.mock('../../api/client.js', () => ({
   apiClient: apiClientMock,
   forceTokenRefresh: vi.fn(),
+  setWorkspaceContext: vi.fn(),
 }));
 
 // Stateful so runSandboxFlow's readWorkspaceConfig reflects what runWizard wrote.

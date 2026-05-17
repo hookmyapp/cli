@@ -36,6 +36,7 @@ const apiClientMock = vi.fn();
 vi.mock('../../api/client.js', () => ({
   apiClient: apiClientMock,
   forceTokenRefresh: vi.fn(),
+  setWorkspaceContext: vi.fn(),
 }));
 
 const runSandboxListenFlowMock = vi.fn();

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../api/client.js', () => ({
   apiClient: vi.fn(),
   forceTokenRefresh: vi.fn().mockResolvedValue(undefined),
+  setWorkspaceContext: vi.fn(),
 }));
 
 // Mock output

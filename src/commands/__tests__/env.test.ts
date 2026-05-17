@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   existsSyncMock: vi.fn<(p: string) => boolean>(() => false),
 }));
 
-vi.mock('../../api/client.js', () => ({ apiClient: mocks.apiClientMock }));
+vi.mock('../../api/client.js', () => ({ apiClient: mocks.apiClientMock, setWorkspaceContext: vi.fn() }));
 vi.mock('../channels.js', () => ({ resolveChannel: mocks.resolveChannelMock }));
 vi.mock('node:fs', async () => {
   const actual = await vi.importActual<typeof import('node:fs')>('node:fs');

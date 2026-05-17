@@ -13,6 +13,7 @@ vi.mock('node:child_process', async () => {
 // Mock api client (for heartbeat calls)
 vi.mock('../../api/client.js', () => ({
   apiClient: vi.fn(),
+  setWorkspaceContext: vi.fn(),
 }));
 
 import { spawn } from 'node:child_process';

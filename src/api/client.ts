@@ -18,6 +18,16 @@ import {
 } from '../config/env-profiles.js';
 import { buildVersionHeaders } from './version-headers.js';
 
+// Module-level workspace context populated by the top-level CLI entry after
+// parsing --workspace. Explicit options.workspaceId on a specific apiClient()
+// call always wins; this is the fallback used by every other call site, so
+// subcommands like `env` don't have to remember to thread the header through.
+let workspaceCtx: { workspaceId: string | null } = { workspaceId: null };
+
+export function setWorkspaceContext(ctx: { workspaceId: string | null }): void {
+  workspaceCtx = ctx;
+}
+
 function decodeJwtExp(token: string): number {
   try {
     const payload = token.split('.')[1];
@@ -202,8 +212,13 @@ export async function apiClient(
     ...(fetchOptions.headers as Record<string, string> ?? {}),
   };
 
-  if (workspaceId !== undefined) {
-    headers['X-Workspace-Id'] = workspaceId;
+  // Precedence: explicit options.workspaceId wins, else fall back to the
+  // global --workspace context. /workspaces is the discovery endpoint — we
+  // intentionally never inject (chicken-and-egg: the user is fetching the
+  // list precisely to pick a workspace).
+  const resolvedWsId = workspaceId !== undefined ? workspaceId : workspaceCtx.workspaceId;
+  if (resolvedWsId && !path.startsWith('/workspaces')) {
+    headers['X-Workspace-Id'] = resolvedWsId;
   }
 
   let res: Response;
