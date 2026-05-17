@@ -3,18 +3,24 @@ import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { apiClient } from '../api/client.js';
 import { addExamples } from '../output/help.js';
-import { ValidationError } from '../output/error.js';
 import { resolveChannel } from './channels.js';
 
 export interface EnvOptions {
   write?: string | boolean;
 }
 
-const ENV_KEYS = [
-  'WHATSAPP_WABA_ID',
-  'WHATSAPP_ACCESS_TOKEN',
-  'WHATSAPP_PHONE_NUMBER_ID',
-] as const;
+/**
+ * Backend wire-shape for `GET /meta/channels/:publicId/env`. The endpoint
+ * returns a generic envelope so the CLI never hardcodes per-channel-type
+ * key names — when Instagram/Messenger ship, backend changes alone unlock
+ * them. `values` is always overwritten on `--write`; `defaults` is
+ * preserve-if-exists (only written when the key is absent locally).
+ */
+interface ChannelEnvPayload {
+  channelType: 'whatsapp' | 'instagram' | 'messenger' | string;
+  values: Record<string, string>;
+  defaults: Record<string, string>;
+}
 
 function upsertEnvFile(targetPath: string, updates: Map<string, string>): void {
   const existing = existsSync(targetPath)
@@ -57,39 +63,63 @@ function upsertEnvFile(targetPath: string, updates: Map<string, string>): void {
 /**
  * Canonical handler for `hookmyapp channels env <channel>` (D9). Also invoked
  * by the deprecated top-level `hookmyapp env <channel>` alias.
+ *
+ * The CLI is channel-type-agnostic: it consumes whatever `values` + `defaults`
+ * the backend returns and writes them verbatim. No per-channel-type branching
+ * lives here. Backend `/meta/channels/:publicId/env` owns the shape (see Task
+ * 2); incomplete channels surface as a backend DataIntegrityError (5xx, code
+ * `CHANNEL_ENV_INCOMPLETE`) which flows through the standard apiClient error
+ * path.
  */
 export async function runChannelEnv(
   channelRef: string,
   options: EnvOptions,
 ): Promise<void> {
   const channel = await resolveChannel(channelRef);
-  if (!channel.phoneNumberId) {
-    throw new ValidationError(
-      `channel ${channel.id} has no phoneNumberId yet (signup not finished). Re-run \`hookmyapp channels list\` and try again once it appears.`,
-    );
-  }
-  const tokenData = await apiClient(`/meta/channels/${channel.id}/token`);
+  const payload: ChannelEnvPayload = await apiClient(
+    `/meta/channels/${channel.id}/env`,
+    { workspaceId: channel.workspaceId },
+  );
 
-  const values: Record<(typeof ENV_KEYS)[number], string> = {
-    WHATSAPP_WABA_ID: channel.metaWabaId,
-    WHATSAPP_ACCESS_TOKEN: tokenData.accessToken,
-    WHATSAPP_PHONE_NUMBER_ID: channel.phoneNumberId,
-  };
+  const envText =
+    [
+      ...Object.entries(payload.values).map(([k, v]) => `${k}=${v}`),
+      ...Object.entries(payload.defaults).map(([k, v]) => `${k}=${v}`),
+    ].join('\n') + '\n';
 
-  if (options.write !== undefined && options.write !== false) {
-    const target = resolvePath(
-      typeof options.write === 'string' ? options.write : '.env',
-    );
-    const updates = new Map<string, string>(
-      ENV_KEYS.map((k) => [k, values[k]]),
-    );
-    upsertEnvFile(target, updates);
+  if (options.write === undefined || options.write === false) {
+    process.stdout.write(envText);
     return;
   }
 
-  process.stdout.write(
-    `WHATSAPP_WABA_ID=${values.WHATSAPP_WABA_ID}\nWHATSAPP_ACCESS_TOKEN=${values.WHATSAPP_ACCESS_TOKEN}\nWHATSAPP_PHONE_NUMBER_ID=${values.WHATSAPP_PHONE_NUMBER_ID}\n`,
+  const target = resolvePath(
+    typeof options.write === 'string' ? options.write : '.env',
   );
+
+  // values: always overwrite existing entries.
+  const updates = new Map<string, string>(Object.entries(payload.values));
+
+  // defaults: preserve-if-exists. Inspect the target file ourselves and only
+  // include defaults whose keys are absent — upsertEnvFile is overwrite-or-
+  // append, so filtering here gives us the preserve-if-exists semantics.
+  const existing = existsSync(target) ? readFileSync(target, 'utf8') : '';
+  const existingKeys = new Set(
+    existing
+      .split('\n')
+      .map((line) => {
+        const trimmed = line.trimStart();
+        if (trimmed === '' || trimmed.startsWith('#')) return '';
+        const eq = line.indexOf('=');
+        if (eq <= 0) return '';
+        return line.slice(0, eq).trim();
+      })
+      .filter(Boolean),
+  );
+  for (const [key, value] of Object.entries(payload.defaults)) {
+    if (!existingKeys.has(key)) updates.set(key, value);
+  }
+
+  upsertEnvFile(target, updates);
 }
 
 /**
