@@ -67,7 +67,7 @@ describe('webhook commands', () => {
 
     const program = new Command();
     registerWebhookCommand(program);
-    await program.parseAsync(['webhook', 'show', 'waba-1'], { from: 'user' });
+    await program.parseAsync(['webhook', 'show', 'ch_TEST0001'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/ch_TEST0001');
@@ -88,7 +88,7 @@ describe('webhook commands', () => {
 
     const program = new Command();
     registerWebhookCommand(program);
-    await program.parseAsync(['webhook', 'set', 'waba-1', '--url', 'https://example.com/hook', '--verify-token', 'secret'], { from: 'user' });
+    await program.parseAsync(['webhook', 'set', 'ch_TEST0001', '--url', 'https://example.com/hook', '--verify-token', 'secret'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/ch_TEST0001', {
@@ -102,7 +102,7 @@ describe('webhook commands', () => {
     registerWebhookCommand(program);
 
     await expect(
-      program.parseAsync(['webhook', 'set', 'waba-1'], { from: 'user' }),
+      program.parseAsync(['webhook', 'set', 'ch_TEST0001'], { from: 'user' }),
     ).rejects.toThrow('--url is required');
   });
 });
@@ -130,7 +130,7 @@ describe('token command', () => {
 
     const program = new Command();
     registerTokenCommand(program);
-    await program.parseAsync(['token', 'waba-1'], { from: 'user' });
+    await program.parseAsync(['token', 'ch_TEST0001'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/token');

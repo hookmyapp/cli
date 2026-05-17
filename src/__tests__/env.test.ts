@@ -47,7 +47,8 @@ describe('env command', () => {
 
     const program = new Command();
     registerEnvCommand(program);
-    await program.parseAsync(['env', 'waba-111'], { from: 'user' });
+    // Resolver now uses publicId (ch_xxxxxxxx) as the canonical input — see Task 5.
+    await program.parseAsync(['env', 'ch_TEST0001'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/token');
@@ -66,7 +67,7 @@ describe('env command', () => {
     registerEnvCommand(program);
 
     await expect(
-      program.parseAsync(['env', '999'], { from: 'user' }),
+      program.parseAsync(['env', 'ch_NOTFND9'], { from: 'user' }),
     ).rejects.toThrow('channel not found');
   });
 });
