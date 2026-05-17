@@ -35,7 +35,7 @@ export async function pickChannel(
 
   if (eligible.length === 0) {
     const err = new CliError(
-      'No channels have forwarding enabled. Enable a channel in the dashboard (or run `hookmyapp channels enable <waba-id>`) before connecting the CLI.',
+      'No channels have forwarding enabled. Enable a channel in the dashboard (or run `hookmyapp channels enable <channel>`) before connecting the CLI.',
       'NO_FORWARDING_CHANNELS',
     );
     err.exitCode = 2;
@@ -46,7 +46,7 @@ export async function pickChannel(
     const match = eligible.find((c) => c.id === opts.channelFlag);
     if (!match) {
       const err = new CliError(
-        `No forwarding-enabled channel matches --channel=${opts.channelFlag}. Run \`hookmyapp channels list\` to see eligible channels.`,
+        `No forwarding-enabled channel matches "${opts.channelFlag}". Run \`hookmyapp channels list\` to see eligible channels.`,
         'CHANNEL_MISMATCH',
       );
       err.exitCode = 2;
@@ -92,7 +92,7 @@ function renderRow(c: {
   displayPhoneNumber?: string | null;
   wabaName?: string | null;
 }): string {
-  const phone = c.displayPhoneNumber ?? '(no phone)';
-  const name = c.wabaName ?? c.id;
-  return `${phone}   ${name}`;
+  const name = c.wabaName ?? '(no name)';
+  const phone = c.displayPhoneNumber ?? 'no phone';
+  return `${c.id} (${name} — ${phone})`;
 }
