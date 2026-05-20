@@ -28,7 +28,11 @@ describe('parseTimeArg', () => {
     expect(() => parseTimeArg('yesterday', now)).toThrow(ValidationError);
   });
 
-  it('throws ValidationError on a zero-unit relative value', () => {
+  it('throws ValidationError on an unrecognized unit char', () => {
     expect(() => parseTimeArg('2x', now)).toThrow(ValidationError);
+  });
+
+  it('throws ValidationError on a relative value that overflows the Date range', () => {
+    expect(() => parseTimeArg('999999999d', now)).toThrow(ValidationError);
   });
 });
