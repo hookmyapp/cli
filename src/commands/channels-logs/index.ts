@@ -1,16 +1,18 @@
 import type { Command } from 'commander';
 import { output } from '../../output/format.js';
-import { ValidationError } from '../../output/error.js';
+import { ValidationError, ApiError } from '../../output/error.js';
 import { addExamples } from '../../output/help.js';
 import { resolveChannel } from '../channels.js';
+import { getDefaultWorkspaceId } from '../_helpers.js';
 import { parseTimeArg } from './time.js';
 import {
   fetchDeliveriesPage,
   fetchAllDeliveries,
+  fetchDeliveryDetail,
   type DeliveriesPage,
   type FetchDeliveriesParams,
 } from './api.js';
-import { toListRows } from './render.js';
+import { toListRows, renderDeliveryDetail } from './render.js';
 
 interface ListOptions {
   limit?: string;
@@ -81,6 +83,31 @@ async function runChannelLogsList(
   }
 }
 
+async function runChannelLogsShow(
+  id: string,
+  json: boolean,
+  verbose: boolean,
+): Promise<void> {
+  const workspaceId = await getDefaultWorkspaceId();
+  let detail;
+  try {
+    detail = await fetchDeliveryDetail(id, workspaceId);
+  } catch (err) {
+    if (err instanceof ApiError && err.statusCode === 404) {
+      throw new ValidationError(
+        `Delivery not found or outside the retention window: ${id}`,
+      );
+    }
+    throw err;
+  }
+
+  if (json) {
+    output(detail, { json: true });
+    return;
+  }
+  console.log(renderDeliveryDetail(detail, { verbose }));
+}
+
 export function registerChannelsLogsCommand(
   channels: Command,
   program: Command,
@@ -102,6 +129,15 @@ export function registerChannelsLogsCommand(
       await runChannelLogsList(channelRef, opts, !!program.opts().json);
     });
 
+  const logsShow = logs
+    .command('show')
+    .description('Show the full detail of one delivery')
+    .argument('<id>', 'Delivery ID from `channels logs list`')
+    .option('--verbose', 'Include request/response headers')
+    .action(async (id: string, opts: { verbose?: boolean }) => {
+      await runChannelLogsShow(id, !!program.opts().json, !!opts.verbose);
+    });
+
   addExamples(
     logs,
     `
@@ -116,6 +152,14 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp channels logs list ch_AAAAAAAA
   $ hookmyapp channels logs list ch_AAAAAAAA --since 24h --all --json
+`,
+  );
+  addExamples(
+    logsShow,
+    `
+EXAMPLES:
+  $ hookmyapp channels logs show 9b1f2e3d-4c5a-6789-0abc-def012345678
+  $ hookmyapp channels logs show 9b1f2e3d-4c5a-6789-0abc-def012345678 --json
 `,
   );
 }
