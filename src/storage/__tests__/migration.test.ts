@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +8,7 @@ describe('migrateConfigDirIfNeeded', () => {
   let oldDir: string;
   let newDir: string;
   let warnings: string[];
-  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: MockInstance<typeof process.stderr.write>;
 
   beforeEach(() => {
     oldDir = mkdtempSync(join(tmpdir(), 'mig-old-'));

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, type MockInstance } from 'vitest';
 import {
   AuthError,
   PermissionError,
@@ -188,7 +188,7 @@ describe('apiClient — 426 Upgrade Required handler', () => {
 });
 
 describe('apiClient — soft-warn banner via X-HookMyApp-Client-Outdated', () => {
-  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let stderrSpy: MockInstance<typeof process.stderr.write>;
   afterEach(() => {
     vi.restoreAllMocks();
     delete process.env.NO_UPDATE_NOTIFIER;
