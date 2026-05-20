@@ -141,6 +141,9 @@ export async function fetchAllDeliveries(
     deliveries.push(...page.deliveries);
     nextCursor = page.nextCursor;
     if (!page.nextCursor) break;
+    // A page that returns zero rows with a non-null cursor would never advance
+    // `deliveries.length` — break so `--all` cannot spin on requests forever.
+    if (page.deliveries.length === 0) break;
     cursor = page.nextCursor;
   }
 
