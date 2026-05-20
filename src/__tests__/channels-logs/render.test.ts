@@ -29,6 +29,10 @@ describe('relativeTime', () => {
     expect(relativeTime('2026-05-20T09:00:00.000Z', NOW)).toBe('3h ago');
     expect(relativeTime('2026-05-18T12:00:00.000Z', NOW)).toBe('2d ago');
   });
+
+  it('renders exactly 60 seconds as the first minute bucket, not "just now"', () => {
+    expect(relativeTime('2026-05-20T11:59:00.000Z', NOW)).toBe('1m ago');
+  });
 });
 
 describe('toListRows', () => {
