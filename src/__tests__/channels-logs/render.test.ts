@@ -116,8 +116,7 @@ describe('renderDeliveryDetail', () => {
     expect(out).toContain('We sent it to your app');
     expect(out).toContain('POST https://customer.app/webhook');
     expect(out).toContain('Your app responded');
-    expect(out).toContain('500');
-    expect(out).toContain('842ms');
+    expect(out).toContain('  500 (842ms)');
   });
 
   it('renders one block pair per attempt for a multi-attempt delivery', () => {
