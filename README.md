@@ -93,6 +93,8 @@ hookmyapp channels health ch_xxxxxxxx
 hookmyapp channels webhook show ch_xxxxxxxx
 hookmyapp channels webhook set ch_xxxxxxxx --url https://example.com/webhook
 hookmyapp channels listen ch_xxxxxxxx --port 3000
+hookmyapp channels logs list ch_xxxxxxxx
+hookmyapp channels logs show <delivery-id>
 ```
 
 ### Deprecated top-level forms
