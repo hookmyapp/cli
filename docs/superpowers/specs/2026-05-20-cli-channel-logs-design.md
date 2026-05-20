@@ -29,8 +29,9 @@ exposed it.
 - A user can drill into one delivery and see the full inbound body, the
   forward request, and the customer app's response — the same information
   the web UI's expanded delivery row shows.
-- The command is agent-friendly: `--json` returns the raw API wire shape so
-  an agent can filter and reason over it.
+- The command is agent-friendly: `--json` returns structured,
+  API-compatible output (raw API body single-page, aggregated under
+  `--all` — see D5) so an agent can filter and reason over it.
 - The CLI behaves as the read-only history sibling of `channels listen`:
   `listen` receives live traffic, `logs` reads what already happened.
 
@@ -271,8 +272,9 @@ Per CLI repo convention (`src/commands/__tests__/`), unit tests mock
 `apiClient` and cover: list table rendering, `show` rendering including the
 multi-attempt and no-destination cases, relative-time shorthand parsing,
 `--all` pagination across multiple pages, the retention-floor note, the
-empty result, and the not-found path. Both `--json` passthroughs are
-asserted against the raw API shape.
+empty result, and the not-found path. The `--json` output is asserted
+against the verbatim API body for single-page `list` and for `show`, and
+against the aggregate shape (D5) for `list --all`.
 
 ## Alternatives considered
 
@@ -282,7 +284,8 @@ asserted against the raw API shape.
   backend endpoint.
 - **`--watch` / `--follow` streaming** — rejected, see Non-goals; that is
   `channels listen`.
-- **`--status` / search filters** — rejected, see D7; `--json | jq` is the
+- **`--status` / search filters** — rejected, see D7;
+  `channels logs list --json | jq '.deliveries[] | select(...)'` is the
   filtering surface.
 - **`<channel>` argument on `show`** — rejected, see D3; the detail endpoint
   is workspace-scoped, so the argument would falsely imply channel scoping.
