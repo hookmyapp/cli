@@ -17,7 +17,7 @@
 - **The CLI repo is standalone** (`@gethookmyapp/cli`). The branch `feat/channels-logs` already exists and holds the spec commits — work continues on it.
 - **`apiClient(path, { workspaceId })`** (`src/api/client.ts`) is the one HTTP entry point. It attaches auth, refreshes tokens, sends `X-Workspace-Id`, and maps non-2xx responses to typed `AppError` subclasses. A 404 becomes an `ApiError` with `.statusCode === 404`. It returns the parsed JSON body.
 - **`resolveChannel(ref)`** (`src/commands/channels.ts`, exported) turns a user channel reference (`ch_xxxxxxxx`, phone, or name) into a full channel object `{ id, workspaceId, ... }` where `id` is the `ch_xxxxxxxx` public ID. It also calls `getDefaultWorkspaceId()` internally, which publishes the workspace into `apiClient`'s module context.
-- **`getDefaultWorkspaceId()`** (`src/commands/_helpers.ts`, exported) resolves and returns the active workspace UUID. `show` needs it directly because `show` does not resolve a channel.
+- **`getDefaultWorkspaceId()`** (`src/commands/_helpers.ts`, exported) resolves and returns the active workspace's public ID (`ws_xxxxxxxx`) — not a raw UUID; `_helpers.ts` explicitly rejects raw UUIDs. `show` needs it directly because `show` does not resolve a channel.
 - **`output(data, opts)`** (`src/output/format.ts`): `output(x, { json: true })` prints `JSON.stringify(x, null, 2)`; `output(rows, { human: true })` prints a `cli-table3` table when `rows` is an array of flat objects.
 - **`addExamples(cmd, text)`** (`src/output/help.ts`) attaches an `EXAMPLES:` block visible to both `--help` and `cmd.helpInformation()`.
 - **`help.test.ts`** (`src/__tests__/help.test.ts`) walks **every** command in the program tree and asserts each exposes an `EXAMPLES:` section with **≥2** lines starting with `  $ hookmyapp `. Every new command (`logs`, `logs list`, `logs show`) MUST get an `addExamples()` call or this test fails.
@@ -712,12 +712,17 @@ describe('renderDeliveryDetail', () => {
     expect(out.match(/We sent it to your app/g)).toHaveLength(2);
   });
 
-  it('shows the no-destination note instead of forward sections', () => {
-    const out = renderDeliveryDetail(
-      detail({ routingDecision: 'no_destination', attempts: [] }),
-    );
-    expect(out).toContain('No destination is set up');
+  it('shows the no-destination note when a delivery has zero attempts', () => {
+    const out = renderDeliveryDetail(detail({ attempts: [] }));
+    expect(out).toContain('No destination was configured');
     expect(out).not.toContain('We sent it to your app');
+  });
+
+  it('treats a real-channel no_webhook_config delivery as no-destination', () => {
+    const out = renderDeliveryDetail(
+      detail({ routingDecision: 'no_webhook_config', attempts: [] }),
+    );
+    expect(out).toContain('No destination was configured');
   });
 
   it('omits headers by default and includes them when verbose', () => {
@@ -824,15 +829,21 @@ export function renderDeliveryDetail(
   lines.push(prettyBody(detail.inboundBody));
   if (detail.inboundBodyTruncated) lines.push('  (truncated)');
 
-  if (detail.routingDecision === 'no_destination') {
+  // The web UI keys the no-destination case off "zero forward attempts" (see
+  // frontend `ExpandedDetail` in delivery-row.tsx), NOT off `routingDecision`.
+  // Real channels with no usable destination emit `routingDecision`
+  // `no_webhook_config` (forwarder/src/webhook/webhook.service.ts) — `channels
+  // logs` is channel-scoped, so `no_destination` (the sandbox value) never
+  // appears here. Branching on `attempts.length` mirrors the UI exactly and is
+  // decision-string-agnostic, so it is correct for every zero-forward case.
+  if (detail.attempts.length === 0) {
     lines.push('');
-    lines.push('Not forwarded. No destination is set up for this channel.');
+    lines.push(
+      'Not forwarded. No destination was configured for this channel at the time.',
+    );
     lines.push(
       'Set one with: hookmyapp channels webhook set <channel> --url <your-url>',
     );
-  } else if (detail.attempts.length === 0) {
-    lines.push('');
-    lines.push('No forward attempts recorded.');
   } else {
     for (const att of detail.attempts) lines.push(renderAttempt(att, verbose));
   }
@@ -844,7 +855,7 @@ export function renderDeliveryDetail(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/__tests__/channels-logs/render.test.ts`
-Expected: PASS — 9 tests (4 from Task 4 + 5 new).
+Expected: PASS — 10 tests (4 from Task 4 + 6 new).
 
 - [ ] **Step 5: Commit**
 
@@ -1389,7 +1400,7 @@ hookmyapp channels logs show <delivery-id>
 - [ ] **Step 4: Run the full test suite**
 
 Run: `npx vitest run`
-Expected: PASS — the entire suite, including the 5 new `channels-logs` test files (29 new tests) and the unchanged existing suite.
+Expected: PASS — the entire suite, including the 5 new `channels-logs` test files (32 new tests: time 6, api 6, render 10, list 6, show 4) and the unchanged existing suite.
 
 - [ ] **Step 5: Type-check and build**
 
