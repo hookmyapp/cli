@@ -105,6 +105,21 @@ describe('fetchAllDeliveries', () => {
 
     expect(page.deliveries).toHaveLength(ALL_ROW_CAP);
     expect(page.nextCursor).toBe('more');
+    expect(mocks.apiClient).toHaveBeenCalledTimes(10);
+  });
+
+  it('stops on an empty-deliveries page even when nextCursor is non-null', async () => {
+    mocks.apiClient.mockResolvedValue({
+      deliveries: [],
+      nextCursor: 'still-more',
+      floorHours: 24,
+    });
+
+    const page = await fetchAllDeliveries(base);
+
+    expect(page.deliveries).toHaveLength(0);
+    expect(page.nextCursor).toBe('still-more');
+    expect(mocks.apiClient).toHaveBeenCalledTimes(1);
   });
 
   it('passes the initial cursor through to the first request', async () => {
