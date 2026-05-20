@@ -142,4 +142,14 @@ describe('channels logs list', () => {
     expect(log.mock.calls.flat().join('\n')).toContain('--cursor tok_abc');
     log.mockRestore();
   });
+
+  it('forwards --until and --cursor through to the API query', async () => {
+    mocks.apiClient.mockResolvedValue({ deliveries: [], nextCursor: null, floorHours: 24 });
+
+    await run(['logs', 'list', 'ch_abc12345', '--until', '1h', '--cursor', 'tok_xyz']);
+
+    const [path] = mocks.apiClient.mock.calls[0];
+    expect(path).toContain('until=');
+    expect(path).toContain('cursor=tok_xyz');
+  });
 });
