@@ -110,3 +110,39 @@ export async function fetchDeliveryDetail(
     workspaceId,
   })) as DeliveryDetail;
 }
+
+/** Hard cap on rows collected by `--all`, so a misfire cannot run away. */
+export const ALL_ROW_CAP = 1000;
+
+/**
+ * Auto-paginate `GET /deliveries` by following `nextCursor` until the result
+ * set is exhausted or `ALL_ROW_CAP` rows are collected. The per-request limit
+ * is clamped against the remaining cap so the total never overshoots, which
+ * keeps the last page boundary exact: the returned `nextCursor` is non-null
+ * iff rows remain beyond the cap (spec D5 — that is the truncation signal).
+ * `floorHours` is taken from the first page.
+ */
+export async function fetchAllDeliveries(
+  params: FetchDeliveriesParams,
+): Promise<DeliveriesPage> {
+  const deliveries: DeliveryListItem[] = [];
+  let cursor: string | undefined = params.cursor;
+  let floorHours = 0;
+  let nextCursor: string | null = null;
+  let firstPage = true;
+
+  while (deliveries.length < ALL_ROW_CAP) {
+    const pageLimit = Math.min(params.limit, ALL_ROW_CAP - deliveries.length);
+    const page = await fetchDeliveriesPage({ ...params, limit: pageLimit, cursor });
+    if (firstPage) {
+      floorHours = page.floorHours;
+      firstPage = false;
+    }
+    deliveries.push(...page.deliveries);
+    nextCursor = page.nextCursor;
+    if (!page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+
+  return { deliveries, nextCursor, floorHours };
+}
