@@ -114,4 +114,32 @@ describe('channels logs list', () => {
       run(['logs', 'list', 'ch_abc12345', '--since', 'yesterday']),
     ).rejects.toThrow(ValidationError);
   });
+
+  it('prints a retention-floor note when --since predates the floor', async () => {
+    mocks.apiClient.mockResolvedValue({
+      deliveries: [listItem('row-x')],
+      nextCursor: null,
+      floorHours: 168,
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await run(['logs', 'list', 'ch_abc12345', '--since', '720h']);
+
+    expect(log.mock.calls.flat().join('\n')).toContain('Showing last 168h');
+    log.mockRestore();
+  });
+
+  it('prints a continuation hint when nextCursor is non-null', async () => {
+    mocks.apiClient.mockResolvedValue({
+      deliveries: [listItem('row-x')],
+      nextCursor: 'tok_abc',
+      floorHours: 168,
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await run(['logs', 'list', 'ch_abc12345']);
+
+    expect(log.mock.calls.flat().join('\n')).toContain('--cursor tok_abc');
+    log.mockRestore();
+  });
 });
