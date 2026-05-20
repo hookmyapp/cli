@@ -64,32 +64,50 @@ runs. It is the read-only history counterpart to `channels listen`.
 The command group has two leaf verbs:
 
 ```
-hookmyapp channels logs list <channel>           # list view
-hookmyapp channels logs show <channel> <id>      # detail view
+hookmyapp channels logs list <channel>     # list view — channel-scoped
+hookmyapp channels logs show <id>          # detail view — workspace-scoped
 ```
 
-`<channel>` resolves through the existing `resolveChannel()` helper, so it
-accepts a `ch_xxxx` public ID, a phone number, or the interactive picker —
-identical to every other `channels` subcommand. The `id` argument of
-`show` is exactly the `ID` value printed by `list`; that list-then-drill-in
-loop is the command's core ergonomic.
+`list`'s `<channel>` argument resolves through the existing
+`resolveChannel()` helper, so it accepts a `ch_xxxx` public ID, a phone
+number, or the interactive picker — identical to every other `channels`
+subcommand.
+
+`show` takes a bare delivery `id` and no channel argument. The `id` is
+exactly the `ID` value printed by `list`, so the workflow is
+`list <channel>` → copy an ID → `show <id>`. `show` is workspace-scoped,
+not channel-scoped, because the backend detail endpoint addresses a
+delivery by ID within the workspace (see D3). That list-then-drill-in loop
+is the command's core ergonomic.
 
 ### D2. Pure CLI feature — reuse the existing `GET /deliveries` API.
 
 `list` calls `GET /deliveries?scope=channel:<publicId>&...`; `show` calls
 `GET /deliveries/<id>`. Both are already `WorkspaceGuard`-protected and are
-the exact endpoints the web UI panel consumes. No backend, Prisma, or
-terraform work is in scope. The CLI authenticates with the credentials it
-already stores.
+the exact endpoints the web UI panel consumes. The detail endpoint resolves
+a delivery by ID scoped to the authenticated workspace and the retention
+floor — it applies no channel filter, which is why `show` takes no
+`<channel>` argument (D3). No backend, Prisma, or terraform work is in
+scope. The CLI authenticates with the credentials it already stores.
 
-### D3. Per-channel scope only.
+### D3. `list` is channel-scoped; `show` is workspace-scoped.
 
-The `GET /deliveries` `scope` parameter is mandatory and addresses a single
-channel or sandbox session. `channels logs` always targets one resolved
-channel. A workspace-wide "all channels" view was considered and rejected
-for this iteration: it would require a new backend query path, and the
-agentic debugging use case ("check this channel's logs") is inherently
-channel-scoped — the agent already knows which integration it is debugging.
+`list` is channel-scoped: the `GET /deliveries` `scope` parameter is
+mandatory and addresses a single channel. A workspace-wide "all channels"
+list view was considered and rejected for this iteration — it would require
+a new backend query path, and the agentic debugging use case ("check this
+channel's logs") is inherently channel-scoped, the agent already knows
+which integration it is debugging.
+
+`show` is workspace-scoped: `GET /deliveries/:id` resolves a delivery by ID
+within the authenticated workspace (and the retention floor), with no
+channel filter. Adding a `<channel>` argument to `show` for signature
+symmetry with `list` was considered and rejected: the backend would ignore
+it, so the argument would falsely imply a scoping that does not happen — a
+user could pass channel A together with an event ID belonging to channel B
+in the same workspace and receive B's detail. No security boundary is
+crossed (the workspace guard still applies), but the command signature must
+not lie about its scope. `show` therefore takes the bare delivery `id`.
 
 ### D4. Explicit `list` / `show` verbs; `logs` is a pure command group.
 
@@ -120,9 +138,8 @@ rejected as the kind of subtle inconsistency that bites later.
 ### D5. Human-readable output by default; `--json` for agents.
 
 Default output is human-readable, rendered through the CLI's existing
-`output()` helper. The global `--json` flag switches to a raw passthrough
-of the API response body — the same contract `channels list` already
-follows ("scripts depend on the wire shape"). An agent invocation is simply
+`output()` helper. The global `--json` flag switches to structured output
+for agent consumption. An agent invocation is simply
 `channels logs list ch_xxxx --json`.
 
 JSON is deliberately *not* the default, and TTY auto-detection (JSON when
@@ -131,6 +148,20 @@ be the only command in the CLI behaving that way. Auto-detection is fragile
 and surprising. An explicit flag is one token for an agent and zero
 surprise for a human.
 
+The `--json` shapes are:
+
+- **`show --json`** — an exact passthrough of the `GET /deliveries/:id`
+  response body.
+- **`list --json`** — always `{ deliveries, nextCursor, floorHours }`. In
+  single-page mode (no `--all`) this is the `GET /deliveries` response body
+  verbatim. In `--all` mode `deliveries` is the concatenation of every
+  fetched page, `floorHours` is taken from the first page, and `nextCursor`
+  is `null` when the result set was fully exhausted or the continuation
+  cursor when the 1000-row cap stopped collection early. There is no
+  separate `truncated` or `fetchedCount` field: a non-null `nextCursor`
+  after `--all` is itself the "capped, more available" signal — feed it
+  back via `--cursor` — and `deliveries.length` is the count.
+
 ### D6. `list` flags map directly to `ListDeliveriesDto`.
 
 | Flag | API field | Notes |
@@ -138,7 +169,7 @@ surprise for a human.
 | `--limit <n>` | `limit` | 1–100, default 50 (matches API default and UI page size) |
 | `--since <t>` / `--until <t>` | `since` / `until` | Accepts ISO-8601 or a relative shorthand (`30m`, `2h`, `7d`) converted to ISO-8601 client-side before the request |
 | `--cursor <c>` | `cursor` | Continue from a prior page's `nextCursor`, which is exposed in both human and JSON output — enables scripted pagination |
-| `--all` | (none) | Convenience: auto-follow `nextCursor` to exhaustion, hard-capped at 1000 rows so a misfire cannot run away. The one-shot path for "agent, check the logs" |
+| `--all` | (none) | Convenience: auto-follow `nextCursor` to exhaustion, hard-capped at 1000 rows so a misfire cannot run away. The one-shot path for "agent, check the logs". See D5 for the aggregate `--json` shape |
 
 `show` flags: `--json` (full passthrough including all headers), and
 `--verbose` to include `inboundHeaders` / `forwardRequestHeaders` in the
@@ -159,8 +190,11 @@ text-search flag. Reasons:
 - The web UI only gets away with client-side filtering because it prefetches
   every visible row's full detail into memory — not worth replicating in a
   CLI.
-- The agent path is `channels logs list --json | jq 'select(...)'`. That is
-  the intended, robust filtering surface.
+- The agent path is
+  `channels logs list --json | jq '.deliveries[] | select(...)'` — the
+  `list --json` shape is `{ deliveries, nextCursor, floorHours }` (D5), so
+  row filtering reaches into `.deliveries[]`. That is the intended, robust
+  filtering surface.
 
 ### D8. Output shapes mirror the web UI.
 
@@ -178,8 +212,8 @@ evt_g7h8i9  1h ago      No destination set  +14155550100    —          0
 sentence is too wide for a table cell and appears only in detail. The `ID`
 column value is exactly the `show` argument.
 
-**`list` (JSON)** — raw `GET /deliveries` body passthrough
-(`{ deliveries, nextCursor, floorHours }`).
+**`list` (JSON)** — `{ deliveries, nextCursor, floorHours }`; verbatim API
+body in single-page mode, aggregated across pages under `--all` (D5).
 
 **`show` (human)** — mirrors the UI's three sections:
 
@@ -250,3 +284,5 @@ asserted against the raw API shape.
   `channels listen`.
 - **`--status` / search filters** — rejected, see D7; `--json | jq` is the
   filtering surface.
+- **`<channel>` argument on `show`** — rejected, see D3; the detail endpoint
+  is workspace-scoped, so the argument would falsely imply channel scoping.
