@@ -40,10 +40,13 @@ exposed it.
 - **Streaming / follow mode.** No `--watch` or `--follow`. "Read the logs
   without listening" means a snapshot fetch. A follow flag would be a worse
   reimplementation of `channels listen`, which already owns live traffic.
-- **Workspace-wide / cross-channel view.** The existing `GET /deliveries`
-  API requires a mandatory per-channel (or per-sandbox-session) `scope`.
-  `channels logs` is channel-scoped only. An all-channels view would need a
-  new backend endpoint and is explicitly deferred.
+- **Workspace-wide / cross-channel list view.** The existing
+  `GET /deliveries` list API requires a mandatory per-channel (or
+  per-sandbox-session) `scope`, so `channels logs list` is channel-scoped
+  only. An all-channels list view would need a new backend endpoint and is
+  explicitly deferred. (`channels logs show <id>` is workspace-scoped — see
+  D3 — because the detail endpoint addresses a delivery by ID; that is not
+  a cross-channel *list* and is in scope.)
 - **Sandbox-session logs.** `GET /deliveries` also accepts a
   `sandbox-session:<publicId>` scope, but `channels logs` covers real
   channels only. Sandbox traffic is already served by `sandbox listen`.
