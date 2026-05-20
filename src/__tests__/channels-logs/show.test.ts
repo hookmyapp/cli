@@ -99,4 +99,10 @@ describe('channels logs show', () => {
 
     await expect(run(['logs', 'show', 'missing'])).rejects.toThrow(ValidationError);
   });
+
+  it('rethrows a non-404 ApiError unchanged', async () => {
+    mocks.apiClient.mockRejectedValue(new ApiError('Internal error', 500));
+
+    await expect(run(['logs', 'show', 'd1'])).rejects.toThrow(ApiError);
+  });
 });
