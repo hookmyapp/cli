@@ -3,7 +3,7 @@
 // it under --json, and respects the user-supplied --port. Tests printBanner
 // directly (exported from the module) so we don't have to mock the entire
 // runSandboxListenFlow dependency surface (cloudflared, apiClient, etc.).
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { printBanner } from '../sandbox-listen/index.js';
 import type { Session } from '../sandbox-listen/picker.js';
 
@@ -17,7 +17,7 @@ const SESSION: Session = {
 };
 
 describe('sandbox listen banner: Logs UI hint', () => {
-  let writeSpy: ReturnType<typeof vi.spyOn>;
+  let writeSpy: MockInstance<typeof process.stdout.write>;
 
   beforeEach(() => {
     writeSpy = vi
