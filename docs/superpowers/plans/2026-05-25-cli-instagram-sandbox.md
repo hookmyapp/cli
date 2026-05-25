@@ -3393,7 +3393,7 @@ git commit -m "docs: README IG example + finalize 0.12.2 CHANGELOG"
 
 ---
 
-## Task 17: Final verification — lint, typecheck, full test suite, build, smoke run
+## Task 17: Final verification — typecheck, full test suite, build, smoke run
 
 **Files:** none modified.
 
