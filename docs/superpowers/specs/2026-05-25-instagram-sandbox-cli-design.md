@@ -2,7 +2,7 @@
 
 **Status:** draft (2026-05-25)
 **Scope:** Single repository (`/Users/ordvir/COD/cli`, published as `@gethookmyapp/cli`). No backend changes — the multi-channel-instagram milestone has already shipped the wire contracts and sandbox-proxy IG send route on the monorepo side.
-**Target release:** `@gethookmyapp/cli` 0.13.0 (single PR, full Instagram parity across all sandbox subcommands).
+**Target release:** `@gethookmyapp/cli` 0.13.0. Ships Instagram parity for **local + staging** environments in a single PR. Production support is gated by the production Instagram sandbox handle resolving inside `getEffectiveSandboxInstagramUsername()` — see D10. Once the production handle is provisioned (separately tracked), production gains parity without a CLI release.
 
 ## Problem
 
@@ -64,7 +64,7 @@ INSTAGRAM_ACCOUNT_ID={instagramAccountId}
 
 ### D3. Sandbox selectors unify under `--phone` | `--username` | `--session`. The selector value's shape implies the channel type; no `--type` filter flag exists for selection.
 
-All four sandbox subcommand groups (`env`, `send`, `stop`, `webhook show/set/clear`, plus `listen` which already partly does this) accept any one of:
+Five selector-bearing surfaces — `sandbox env`, `sandbox send`, `sandbox stop`, `sandbox webhook show/set/clear` (counted as one group), and `sandbox listen` — all accept any one of:
 
 - `--phone <e164>` — WhatsApp session by phone (existing flag, unchanged behavior for WA)
 - `--username <@handle>` — Instagram session by handle (new). Leading `@` is stripped during normalization; match is against non-null `instagramSenderUsername` only
@@ -82,15 +82,23 @@ The login wizard's existing `--next sandbox --phone +X` legacy auto-listen path 
 
 **Rejected alternative — overloaded positional `[identifier]` matching `+phone | @username | ssn_X` by shape (like `channels resolveChannel`'s WA-biased pattern at `channels.ts:90`).** Symmetric with the `channels *` family. But `sandbox` operates on a *session* that's frequently auto-picked (1 session = no prompt needed); flags fit better when arguments are optional. The two command families have different command shapes; the consistency benefit doesn't justify forcing one onto the other.
 
-### D4. The IG env block does NOT include a hardcoded sender IGSID.
+### D4. The IG env block does NOT include a hardcoded sender IGSID. Asymmetry with WA's current behavior is intentional.
 
-The WhatsApp env block does not include the tester's phone; the developer's webhook handler parses it from `entry[].changes[].value.contacts[].wa_id`. Instagram is the same: the handler parses the sender's IGSID from `entry[].messaging[].sender.id` in the inbound webhook. Hardcoding a per-session `INSTAGRAM_SENDER_ID` into `.env` would:
+The IG env block is the 5 lines defined in D2. No per-session `INSTAGRAM_SENDER_ID` line. The developer's webhook handler parses the sender's IGSID from `entry[].messaging[].sender.id` on inbound payloads.
 
-- Force a re-`sandbox env --write` whenever a different tester DMs the sandbox account
+**The WA env block has a known quirk we deliberately do NOT mirror.** Today's `buildEnvBlock` at `src/commands/sandbox.ts:76` emits `WHATSAPP_PHONE_NUMBER_ID=${session.phone}` — i.e. the *tester's* phone, not the actual WABA phone-number-id (which lives in `session.sandboxPhoneNumberId` and is what `runSandboxSend` at `sandbox.ts:184` uses for the wire call). This produces a misleadingly-named env var; starter kits consuming it either treat the value as a session-lookup key that sandbox-proxy accepts, or carry a latent bug nobody has tripped. Either way, IG does not propagate this convention.
+
+Hardcoding a per-session `INSTAGRAM_SENDER_ID` would:
+
+- Force a re-`sandbox env --write` whenever a different tester DMs the sandbox account (per-session value, not env-shared)
 - Encourage "works in sandbox, fails in production" patterns where the developer reads `process.env.INSTAGRAM_SENDER_ID` instead of parsing the inbound payload
 - Create a contract that doesn't generalize to real Instagram channels (which serve many senders, none of whom are env-fixed)
 
-**Rejected alternative — include `INSTAGRAM_SENDER_ID` as a sixth env line.** Smoother first-five-minutes experience (no need to wire webhook parsing before sending a test reply). But the production handoff cost is real: developers ship a `.env`-reading reply path, then have to rewrite it when they go live. The cost is paid once in sandbox; better to pay it then than to delay it.
+The asymmetry between WA's 5 lines (one of which is semantically odd) and IG's 5 lines (all clean) is real and acknowledged. We do not "fix WA" in this PR — see the rejected alternative below.
+
+**Rejected alternative — include `INSTAGRAM_SENDER_ID` as a sixth env line for parallel construction.** Symmetric with WA's actual current behavior. Smoother first-five-minutes experience (no need to wire webhook parsing before sending a test reply). But the production handoff cost is real: developers ship a `.env`-reading reply path, then have to rewrite it when they go live. Worse, this locks in the WA quirk's semantic as the cross-channel convention, making any future "fix WA" change harder. Better to give IG the clean shape now and revisit WA separately.
+
+**Rejected alternative — fix WA in this same PR (rename `WHATSAPP_PHONE_NUMBER_ID` to the actual WABA id, or split into two distinct vars).** Both env blocks would become semantically clean. But this is a breaking change to the WA starter-kit contract that has nothing to do with adding Instagram support. Out of scope; if and when WA is fixed, it gets its own minor-release announcement, a CHANGELOG entry naming the breaking change, and a deprecation runway for the old var name.
 
 ### D5. Shared CLI copy is channel-agnostic. Per-flag and per-channel help text stays specific.
 
@@ -128,7 +136,12 @@ A single hand-rolled parser (`src/api/sandbox-session.ts:parseSandboxSession(dto
 type SandboxSession = WhatsAppSandboxSession | InstagramSandboxSession;
 ```
 
-WhatsApp variant requires non-empty `whatsappPhone` + `whatsappPhoneNumberId`. Instagram variant requires non-empty `instagramSenderId` + `instagramAccountId`; `instagramSenderUsername` may be null (backend backfills async via the IG name-resolution job; `--username` matching is null-aware per D3). Any malformed row → `UnexpectedError` with code `MALFORMED_SANDBOX_SESSION` (exit 1, semantic fit for "API returned a shape the CLI cannot process"). No `legacy phone → whatsappPhone` shim — per project memory `feedback_no_legacy_handling`, pre-production code does not write backfills; a backend STI violation surfaces immediately at the CLI rather than getting normalized away.
+The parser validates two tiers of fields:
+
+- **Shared base (required on every session, both variants):** `id` (`ssn_…` publicId), `workspaceId`, `accessToken`, `hmacSecret`, `status`, `sandboxPhoneNumberId` (env-shared WABA phone-number-id used by `buildSandboxSendRequest` for WA send URL construction), `whatsappApiVersion` (server-delivered Graph API version used by `buildSandboxSendRequest` and `buildEnvBlock` for WA only — IG's version is the local `INSTAGRAM_GRAPH_VERSION` constant per D2). Required non-empty strings on both variants because helpers and command runners consume them without re-checking.
+- **Channel-specific (required on the matching variant only):** WhatsApp requires non-empty `whatsappPhone` + `whatsappPhoneNumberId`. Instagram requires non-empty `instagramSenderId` + `instagramAccountId`. `instagramSenderUsername` may be null (backend backfills async via the IG name-resolution job; `--username` matching is null-aware per D3).
+
+Any malformed row → `UnexpectedError` with code `MALFORMED_SANDBOX_SESSION` (exit 1, semantic fit for "API returned a shape the CLI cannot process"). The error message names the offending session id and the missing/invalid field. No `legacy phone → whatsappPhone` shim — per project memory `feedback_no_legacy_handling`, pre-production code does not write backfills; a backend STI violation surfaces immediately at the CLI rather than getting normalized away.
 
 The parser is wired in at every site that fetches `/sandbox/sessions*`: env, send, start, status, stop, webhook, listen, and the login wizard's `runSandboxFlow`. No Zod dependency added — the parser is ~120 LOC, dependency-free, same style as `parseTimeArg` in `channels-logs/`.
 
@@ -140,15 +153,15 @@ The parser is wired in at every site that fetches `/sandbox/sessions*`: env, sen
 
 ### D8. Shared helpers concentrate the type-narrow in one place per concept.
 
-Three pure functions in `src/commands/sandbox/helpers.ts`:
+Three shared helper functions in `src/commands/sandbox/helpers.ts`. The first two are pure; the third reads `getEffectiveSandboxProxyUrl()` (env-var lookup) and is explicitly not pure:
 
-- `sessionIdentifier(session): string` — `+15551234567` for WA, `@ordvir` for IG (falls back to IGSID when `instagramSenderUsername` is null)
-- `sessionLabel(session): string` — `WhatsApp +15551234567 (active)` or `Instagram @ordvir (active)`
-- `buildSandboxSendRequest(session, message): { url, body }` — returns the send URL + body. WA: `POST {proxy}/{whatsappApiVersion}/{sandboxPhoneNumberId}/messages` with `{ messaging_product, to, type:'text', text:{body} }`. IG: `POST {proxy}/{INSTAGRAM_GRAPH_VERSION}/{instagramAccountId}/messages` with `{ recipient:{id:instagramSenderId}, message:{text} }`.
+- `sessionIdentifier(session): string` (pure) — `+15551234567` for WA, `@ordvir` for IG (falls back to IGSID when `instagramSenderUsername` is null)
+- `sessionLabel(session): string` (pure) — `WhatsApp +15551234567 (active)` or `Instagram @ordvir (active)`
+- `buildSandboxSendRequest(session, message): { url, body }` (reads `getEffectiveSandboxProxyUrl()`) — returns the send URL + body. WA: `POST {proxy}/{whatsappApiVersion}/{sandboxPhoneNumberId}/messages` with `{ messaging_product, to, type:'text', text:{body} }`. IG: `POST {proxy}/{INSTAGRAM_GRAPH_VERSION}/{instagramAccountId}/messages` with `{ recipient:{id:instagramSenderId}, message:{text} }`.
 
 Plus an `assertNever(value: never, ctx: string): never` exhaustiveness helper that throws `UnexpectedError` with the context string. Adding a third channel later = one new branch in each helper + the parser; every consumer compiles unchanged.
 
-The `buildSandboxSendRequest` name is deliberate (rather than `sessionSendTarget`) — it acknowledges the side-effect of reading `getEffectiveSandboxProxyUrl()` (env-var lookup) inside the helper rather than claiming false purity.
+The `buildSandboxSendRequest` name is deliberate (rather than `sessionSendTarget`) — it acknowledges the env-var read inside the helper rather than claiming false purity.
 
 ### D9. Parser failures throw `UnexpectedError`, not `ValidationError` or `ApiError`.
 
