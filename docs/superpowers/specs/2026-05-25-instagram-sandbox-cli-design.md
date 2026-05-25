@@ -56,7 +56,7 @@ INSTAGRAM_ACCESS_TOKEN={accessToken}
 INSTAGRAM_ACCOUNT_ID={instagramAccountId}
 ```
 
-`INSTAGRAM_ACCOUNT_ID` is the sandbox IG business account id — env-shared (same value across all sessions in a given environment), same role as `WHATSAPP_PHONE_NUMBER_ID`. The IG Graph API version is hardcoded at `v25.0` (single constant `INSTAGRAM_GRAPH_VERSION` exported from `src/api/sandbox-session.ts`, imported by both the env builder and the send builder). WhatsApp's `whatsappApiVersion` is server-delivered because WA has a staggered-version rollout; IG does not have the same pattern, so a CLI release follows a Meta version bump.
+`INSTAGRAM_ACCOUNT_ID` is the real Meta Instagram business account id (`session.instagramAccountId`), used verbatim as the path segment of the IG send URL `POST {INSTAGRAM_API_URL}/{INSTAGRAM_ACCOUNT_ID}/messages`. This is **not** analogous to the current `WHATSAPP_PHONE_NUMBER_ID` env var, which carries the tester's phone (see D4 for the WA quirk). The IG env block is what the WA env block *should* look like: every var maps directly to a Meta API concept, no per-session tester identifier smuggled in under a misleading name. The IG Graph API version is hardcoded at `v25.0` (single constant `INSTAGRAM_GRAPH_VERSION` exported from `src/api/sandbox-session.ts`, imported by both the env builder and the send builder). WhatsApp's `whatsappApiVersion` is server-delivered because WA has a staggered-version rollout; IG does not have the same pattern, so a CLI release follows a Meta version bump.
 
 **Rejected alternative — `IG_*` prefix.** Meta's own Graph docs use `IG_USER_ID` for the path segment. Shorter to type. But asymmetric with `WHATSAPP_*` (different word length, different mental anchor) and reads ad-hoc next to it. The asymmetry would compound when other channels arrive.
 
@@ -122,7 +122,7 @@ The channel context lives in the flag name, not in duplicate per-channel error s
 
 ### D6. Delivery shape is a single PR landing the entire IG parity surface in `@gethookmyapp/cli` 0.12.2.
 
-One coherent shipping unit: D3 selector unification + IG branches in `env`, `send`, `start`, `status`, `webhook`, `listen` + the boundary parser + the shared helpers + the `INSTAGRAM_GRAPH_VERSION` constant + the env-profile IG handle resolver. Users who upgrade to 0.12.2 get the full Instagram flow on the first invocation.
+One coherent shipping unit: D3 selector unification + IG branches in `env`, `send`, `start`, `status`, `webhook`, `listen` + the boundary parser + the shared helpers + the `INSTAGRAM_GRAPH_VERSION` constant + the env-profile IG handle resolver. Local + staging users on 0.12.2 get the full Instagram flow on first invocation; production users running `sandbox start --type=instagram` see the gating error per D10 until the production IG sandbox handle is provisioned (separately tracked).
 
 **Rejected alternative — split into two PRs (selector unification first, IG functionality second).** Smaller, independently reviewable. But the selector unification ships a `--username` flag users can't usefully invoke in the interim release; awkward shipping shape with no per-release win. The full parity PR is large but coherent.
 
@@ -136,10 +136,11 @@ A single hand-rolled parser (`src/api/sandbox-session.ts:parseSandboxSession(dto
 type SandboxSession = WhatsAppSandboxSession | InstagramSandboxSession;
 ```
 
-The parser validates two tiers of fields:
+The parser validates two tiers of fields. The wire shape is established by inspecting the actual `GET /sandbox/sessions` response at `backend/src/sandbox/sandbox.service.ts:72-83`, **not** by inferring from internal Prisma row shape:
 
-- **Shared base (required on every session, both variants):** `id` (`ssn_…` publicId), `workspaceId`, `accessToken`, `hmacSecret`, `status`, `sandboxPhoneNumberId` (env-shared WABA phone-number-id used by `buildSandboxSendRequest` for WA send URL construction), `whatsappApiVersion` (server-delivered Graph API version used by `buildSandboxSendRequest` and `buildEnvBlock` for WA only — IG's version is the local `INSTAGRAM_GRAPH_VERSION` constant per D2). Required non-empty strings on both variants because helpers and command runners consume them without re-checking.
-- **Channel-specific (required on the matching variant only):** WhatsApp requires non-empty `whatsappPhone` + `whatsappPhoneNumberId`. Instagram requires non-empty `instagramSenderId` + `instagramAccountId`. `instagramSenderUsername` may be null (backend backfills async via the IG name-resolution job; `--username` matching is null-aware per D3).
+- **Shared base (required on every session, both variants):** `id` (the `ssn_…` publicId — backend remaps `publicId` → `id` and strips the raw UUID `workspaceId` from the response), `type`, `accessToken`, `hmacSecret`, `status`, `origin`. Required non-empty strings on both variants because helpers and command runners consume them without re-checking. `workspaceId` is deliberately NOT required — the backend strips it from list responses; CLI resolves workspace via `getDefaultWorkspaceId()` and consumes any present `session.workspaceId` defensively.
+- **WhatsApp-only required fields:** `whatsappPhone`, `whatsappPhoneNumberId`, `sandboxPhoneNumberId` (env-shared WABA phone-number-id used by WA `buildSandboxSendRequest`), `whatsappApiVersion` (server-delivered Graph API version used by WA `buildSandboxSendRequest` + `buildEnvBlock`). All required non-empty strings on WA variant only. Backend populates these on every session regardless of type, but Instagram consumers never read them, so we don't enforce their presence on IG rows — keeps Instagram independent of WhatsApp sandbox config.
+- **Instagram-only required fields:** `instagramSenderId`, `instagramAccountId`. Required non-empty strings on IG variant only. `instagramSenderUsername` may be null (backend backfills async via the IG name-resolution job; `--username` matching is null-aware per D3).
 
 Any malformed row → `UnexpectedError` with code `MALFORMED_SANDBOX_SESSION` (exit 1, semantic fit for "API returned a shape the CLI cannot process"). The error message names the offending session id and the missing/invalid field. No `legacy phone → whatsappPhone` shim — per project memory `feedback_no_legacy_handling`, pre-production code does not write backfills; a backend STI violation surfaces immediately at the CLI rather than getting normalized away.
 
