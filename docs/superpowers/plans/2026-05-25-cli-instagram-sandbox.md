@@ -281,6 +281,18 @@ describe('parseSandboxSession', () => {
     ).toThrow(/accessToken/);
   });
 
+  it('rejects shared base field missing id', () => {
+    expect(() =>
+      parseSandboxSession({ ...validWa, id: '' }),
+    ).toThrow(/id missing/);
+  });
+
+  it('rejects shared base field missing origin', () => {
+    expect(() =>
+      parseSandboxSession({ ...validWa, origin: '' }),
+    ).toThrow(/origin/);
+  });
+
   it('includes the session id in the error message', () => {
     expect(() =>
       parseSandboxSession({ ...validWa, accessToken: '' }),
@@ -430,9 +442,11 @@ export function parseSandboxSession(dto: unknown): SandboxSession {
   const d = dto as Record<string, unknown>;
   const id = typeof d.id === 'string' ? d.id : '<unknown>';
 
+  if (!isNonEmptyString(d.id)) malformed(id, 'id missing');
   if (!isNonEmptyString(d.accessToken)) malformed(id, 'accessToken missing');
   if (!isNonEmptyString(d.hmacSecret)) malformed(id, 'hmacSecret missing');
   if (!isNonEmptyString(d.status)) malformed(id, 'status missing');
+  if (!isNonEmptyString(d.origin)) malformed(id, 'origin missing');
 
   if (d.type === 'whatsapp') {
     if (!isNonEmptyString(d.whatsappPhone))
@@ -1096,10 +1110,12 @@ describe('pickSession — non-TTY mode', () => {
 
 describe('pickSession — alwaysShowPicker (sandbox send)', () => {
   it('shows interactive picker even with a single session when alwaysShowPicker is true', async () => {
-    // Mock @inquirer/prompts select to return the first session.
+    // The top-of-file static import has already cached pickSession.js. To
+    // swap @inquirer/prompts for the duration of this one test, reset the
+    // module registry, install the doMock, and dynamically re-import.
     const selectMock = vi.fn().mockResolvedValue(wa);
+    vi.resetModules();
     vi.doMock('@inquirer/prompts', () => ({ select: selectMock }));
-    // Re-import after mock to get the mocked module.
     const { pickSession: piPicker } = await import('../picker.js');
 
     const out = await piPicker({
@@ -1110,6 +1126,7 @@ describe('pickSession — alwaysShowPicker (sandbox send)', () => {
     expect(out.id).toBe('ssn_WA000001');
     expect(selectMock).toHaveBeenCalled();
     vi.doUnmock('@inquirer/prompts');
+    vi.resetModules();
   });
 });
 ```
@@ -1674,12 +1691,16 @@ describe('runSandboxSend — Instagram', () => {
       ),
     );
 
-    await expect(
-      runSandboxSend({ username: '@ordvir', message: 'late reply' }),
-    ).rejects.toThrow(SessionWindowError);
-    await expect(
-      runSandboxSend({ username: '@ordvir', message: 'late reply' }),
-    ).rejects.toThrow(/Reply window is closed/);
+    // Single run; both assertions share the same caught error so the one-shot
+    // mocks aren't consumed twice.
+    let caught: unknown;
+    try {
+      await runSandboxSend({ username: '@ordvir', message: 'late reply' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(SessionWindowError);
+    expect((caught as Error).message).toMatch(/Reply window is closed/);
   });
 });
 ```
@@ -1819,19 +1840,16 @@ Create `src/commands/sandbox/__tests__/start.test.ts`:
 ```typescript
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
+// Single combined mock — vi.mock collapses to the LAST declaration for a given
+// path, so splitting apiClient + getBindCode across two vi.mock('../../../api/client.js')
+// blocks would lose `apiClient` entirely. Define both in one block.
 vi.mock('../../../api/client.js', () => ({
   apiClient: vi.fn(),
+  getBindCode: vi.fn(),
 }));
 vi.mock('../../_helpers.js', () => ({
   getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0001'),
 }));
-vi.mock('../../../api/client.js', async (orig) => {
-  const m = await (orig as () => Promise<typeof import('../../../api/client.js')>)();
-  return {
-    ...m,
-    getBindCode: vi.fn(),
-  };
-});
 
 import { ValidationError, ConfigurationError } from '../../../output/error.js';
 import { runSandboxStart } from '../start.js';
@@ -1840,6 +1858,15 @@ describe('runSandboxStart — flag validation', () => {
   it('throws ValidationError exit 2 in --json mode without --type (E3)', async () => {
     await expect(runSandboxStart({ json: true })).rejects.toThrow(ValidationError);
     await expect(runSandboxStart({ json: true })).rejects.toThrow(/--type is required/);
+  });
+
+  it('throws ValidationError on invalid --type value (Commander does not enforce enum)', async () => {
+    await expect(
+      runSandboxStart({ type: 'messenger' as never, json: true }),
+    ).rejects.toThrow(ValidationError);
+    await expect(
+      runSandboxStart({ type: 'messenger' as never, json: true }),
+    ).rejects.toThrow(/Invalid --type value/);
   });
 });
 
@@ -1942,6 +1969,20 @@ export async function runSandboxStart(opts: {
 }): Promise<void> {
   const isTty = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
   const isHuman = !opts.json && isTty;
+
+  // Commander's .option() doesn't enforce enum values — explicit validation
+  // is required so `--type=foo` doesn't fall through into the IG branch by
+  // virtue of "not whatsapp" later in the if-else.
+  if (
+    opts.type !== undefined &&
+    opts.type !== 'whatsapp' &&
+    opts.type !== 'instagram'
+  ) {
+    throw new ValidationError(
+      `Invalid --type value: ${String(opts.type)}. Must be 'whatsapp' or 'instagram'.`,
+      'INVALID_TYPE',
+    );
+  }
 
   let channelType: 'whatsapp' | 'instagram';
   if (opts.type) {
@@ -2071,7 +2112,21 @@ export async function runSandboxStart(opts: {
           spinner?.fail("You're not logged in. Run `hookmyapp login` first.");
           throw err;
         }
-        // Transient errors — retry next tick.
+        // Retry only on known-transient failures (network + 5xx). Anything
+        // else — parser failures (UnexpectedError/MALFORMED_SANDBOX_SESSION),
+        // 4xx, programming errors — must NOT be swallowed silently in the
+        // poll loop; that would hide real bugs forever behind the spinner.
+        const { NetworkError, ApiError } = await import('../../output/error.js');
+        const isTransient =
+          err instanceof NetworkError ||
+          (err instanceof ApiError && err.statusCode !== undefined && err.statusCode >= 500);
+        if (!isTransient) {
+          spinner?.fail(
+            err instanceof Error ? err.message : 'Unexpected error while polling for bind code',
+          );
+          throw err;
+        }
+        // Transient — retry next tick.
       }
       if (!warned && Date.now() - started > 5 * 60 * 1000) {
         spinner?.warn('Still waiting. Press Ctrl+C to cancel, or leave this running.');
@@ -2383,8 +2438,13 @@ describe('runSandboxWebhookSet — --username selects IG session', () => {
       username: '@ordvir',
       url: 'https://my.example/hook',
     });
-    // Second apiClient call should be the PUT to /sandbox/sessions/ssn_IG000001/webhook-url
+    // Second apiClient call should be the PATCH to /sandbox/sessions/ssn_IG000001/webhook-url
     expect(vi.mocked(apiClient).mock.calls[1][0]).toContain('ssn_IG000001');
+    expect(vi.mocked(apiClient).mock.calls[1][0]).toContain('/webhook-url');
+    expect(vi.mocked(apiClient).mock.calls[1][1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ webhookUrl: 'https://my.example/hook' }),
+    });
   });
 });
 ```
@@ -2483,28 +2543,29 @@ export async function runSandboxWebhookShow(opts: BaseOpts): Promise<void> {
 }
 
 export async function runSandboxWebhookSet(opts: SetOpts): Promise<void> {
-  const { workspaceId, session } = await pickForWebhook(opts, true);
-  const url =
-    opts.url ??
-    (await input({
-      message: 'Webhook URL:',
-      validate: (v: string) =>
-        v.startsWith('https://') ? true : 'Webhook URL must start with https://',
-    }));
+  const { session } = await pickForWebhook(opts, true);
+  if (!opts.url) {
+    throw new ValidationError(
+      '--url is required. Example: hookmyapp sandbox webhook set --phone +15551234567 --url https://example.com/webhook',
+    );
+  }
+  // Existing backend contract: PATCH /sandbox/sessions/:id/webhook-url with a
+  // JSON-stringified body. Matches the old sandbox.ts:614-619 call shape; do
+  // NOT change to PUT or to an object body without updating the backend.
   await apiClient(`/sandbox/sessions/${session.id}/webhook-url`, {
-    method: 'PUT',
-    workspaceId,
-    body: { webhookUrl: url },
+    method: 'PATCH',
+    body: JSON.stringify({ webhookUrl: opts.url }),
   });
-  console.log(`${c.success(icon.success)} Set webhook URL on ${sessionLabel(session)}: ${url}`);
+  console.log(`${c.success(icon.success)} Set webhook URL on ${sessionLabel(session)}: ${opts.url}`);
 }
 
 export async function runSandboxWebhookClear(opts: BaseOpts): Promise<void> {
-  const { workspaceId, session } = await pickForWebhook(opts, true);
-  await apiClient(`/sandbox/sessions/${session.id}/webhook-url`, {
-    method: 'PUT',
-    workspaceId,
-    body: { webhookUrl: null },
+  const { session } = await pickForWebhook(opts, true);
+  // Existing backend contract: POST /sandbox/sessions/:id/reset-webhook. Matches
+  // sandbox.ts:658-660. NOT a DELETE on /webhook-url and NOT a PUT/PATCH with
+  // null body — the backend has a separate reset endpoint.
+  await apiClient(`/sandbox/sessions/${session.id}/reset-webhook`, {
+    method: 'POST',
   });
   console.log(`${c.success(icon.success)} Cleared webhook URL on ${sessionLabel(session)}`);
 }
@@ -2893,7 +2954,31 @@ const match = sessions.find(/* the existing phone-only matching */);
 
 If the file imports `type SandboxSession` from an old internal interface, remove that import — it's superseded by the wire-module type. Adjust any downstream variable typing accordingly.
 
-- [ ] **Step 3: Run the login wizard tests**
+- [ ] **Step 3: Update the dynamic import of `runSandboxStart`**
+
+The login wizard dynamically imports `runSandboxStart` from the old file at `src/auth/login.ts:420`:
+
+```typescript
+const { runSandboxStart } = await import('../commands/sandbox.js');
+```
+
+This is a dynamic import — Task 15's static-import grep won't surface it, but it WILL break when `sandbox.ts` is deleted. Update it now to point at the new module:
+
+```typescript
+const { runSandboxStart } = await import('../commands/sandbox/start.js');
+```
+
+Note: `await import('../commands/sandbox-listen/index.js')` at line 450 is unchanged — `sandbox-listen` isn't being moved.
+
+Verify with a grep that no other dynamic imports of the old file path remain:
+
+```bash
+grep -n "await import.*sandbox\.js" src/
+```
+
+Expected: zero matches.
+
+- [ ] **Step 4: Run the login wizard tests**
 
 ```bash
 pnpm vitest run src/commands/__tests__/wizard.test.ts src/auth/__tests__/login.test.ts
@@ -2901,11 +2986,11 @@ pnpm vitest run src/commands/__tests__/wizard.test.ts src/auth/__tests__/login.t
 
 Expected: PASS. If a test mocks the old wire shape, update it to mock the new parsed shape (every session needs `type`, the WA-required fields, etc.). The tests should still cover the same legacy paths — just with parser-validated fixture data.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/auth/login.ts
-git commit -m "feat(auth/login): parse sandbox sessions at wire boundary + WA-only filter for legacy --phone path"
+git commit -m "feat(auth/login): parse sandbox sessions at wire boundary + WA-only filter for legacy --phone path + dynamic-import fix"
 ```
 
 ---
