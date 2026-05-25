@@ -2,7 +2,7 @@
 
 **Status:** draft (2026-05-25)
 **Scope:** Single repository (`/Users/ordvir/COD/cli`, published as `@gethookmyapp/cli`). No backend changes — the multi-channel-instagram milestone has already shipped the wire contracts and sandbox-proxy IG send route on the monorepo side.
-**Target release:** `@gethookmyapp/cli` 0.13.0. Ships Instagram parity for **local + staging** environments in a single PR. Production support is gated by the production Instagram sandbox handle resolving inside `getEffectiveSandboxInstagramUsername()` — see D10. Once the production handle is provisioned (separately tracked), production gains parity without a CLI release.
+**Target release:** `@gethookmyapp/cli` 0.12.2. Ships Instagram parity for **local + staging** environments in a single PR. Production support is gated by the production Instagram sandbox handle resolving inside `getEffectiveSandboxInstagramUsername()` — see D10. Once the production handle is provisioned (separately tracked), production gains parity without a CLI release.
 
 ## Problem
 
@@ -23,7 +23,7 @@ The whole point of HookMyApp's sandbox is "go from zero to receiving real Meta w
 
 - **No new login command surface.** `hookmyapp login` keeps its current flags (`--code`, `--phone`, `--next sandbox`, `--next channels`, `--wizard`) unchanged. No `--username` is added. No `--session` pass-through is added. Login stays auth + workspace + next-step guidance. Provider logic lives under `sandbox`.
 - **No removal of `login --phone`, `login --next sandbox`, `login --next channels`, or `login --wizard`.** All four are documented contracts or test plumbing.
-- **No removal of the four deprecated top-level command families** (`hookmyapp env`, `hookmyapp token`, `hookmyapp health`, `hookmyapp webhook show/set` — five forms total). They were marked deprecated in 0.12.1 with a one-release runway; we explicitly choose to keep them through 0.13.0 and remove no earlier than 0.14.0 to keep the agent-paste path safe for one more cycle.
+- **No removal of the four deprecated top-level command families** (`hookmyapp env`, `hookmyapp token`, `hookmyapp health`, `hookmyapp webhook show/set` — five forms total). They were marked deprecated in 0.12.1 with a one-release runway; we explicitly choose to keep them through 0.12.2 and remove no earlier than 0.13.0 to keep the agent-paste path safe for one more cycle.
 - **No `channels resolveChannel()` multi-channel support.** Today `resolveChannel` matches by `phoneNumberId`, `displayPhoneNumber`, or `wabaName` — all WhatsApp-biased. Instagram channels are reachable by `ch_xxx` id only. Adding `@username` / page-id resolution belongs in a separate `channels-multichannel` spec.
 - **No copy refresh in `channels.ts` / `auth/login.ts` strings** that currently say "WhatsApp channels" or "Shared WhatsApp Number". Those live in the `channels` family code path and remain correct for today's `channels list` behavior. They migrate when `channels` becomes multi-channel.
 - **No `--json` mode determinism audit of `billing upgrade` or `workspace remove-member`.** Both prompt unconditionally today. Deterministic-flag-or-fail behavior is the right end state but is a separate audit.
@@ -72,7 +72,7 @@ Five selector-bearing surfaces — `sandbox env`, `sandbox send`, `sandbox stop`
 
 At most one selector flag may be provided. Two or more → `ValidationError` exit 2 (`CONFLICTING_SELECTORS`). The picker is unified into one function (`src/commands/sandbox/picker.ts`) used by every sandbox subcommand including `sandbox-listen/picker.ts`. `renderSessionTable` shows `Type | Identifier | Status | Listener` columns instead of phone-only; `Listener` column stays for `sandbox-listen` (heartbeat-derived live/idle is computed always, displayed empty when `lastHeartbeatAt` is null).
 
-`sandbox webhook show/set/clear` keep their positional `[phone]` argument in 0.13.0 with a stderr deprecation warning. Removed in 0.14.0. Positional + any selector flag together → `ValidationError` exit 2 (same `CONFLICTING_SELECTORS` code).
+`sandbox webhook show/set/clear` keep their positional `[phone]` argument in 0.12.2 with a stderr deprecation warning. Removed no earlier than 0.13.0. Positional + any selector flag together → `ValidationError` exit 2 (same `CONFLICTING_SELECTORS` code).
 
 The login wizard's existing `--next sandbox --phone +X` legacy auto-listen path stays WhatsApp-only. After parsing wire sessions at the boundary, the wizard filters to `type === 'whatsapp'` before the legacy match — a parsed IG session cannot fall into the WA-only auto-listen code path by accident.
 
@@ -120,9 +120,9 @@ The channel context lives in the flag name, not in duplicate per-channel error s
 
 **Rejected alternative — branch help output and error messages on detected/selected channel context.** Most contextually accurate per-invocation. But Commander doesn't help-branch natively, the implementation is brittle (`--help` runs before any session lookup), and harder for users to read static docs that don't know which channel they want yet.
 
-### D6. Delivery shape is a single PR landing the entire IG parity surface in `@gethookmyapp/cli` 0.13.0.
+### D6. Delivery shape is a single PR landing the entire IG parity surface in `@gethookmyapp/cli` 0.12.2.
 
-One coherent shipping unit: D3 selector unification + IG branches in `env`, `send`, `start`, `status`, `webhook`, `listen` + the boundary parser + the shared helpers + the `INSTAGRAM_GRAPH_VERSION` constant + the env-profile IG handle resolver. Users who upgrade to 0.13.0 get the full Instagram flow on the first invocation.
+One coherent shipping unit: D3 selector unification + IG branches in `env`, `send`, `start`, `status`, `webhook`, `listen` + the boundary parser + the shared helpers + the `INSTAGRAM_GRAPH_VERSION` constant + the env-profile IG handle resolver. Users who upgrade to 0.12.2 get the full Instagram flow on the first invocation.
 
 **Rejected alternative — split into two PRs (selector unification first, IG functionality second).** Smaller, independently reviewable. But the selector unification ships a `--username` flag users can't usefully invoke in the interim release; awkward shipping shape with no per-release win. The full parity PR is large but coherent.
 
@@ -198,20 +198,20 @@ The unified picker preserves this exact shape rather than switching to `Validati
 
 ### D12. `sandbox webhook show/set/clear` positional `[phone]` argument is deprecated for one minor-release runway.
 
-The 0.13.0 release accepts the positional argument and the three new flags (`--phone`, `--username`, `--session`). Positional alone emits a stderr deprecation warning, then executes normally (treated as `phoneFlag`). Positional + any selector flag together → `ValidationError` exit 2 with code `CONFLICTING_SELECTORS`. The 0.14.0 release removes the positional argument entirely. Runway shape mirrors the precedent set by the `hookmyapp env`/`token`/`health`/`webhook` top-level aliases in 0.12.1.
+The 0.12.2 release accepts the positional argument and the three new flags (`--phone`, `--username`, `--session`). Positional alone emits a stderr deprecation warning, then executes normally (treated as `phoneFlag`). Positional + any selector flag together → `ValidationError` exit 2 with code `CONFLICTING_SELECTORS`. The 0.13.0 release removes the positional argument entirely. Runway shape mirrors the precedent set by the `hookmyapp env`/`token`/`health`/`webhook` top-level aliases in 0.12.1.
 
 ### D13. CLI-side integration coverage for IG is deferred.
 
 `test-integration/global-setup.ts` provisions WorkOS users via `/internal/e2e/ensure-users` but has no deterministic IG-session seed endpoint. Creating an IG sandbox session today requires either a real Instagram DM consuming a bind code, or the dashboard's demo-handoff flow — neither is reproducible from CI. Backend integration tests at `backend/test/tests/sandbox/` already assert the IG bind-consume contract end-to-end.
 
-The 0.13.0 merge bar is unit + command-runner test coverage for every branch point and every documented error pathway. A `/internal/e2e/seed-sandbox-session` follow-up on the backend can unlock CLI integration coverage later, if/when justified.
+The 0.12.2 merge bar is unit + command-runner test coverage for every branch point and every documented error pathway. A `/internal/e2e/seed-sandbox-session` follow-up on the backend can unlock CLI integration coverage later, if/when justified.
 
 ## Migration notes (preview — full table belongs in the plan)
 
 - `src/commands/sandbox.ts` (782 LOC, mixed concerns) is split into `src/commands/sandbox/{index,env,send,start,status,stop,webhook,picker,helpers}.ts`. Matches `sandbox-listen/` precedent.
 - NodeNext ESM does not resolve directories; every existing import that uses `./commands/sandbox.js` migrates to `./commands/sandbox/index.js`. Affected: `src/index.ts`, `src/auth/login.ts:420`, and every `vi.mock('../sandbox.js')` / `vi.mock('../../commands/sandbox.js')` across the test suite.
 - `src/config/env-profiles.ts:125` has a pre-existing raw `throw new Error(...)`. While the file is already being modified to add `getEffectiveSandboxInstagramUsername`, the raw throw is converted to `ConfigurationError`. Minimal in-flight cleanup of a known lint violation.
-- `package.json` version bumps to `0.13.0`; `CHANGELOG.md` gets a 0.13.0 entry naming the IG support + selector unification + `sandbox webhook` positional deprecation.
+- `package.json` version bumps to `0.12.2`; `CHANGELOG.md` gets a 0.12.2 entry naming the IG support + selector unification + `sandbox webhook` positional deprecation.
 
 ## Known issues out of scope (filed as follow-ups)
 
