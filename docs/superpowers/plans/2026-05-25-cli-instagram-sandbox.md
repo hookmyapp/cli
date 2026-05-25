@@ -3209,28 +3209,84 @@ git commit -m "feat(sandbox-listen): unify picker + --username flag + parse wire
 
 **Why:** The old 782-line file is fully superseded by the new directory. Its tests have new homes (Tasks 5/6/7). Any straggler `vi.mock` paths need updating to point at the per-subcommand module being mocked.
 
-- [ ] **Step 1: Confirm the old file is no longer imported anywhere except for the now-orphan tests**
+- [ ] **Step 1: Find every remaining reference (broad grep, catches static imports + vi.mock + dynamic imports)**
 
 ```bash
 cd /Users/ordvir/COD/cli
-grep -rn "from '\.\./sandbox\.js'\|from '\.\./\.\./commands/sandbox\.js'\|from '\./commands/sandbox\.js'" src/ \
-  | grep -v "src/commands/__tests__/sandbox-" \
-  || echo "no stragglers"
+grep -rn "sandbox\.js" src/ \
+  | grep -v "sandbox-listen" \
+  | grep -v "commands/sandbox/"
 ```
 
-Expected: `no stragglers` (or only the deleted test files listed).
+(Ripgrep alternative: `rg "sandbox\.js" src | rg -v sandbox-listen | rg -v 'commands/sandbox/'`.)
 
-- [ ] **Step 2: Migrate any remaining `vi.mock` paths**
+Expected matches (these are the known migration targets — confirm against the live grep output):
+- `src/auth/__tests__/login.test.ts` — `vi.mock('../../commands/sandbox.js', ...)` declaring `registerSandboxCommand` + `runSandboxStart` + `runSandboxSend` + `runSandboxEnv`
+- `src/commands/__tests__/wizard.test.ts` — `vi.mock('../sandbox.js', ...)` declaring the same four exports
 
-If the grep above showed straggler imports, update each to point at the new module:
+If the grep surfaces anything outside this expected set, migrate or remove that reference too before proceeding.
 
-| Old path | New path |
-|---|---|
-| `'../sandbox.js'` referencing `buildEnvBlock` | `'../sandbox/env.js'` |
-| `'../sandbox.js'` referencing `runSandboxSend` | `'../sandbox/send.js'` |
-| `'../sandbox.js'` referencing `runSandboxStart` | `'../sandbox/start.js'` |
-| `'../sandbox.js'` referencing `runSandboxStatus` | `'../sandbox/status.js'` |
-| `'../../commands/sandbox.js'` in `auth/__tests__/` | per the consumed export — most likely `'../../commands/sandbox/index.js'` for `registerSandboxCommand` or per-subcommand for `runX` |
+- [ ] **Step 2: Update the test-file `vi.mock` blocks**
+
+Each `vi.mock('../sandbox.js' | '../../commands/sandbox.js', ...)` mock targets four exports that now live in four different files. Replace each combined block with four separate mocks targeting the new per-subcommand paths.
+
+For `src/commands/__tests__/wizard.test.ts` (currently uses path `'../sandbox.js'`), replace:
+
+```typescript
+const runSandboxStartMock = vi.fn();
+vi.mock('../sandbox.js', () => ({
+  registerSandboxCommand: vi.fn(),
+  runSandboxStart: runSandboxStartMock,
+  runSandboxSend: vi.fn(),
+  runSandboxEnv: vi.fn(),
+}));
+```
+
+with:
+
+```typescript
+const runSandboxStartMock = vi.fn();
+vi.mock('../sandbox/index.js', () => ({
+  registerSandboxCommand: vi.fn(),
+}));
+vi.mock('../sandbox/start.js', () => ({
+  runSandboxStart: runSandboxStartMock,
+}));
+vi.mock('../sandbox/send.js', () => ({
+  runSandboxSend: vi.fn(),
+}));
+vi.mock('../sandbox/env.js', () => ({
+  runSandboxEnv: vi.fn(),
+}));
+```
+
+For `src/auth/__tests__/login.test.ts` (currently uses path `'../../commands/sandbox.js'`), do the same split but with the `'../../commands/sandbox/...'` prefix:
+
+```typescript
+const runSandboxStartMock = vi.fn();
+vi.mock('../../commands/sandbox/index.js', () => ({
+  registerSandboxCommand: vi.fn(),
+}));
+vi.mock('../../commands/sandbox/start.js', () => ({
+  runSandboxStart: runSandboxStartMock,
+}));
+vi.mock('../../commands/sandbox/send.js', () => ({
+  runSandboxSend: vi.fn(),
+}));
+vi.mock('../../commands/sandbox/env.js', () => ({
+  runSandboxEnv: vi.fn(),
+}));
+```
+
+After updating both files, re-run the broad grep:
+
+```bash
+grep -rn "sandbox\.js" src/ \
+  | grep -v "sandbox-listen" \
+  | grep -v "commands/sandbox/"
+```
+
+Expected: no output. Every reference now points at the new directory layout.
 
 - [ ] **Step 3: Delete the old files**
 
@@ -3343,24 +3399,16 @@ git commit -m "docs: README IG example + finalize 0.12.2 CHANGELOG"
 
 **Why:** Ship gate. Every gate must pass before the PR is ready for review.
 
-- [ ] **Step 1: Lint**
+- [ ] **Step 1: Full typecheck**
 
 ```bash
 cd /Users/ordvir/COD/cli
-pnpm lint
-```
-
-Expected: zero errors. (If the project doesn't have a `lint` script, run `pnpm exec eslint src/`.)
-
-- [ ] **Step 2: Full typecheck**
-
-```bash
 pnpm exec tsc --noEmit -p tsconfig.json
 ```
 
-Expected: zero errors.
+Expected: zero errors. (This CLI has no `lint` script and no ESLint dependency, so the typecheck IS the static-analysis gate.)
 
-- [ ] **Step 3: Full test suite**
+- [ ] **Step 2: Full test suite**
 
 ```bash
 pnpm vitest run
@@ -3368,7 +3416,7 @@ pnpm vitest run
 
 Expected: every test green. Note the totals — the new suite should add ~50+ tests across parser, helpers, picker, env, send, start, webhook, and listen-picker.
 
-- [ ] **Step 4: Build**
+- [ ] **Step 3: Build**
 
 ```bash
 pnpm build
@@ -3376,7 +3424,7 @@ pnpm build
 
 Expected: clean build, `dist/index.js` produced.
 
-- [ ] **Step 5: Smoke check the built CLI**
+- [ ] **Step 4: Smoke check the built CLI**
 
 ```bash
 node dist/index.js --version
@@ -3391,7 +3439,7 @@ Expected:
 - `sandbox start --help` shows the `--type` flag + EXAMPLES with `--type=instagram` shown
 - `sandbox env --help` shows `--phone`, `--username`, `--session` selectors
 
-- [ ] **Step 6: Smoke check `--json` non-interactive paths**
+- [ ] **Step 5: Smoke check `--json` non-interactive paths**
 
 ```bash
 node dist/index.js sandbox start --json 2>&1
@@ -3405,7 +3453,7 @@ echo $?  # ← run this immediately after the previous command
 
 Expected: `2`.
 
-- [ ] **Step 7: If everything passes, push the branch**
+- [ ] **Step 6: If everything passes, push the branch**
 
 ```bash
 git push -u origin feat/instagram-sandbox
@@ -3413,7 +3461,7 @@ git push -u origin feat/instagram-sandbox
 
 Expected: branch pushed. CI runs (Depot CI / GitHub Actions per the CLI's existing release workflow); confirm all checks pass before opening the PR.
 
-- [ ] **Step 8: Open the PR**
+- [ ] **Step 7: Open the PR**
 
 ```bash
 gh pr create --title "feat(sandbox): Instagram support (0.12.2)" --body "$(cat <<'EOF'
