@@ -293,6 +293,12 @@ describe('parseSandboxSession', () => {
     ).toThrow(/origin/);
   });
 
+  it('rejects status that is not in the allowed closed union', () => {
+    expect(() =>
+      parseSandboxSession({ ...validWa, status: 'pending_activision' }),
+    ).toThrow(/status must be one of/);
+  });
+
   it('includes the session id in the error message', () => {
     expect(() =>
       parseSandboxSession({ ...validWa, accessToken: '' }),
@@ -317,9 +323,18 @@ describe('parseSandboxSessions', () => {
     expect(() => parseSandboxSessions(validWa)).toThrow(UnexpectedError);
   });
 
-  it('propagates the inner parser error including the failing index', () => {
+  it('propagates the inner parser error with the offending session id', () => {
     expect(() =>
-      parseSandboxSessions([validWa, { ...validIg, instagramSenderId: '' }]),
+      parseSandboxSessions([
+        validWa,
+        { ...validIg, id: 'ssn_BADIG01', instagramSenderId: '' },
+      ]),
+    ).toThrow(/ssn_BADIG01/);
+    expect(() =>
+      parseSandboxSessions([
+        validWa,
+        { ...validIg, id: 'ssn_BADIG01', instagramSenderId: '' },
+      ]),
     ).toThrow(/instagramSenderId/);
   });
 });
@@ -446,6 +461,13 @@ export function parseSandboxSession(dto: unknown): SandboxSession {
   if (!isNonEmptyString(d.accessToken)) malformed(id, 'accessToken missing');
   if (!isNonEmptyString(d.hmacSecret)) malformed(id, 'hmacSecret missing');
   if (!isNonEmptyString(d.status)) malformed(id, 'status missing');
+  // Validate status against the closed union declared on SandboxSessionBase.
+  // A typo like 'pending_activision' would otherwise pass through and lie to
+  // every downstream `switch (status)`.
+  const ALLOWED_STATUS = ['pending_activation', 'active', 'replaced', 'expired'] as const;
+  if (!ALLOWED_STATUS.includes(d.status as (typeof ALLOWED_STATUS)[number])) {
+    malformed(id, `status must be one of ${ALLOWED_STATUS.join('|')}, got "${d.status}"`);
+  }
   if (!isNonEmptyString(d.origin)) malformed(id, 'origin missing');
 
   if (d.type === 'whatsapp') {
@@ -2225,7 +2247,7 @@ export async function runSandboxStatus(opts: { json?: boolean } = {}): Promise<v
 
 ```bash
 cd /Users/ordvir/COD/cli
-pnpm tsc --noEmit -p tsconfig.build.json 2>&1 | head -20
+pnpm exec tsc --noEmit -p tsconfig.json 2>&1 | head -20
 ```
 
 Expected: zero errors related to `status.ts`. (You may see errors from `index.ts` still pointing at the old `sandbox.ts` — that's Task 13.)
@@ -2308,7 +2330,7 @@ export async function runSandboxStop(opts: {
 - [ ] **Step 2: Verify the new module compiles**
 
 ```bash
-pnpm tsc --noEmit -p tsconfig.build.json 2>&1 | head -20
+pnpm exec tsc --noEmit -p tsconfig.json 2>&1 | head -20
 ```
 
 Expected: zero errors related to `stop.ts`.
@@ -2848,7 +2870,7 @@ export function registerSandboxCommand(program: Command): void {
 - [ ] **Step 2: Verify the new module compiles**
 
 ```bash
-pnpm tsc --noEmit -p tsconfig.build.json 2>&1 | head -20
+pnpm exec tsc --noEmit -p tsconfig.json 2>&1 | head -20
 ```
 
 Expected: zero errors related to `sandbox/index.ts` (the top-level `src/index.ts` may still fail — Task 12).
@@ -2886,7 +2908,7 @@ import { registerSandboxCommand } from './commands/sandbox/index.js';
 - [ ] **Step 2: Verify the project compiles end-to-end**
 
 ```bash
-pnpm tsc --noEmit -p tsconfig.build.json
+pnpm exec tsc --noEmit -p tsconfig.json
 ```
 
 Expected: zero errors. (If you see errors from other test files that still reference `../sandbox.js`, those will be cleaned up in Task 16.)
@@ -2970,13 +2992,15 @@ const { runSandboxStart } = await import('../commands/sandbox/start.js');
 
 Note: `await import('../commands/sandbox-listen/index.js')` at line 450 is unchanged — `sandbox-listen` isn't being moved.
 
-Verify with a grep that no other dynamic imports of the old file path remain:
+Verify with a recursive grep that no other dynamic imports of the old file path remain:
 
 ```bash
-grep -n "await import.*sandbox\.js" src/
+grep -rn "await import.*sandbox\.js" src/
 ```
 
-Expected: zero matches.
+(If ripgrep is installed: `rg "await import.*sandbox\.js" src` is faster but the plain-grep form works on every machine.)
+
+Expected: zero matches. Note: dynamic imports of `'../commands/sandbox-listen/index.js'` are fine — only the bare `sandbox.js` path is problematic.
 
 - [ ] **Step 4: Run the login wizard tests**
 
@@ -3229,7 +3253,7 @@ Expected: PASS — every test green. If a wizard or login test fails because of 
 - [ ] **Step 5: Verify the full typecheck passes**
 
 ```bash
-pnpm tsc --noEmit -p tsconfig.build.json
+pnpm exec tsc --noEmit -p tsconfig.json
 ```
 
 Expected: zero errors.
@@ -3331,7 +3355,7 @@ Expected: zero errors. (If the project doesn't have a `lint` script, run `pnpm e
 - [ ] **Step 2: Full typecheck**
 
 ```bash
-pnpm tsc --noEmit -p tsconfig.build.json
+pnpm exec tsc --noEmit -p tsconfig.json
 ```
 
 Expected: zero errors.
