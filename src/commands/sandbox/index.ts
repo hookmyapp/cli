@@ -4,6 +4,7 @@
 
 import type { Command } from 'commander';
 import { addExamples } from '../../output/help.js';
+import { ValidationError } from '../../output/error.js';
 import { runSandboxEnv } from './env.js';
 import { runSandboxSend } from './send.js';
 import { runSandboxStart } from './start.js';
@@ -23,22 +24,46 @@ export function registerSandboxCommand(program: Command): void {
   const sandboxStart = sandbox
     .command('start')
     .description('Bind a sandbox session for local development')
+    .argument('[type]', 'Channel type shortcut: "whatsapp" or "instagram" (same as --type=...)')
     .option(
       '--type <whatsapp|instagram>',
       'Channel type (prompts if omitted; required in --json mode)',
     )
     .option('--listen', 'After bind, immediately start the webhook listener')
     .option('--json', 'Machine-readable output')
-    .action(async (opts: { type?: 'whatsapp' | 'instagram'; listen?: boolean; json?: boolean }) => {
-      await runSandboxStart({ ...opts, json: !!(opts.json || program.opts().json) });
-    });
+    .action(
+      async (
+        positionalType: string | undefined,
+        opts: { type?: 'whatsapp' | 'instagram'; listen?: boolean; json?: boolean },
+      ) => {
+        // Reconcile positional + flag. If both set and they disagree → ValidationError.
+        // If only one is set → that wins. Final value passes through runSandboxStart's
+        // existing validation (which rejects unknown strings like "messenger" with INVALID_TYPE).
+        let resolvedType = opts.type;
+        if (positionalType !== undefined) {
+          if (opts.type !== undefined && opts.type !== positionalType) {
+            throw new ValidationError(
+              `Conflicting channel type: positional "${positionalType}" vs --type="${opts.type}". Pick one.`,
+              'CONFLICTING_TYPE',
+            );
+          }
+          resolvedType = positionalType as 'whatsapp' | 'instagram';
+        }
+        await runSandboxStart({
+          ...opts,
+          type: resolvedType,
+          json: !!(opts.json || program.opts().json),
+        });
+      },
+    );
   addExamples(
     sandboxStart,
     `EXAMPLES:
   $ hookmyapp sandbox start
-  $ hookmyapp sandbox start --type=whatsapp
-  $ hookmyapp sandbox start --type=instagram --listen
-  $ hookmyapp sandbox start --type=whatsapp --json`,
+  $ hookmyapp sandbox start whatsapp
+  $ hookmyapp sandbox start instagram --listen
+  $ hookmyapp sandbox start whatsapp --json
+  $ hookmyapp sandbox start --type=instagram        # flag form still works`,
   );
 
   const sandboxStatus = sandbox
