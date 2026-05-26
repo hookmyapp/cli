@@ -127,30 +127,33 @@ describe('channels commands', () => {
     registerChannelsCommand = mod.registerChannelsCommand;
   });
 
-  it('listChannels calls apiClient /meta/channels with workspaceId and passes Channel ID + type column projection to output (default human mode)', async () => {
+  it('listChannels calls apiClient /meta/channels with workspaceId and renders Type/Identifier/Channel ID/Forwarding columns (default human mode, Task B3)', async () => {
     mockedApiClient.mockResolvedValue(fakeChannels);
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
     const program = new Command();
     registerChannelsCommand(program);
     await program.parseAsync(['channels', 'list'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
-    // Verify output was called with the projected rows (Task 8 — Channel ID + type primary cols)
-    expect(mockedOutput).toHaveBeenCalledTimes(1);
-    const outputArgs = mockedOutput.mock.calls[0][0] as Record<string, unknown>[];
-    // Both channels are metaConnected=true, so both should be in output
-    expect(outputArgs).toHaveLength(2);
-    // Projection keys — Channel ID (friendly), type, name, phone, forwarding, connected.
+    // Task B3: runChannelsList writes directly to process.stdout.write, so
+    // mockedOutput is no longer called from the list path. Assert against the
+    // rendered table bytes instead.
+    const combined = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+    // New column schema — Type / Identifier / Channel ID / Forwarding.
+    expect(combined).toContain('Type');
+    expect(combined).toContain('Identifier');
+    expect(combined).toContain('Channel ID');
+    expect(combined).toContain('Forwarding');
+    // Both channels render (filter dropped in B3).
+    expect(combined).toContain('ch_TEST0001');
+    expect(combined).toContain('ch_TEST0002');
+    // WA Identifier renders the phone, NOT the WABA id.
+    expect(combined).toContain('+1 234 567 890');
+    expect(combined).toContain('WhatsApp');
     // metaWabaId is intentionally absent from the default table view.
-    expect(outputArgs[0]).toHaveProperty('Channel ID', 'ch_TEST0001');
-    expect(outputArgs[0]).toHaveProperty('type', 'whatsapp');
-    expect(outputArgs[0]).toHaveProperty('name', 'Test WABA');
-    expect(outputArgs[0]).toHaveProperty('phone', '+1 234 567 890');
-    expect(outputArgs[0]).toHaveProperty('forwarding', true);
-    expect(outputArgs[0]).toHaveProperty('connected', true);
-    expect(outputArgs[0]).not.toHaveProperty('metaWabaId');
-    expect(outputArgs[0]).not.toHaveProperty('id');
-    expect(outputArgs[0]).not.toHaveProperty('workspaceId');
+    expect(combined).not.toMatch(/metaWabaId/);
+    stdoutSpy.mockRestore();
   });
 
   it('showChannel calls list to resolve, then calls detail endpoint, outputs without routing keys', async () => {
@@ -289,30 +292,26 @@ describe('channels commands', () => {
   });
 });
 
-// Task 8 — verify the rendered stdout (not just the data shape passed to the
-// mocked `output()`). These tests invoke the REAL `output()` + `renderTable()`
-// by calling the format helpers directly with the data shape the list action
-// passes in. This sidesteps the file-level `vi.mock('../output/format.js')` —
-// vi.importActual fetches the unstubbed module on demand.
-describe('channels list — rendered table contents (Task 8)', () => {
-  let mockConsoleLog: ReturnType<typeof vi.spyOn>;
+// Task 8 / Task B3 — verify the rendered stdout. `runChannelsList` writes
+// directly via `process.stdout.write` (bypassing the mocked `output()`), so
+// the spies attach there.
+describe('channels list — rendered table contents (Task 8 / B3)', () => {
+  // Typed as `any` because `vi.spyOn(process.stdout, 'write')`'s call-signature
+  // overload isn't assignable to `MockInstance<(...args: unknown[]) => unknown>`.
+  // The narrow type is checked at the spy creation site below; the let-binding
+  // just needs to hold whatever vitest returns.
+  let stdoutSpy: ReturnType<typeof vi.spyOn>;
   let Command: typeof import('commander').Command;
   let registerChannelsCommand: typeof import('../commands/channels.js').registerChannelsCommand;
-  let realOutput: typeof import('../output/format.js').output;
 
   beforeEach(async () => {
     vi.resetModules();
     mockedApiClient.mockReset();
     mockedApiClient.mockResolvedValue(fakeChannels);
     mockedOutput.mockReset();
-    // Route the mocked output() call through the real implementation so
-    // cli-table3 / JSON.stringify actually hit console.log for stdout capture.
-    const realFormat = await vi.importActual<typeof import('../output/format.js')>(
-      '../output/format.js',
-    );
-    realOutput = realFormat.output;
-    mockedOutput.mockImplementation((data, opts) => realOutput(data, opts));
-    mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+    stdoutSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true) as unknown as ReturnType<typeof vi.spyOn>;
 
     const commander = await import('commander');
     Command = commander.Command;
@@ -321,17 +320,19 @@ describe('channels list — rendered table contents (Task 8)', () => {
   });
 
   afterEach(() => {
-    mockConsoleLog.mockRestore();
+    stdoutSpy.mockRestore();
   });
 
-  it('channels list default table shows Channel ID + type, hides metaWabaId', async () => {
+  it('channels list default table shows Channel ID + Type/Identifier/Forwarding, hides metaWabaId', async () => {
     const program = new Command();
     registerChannelsCommand(program);
     await program.parseAsync(['channels', 'list'], { from: 'user' });
 
-    const stdout = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+    const stdout = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
     expect(stdout).toContain('Channel ID'); // friendly column header
-    expect(stdout).toContain('type');
+    expect(stdout).toContain('Type');
+    expect(stdout).toContain('Identifier');
+    expect(stdout).toContain('Forwarding');
     expect(stdout).toContain('ch_TEST0001'); // value
     expect(stdout).not.toMatch(/metaWabaId/); // raw column header gone
   });
@@ -342,7 +343,7 @@ describe('channels list — rendered table contents (Task 8)', () => {
     registerChannelsCommand(program);
     await program.parseAsync(['--json', 'channels', 'list'], { from: 'user' });
 
-    const stdout = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+    const stdout = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
     const parsed = JSON.parse(stdout);
     expect(parsed[0]).toHaveProperty('metaWabaId'); // raw API response
     expect(parsed[0]).toHaveProperty('id'); // wire field for publicId

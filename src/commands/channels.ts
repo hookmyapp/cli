@@ -1,6 +1,8 @@
 import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { output } from '../output/format.js';
+import { c } from '../output/color.js';
+import { renderTable } from '../output/table.js';
 import { CliError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
@@ -193,6 +195,53 @@ export async function runChannelsConnect(): Promise<void> {
   }
 }
 
+/**
+ * Exported handler for `hookmyapp channels list` (Task B3).
+ *
+ * Type-aware human-table render: IG rows show `@handle`, WA rows show
+ * `+phone`. Columns are `Type`, `Identifier`, `Channel ID`, `Forwarding`.
+ * JSON mode emits the parsed Channel[] verbatim (wire field names preserved
+ * for scripts). Bypasses `output(...)` and writes directly to
+ * `process.stdout.write` so tests can spy on exact bytes (see
+ * `src/__tests__/channels-list-render.test.ts`).
+ *
+ * Note: the prior inline action filtered `metaConnected !== false` to hide
+ * disconnected channels. That filter is intentionally dropped here — the new
+ * IG-aware table is the canonical view and shows every channel the workspace
+ * has on file. Operators who want to slice by connection status can use
+ * `--json | jq`.
+ */
+export async function runChannelsList(opts: { json?: boolean }): Promise<void> {
+  const { getDefaultWorkspaceId } = await import('./_helpers.js');
+  const workspaceId = await getDefaultWorkspaceId();
+  const dtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
+  const channels = dtos.map(parseChannelListItem);
+  if (opts.json) {
+    process.stdout.write(JSON.stringify(channels, null, 2) + '\n');
+    return;
+  }
+  if (channels.length === 0) {
+    console.log(`No channels. Run: ${cliCommandPrefix()} channels connect <whatsapp|instagram>`);
+    return;
+  }
+  // Loop var is `ch` so it doesn't shadow the imported `c` color helper —
+  // `c.success('on')` would otherwise type-error against a Channel.
+  const rows = channels.map((ch) => ({
+    Type: ch.type === 'whatsapp' ? 'WhatsApp' : ch.type === 'instagram' ? 'Instagram' : 'Messenger',
+    Identifier:
+      ch.type === 'whatsapp'
+        ? ch.displayPhoneNumber ?? ch.wabaName ?? ch.id
+        : ch.type === 'instagram'
+          ? ch.instagramUsername
+            ? `@${ch.instagramUsername}`
+            : ch.id
+          : ch.id,
+    'Channel ID': ch.id,
+    Forwarding: ch.forwardingEnabled ? c.success('on') : c.dim('off'),
+  }));
+  process.stdout.write(renderTable(rows) + '\n');
+}
+
 export function registerChannelsCommand(program: Command): void {
   const channels = program.command('channels').description('Manage WhatsApp channels');
 
@@ -208,33 +257,7 @@ export function registerChannelsCommand(program: Command): void {
     .command('list')
     .description('List all channels')
     .action(async () => {
-      const { getDefaultWorkspaceId } = await import('./_helpers.js');
-      const workspaceId = await getDefaultWorkspaceId();
-      const dtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
-      const allChannels = dtos.map(parseChannelListItem);
-      const connectedChannels = allChannels.filter((c) => c.metaConnected !== false);
-      const json = !!program.opts().json;
-      if (json) {
-        // JSON mode: pass through the parsed channel list (preserves
-        // wire field names like `id`, `type`, `metaWabaId`) — scripts
-        // depend on the wire shape.
-        output(connectedChannels, { json: true });
-        return;
-      }
-      // Default human-readable mode (Task 8): explicit column projection with
-      // friendly headers. `Channel ID` (publicId, ch_xxxxxxxx) + `type` are the
-      // primary columns; `metaWabaId` is intentionally dropped from the table.
-      // IG-aware rendering (Task B3) replaces WA-only name/phone with
-      // type-appropriate values.
-      const rows = connectedChannels.map((c) => ({
-        'Channel ID': c.id,
-        type: c.type,
-        name: c.type === 'whatsapp' ? (c.wabaName ?? '') : '',
-        phone: c.type === 'whatsapp' ? (c.displayPhoneNumber ?? '') : '',
-        forwarding: c.forwardingEnabled,
-        connected: c.metaConnected,
-      }));
-      output(rows, { human: true });
+      await runChannelsList({ json: !!program.opts().json });
     });
 
   const channelsShow = channels
