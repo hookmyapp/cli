@@ -84,20 +84,31 @@ export function registerSandboxCommand(program: Command): void {
   const sandboxStop = sandbox
     .command('stop')
     .description('Delete a sandbox session')
+    .argument(
+      '[identifier]',
+      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+    )
     .option('--phone <e164>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('-y, --yes', 'Skip confirmation')
     .option('--json', 'Machine-readable output')
     .action(
-      async (opts: {
-        phone?: string;
-        username?: string;
-        session?: string;
-        yes?: boolean;
-        json?: boolean;
-      }) => {
-        await runSandboxStop({ ...opts, json: !!(opts.json || program.opts().json) });
+      async (
+        identifier: string | undefined,
+        opts: {
+          phone?: string;
+          username?: string;
+          session?: string;
+          yes?: boolean;
+          json?: boolean;
+        },
+      ) => {
+        await runSandboxStop({
+          ...opts,
+          identifierArg: identifier,
+          json: !!(opts.json || program.opts().json),
+        });
       },
     );
   addExamples(
@@ -112,6 +123,10 @@ export function registerSandboxCommand(program: Command): void {
   const sandboxEnv = sandbox
     .command('env')
     .description('Print or write your sandbox .env values')
+    .argument(
+      '[identifier]',
+      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+    )
     .option('--phone <e164>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
@@ -119,15 +134,22 @@ export function registerSandboxCommand(program: Command): void {
     .option('--force', 'Overwrite without prompt')
     .option('--json', 'Machine-readable output')
     .action(
-      async (opts: {
-        phone?: string;
-        username?: string;
-        session?: string;
-        write?: string | boolean;
-        force?: boolean;
-        json?: boolean;
-      }) => {
-        await runSandboxEnv({ ...opts, json: !!(opts.json || program.opts().json) });
+      async (
+        identifier: string | undefined,
+        opts: {
+          phone?: string;
+          username?: string;
+          session?: string;
+          write?: string | boolean;
+          force?: boolean;
+          json?: boolean;
+        },
+      ) => {
+        await runSandboxEnv({
+          ...opts,
+          identifierArg: identifier,
+          json: !!(opts.json || program.opts().json),
+        });
       },
     );
   addExamples(
@@ -142,20 +164,31 @@ export function registerSandboxCommand(program: Command): void {
   const sandboxSend = sandbox
     .command('send')
     .description('Send a test message via the shared sandbox-proxy')
+    .argument(
+      '[identifier]',
+      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+    )
     .option('--phone <e164>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--message <text>', 'Message body')
     .option('--json', 'Machine-readable output')
     .action(
-      async (opts: {
-        phone?: string;
-        username?: string;
-        session?: string;
-        message?: string;
-        json?: boolean;
-      }) => {
-        await runSandboxSend({ ...opts, json: !!(opts.json || program.opts().json) });
+      async (
+        identifier: string | undefined,
+        opts: {
+          phone?: string;
+          username?: string;
+          session?: string;
+          message?: string;
+          json?: boolean;
+        },
+      ) => {
+        await runSandboxSend({
+          ...opts,
+          identifierArg: identifier,
+          json: !!(opts.json || program.opts().json),
+        });
       },
     );
   addExamples(
@@ -169,6 +202,10 @@ export function registerSandboxCommand(program: Command): void {
   const sandboxLogs = sandbox
     .command('logs')
     .description('Verbose dump of webhook deliveries for a sandbox session (inbound body + forward attempt inline)')
+    .argument(
+      '[identifier]',
+      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+    )
     .option('--phone <e164>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
@@ -176,15 +213,22 @@ export function registerSandboxCommand(program: Command): void {
     .option('-f, --follow', 'Stream new deliveries as they arrive (Ctrl+C to stop)')
     .option('--json', 'Machine-readable JSONL (one full delivery DTO per line)')
     .action(
-      async (opts: {
-        phone?: string;
-        username?: string;
-        session?: string;
-        limit?: number;
-        follow?: boolean;
-        json?: boolean;
-      }) => {
-        await runSandboxLogs({ ...opts, json: !!(opts.json || program.opts().json) });
+      async (
+        identifier: string | undefined,
+        opts: {
+          phone?: string;
+          username?: string;
+          session?: string;
+          limit?: number;
+          follow?: boolean;
+          json?: boolean;
+        },
+      ) => {
+        await runSandboxLogs({
+          ...opts,
+          identifierArg: identifier,
+          json: !!(opts.json || program.opts().json),
+        });
       },
     );
   addExamples(
