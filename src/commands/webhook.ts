@@ -3,7 +3,7 @@ import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
-import { resolveChannel } from './channels.js';
+import { resolveChannel, channelLabel } from './channels.js';
 import { readCredentials } from '../auth/store.js';
 import { getEffectiveApiUrl } from '../config/env-profiles.js';
 
@@ -70,6 +70,10 @@ export async function runChannelWebhookSet(
     kind: 'mutation',
     nudge: `Next: hookmyapp channels env ${channel.id}`,
   });
+
+  if (!outputOpts.json) {
+    console.log(`✓ Webhook URL set for ${channelLabel(channel)}`);
+  }
 }
 
 /**
@@ -85,7 +89,7 @@ export function registerWebhookCommand(program: Command): void {
   const webhookShow = webhook
     .command('show')
     .description('[deprecated] Use `hookmyapp channels webhook show <channel>` instead.')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       console.warn(
         '[deprecated] `hookmyapp webhook show` will be removed in a future release. ' +
@@ -97,7 +101,7 @@ export function registerWebhookCommand(program: Command): void {
   const webhookSet = webhook
     .command('set')
     .description('[deprecated] Use `hookmyapp channels webhook set <channel>` instead.')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .option('--url <url>', 'Webhook URL')
     .option('--verify-token <token>', 'Verify token')
     .action(async (channelRef: string, opts: WebhookSetOptions) => {

@@ -22,7 +22,7 @@ export function registerTokenCommand(program: Command): void {
   const token = program
     .command('token')
     .description('[deprecated] Use `hookmyapp channels token <channel>` instead.')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       console.warn(
         '[deprecated] `hookmyapp token` will be removed in a future release. ' +
