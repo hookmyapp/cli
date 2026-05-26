@@ -2109,6 +2109,13 @@ describe('runChannelsConnect — integration (D2)', () => {
   beforeEach(() => {
     vi.mocked(select).mockReset();
     vi.mocked(apiClient).mockReset();
+    // Reset call history (not the implementation) so toHaveBeenCalledOnce()
+    // in the WhatsApp routing test is isolated from any other test in the
+    // file that triggers runChannelsConnect. mockClear keeps the
+    // mockResolvedValue(undefined) implementation from the top-level mock
+    // factory; mockReset would wipe the implementation too and the
+    // resolved-undefined would have to be re-asserted here.
+    vi.mocked(forceTokenRefresh).mockClear();
     vi.mocked(pollForNewChannels).mockResolvedValue([
       {
         id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
@@ -2171,6 +2178,7 @@ describe('runChannelsConnect — integration (D2)', () => {
 describe('runChannelsConnect — reports all new channels by type (D7)', () => {
   beforeEach(() => {
     vi.mocked(apiClient).mockReset();
+    vi.mocked(forceTokenRefresh).mockClear();
     vi.mocked(pollForNewChannels).mockResolvedValue([
       {
         id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
