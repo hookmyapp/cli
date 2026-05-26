@@ -41,11 +41,8 @@ vi.mock('../../commands/sandbox-listen/index.js', () => ({
 }));
 
 const runSandboxStartMock = vi.fn();
-vi.mock('../../commands/sandbox.js', () => ({
-  registerSandboxCommand: vi.fn(),
+vi.mock('../../commands/sandbox/start.js', () => ({
   runSandboxStart: runSandboxStartMock,
-  runSandboxSend: vi.fn(),
-  runSandboxEnv: vi.fn(),
 }));
 
 const runChannelsConnectMock = vi.fn();
@@ -187,11 +184,17 @@ describe('post-login wizard', () => {
       .mockResolvedValueOnce([
         {
           id: 'ssn_TEST001',
+          type: 'whatsapp',
           workspaceId: 'ws_TEST0001',
           phone: '15551234567',
+          whatsappPhone: '+15551234567',
+          whatsappPhoneNumberId: 'pnid_TEST001',
+          sandboxPhoneNumberId: 'spnid_TEST001',
+          whatsappApiVersion: 'v20.0',
           status: 'active',
           accessToken: 'abc12345',
           hmacSecret: 'secret',
+          origin: 'sandbox',
         },
       ]);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
