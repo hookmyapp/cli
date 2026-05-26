@@ -5,15 +5,23 @@
 // runSandboxListenFlow dependency surface (cloudflared, apiClient, etc.).
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { printBanner } from '../sandbox-listen/index.js';
-import type { Session } from '../sandbox-listen/picker.js';
+import type { WhatsAppSandboxSession } from '../../api/sandbox-session.js';
 
-const SESSION: Session = {
+const SESSION: WhatsAppSandboxSession = {
   id: 'ssn_BANNER01',
+  type: 'whatsapp',
   workspaceId: 'ws_TEST',
   workspaceName: 'Test Workspace',
   phone: '+15551234567',
   status: 'active',
   lastHeartbeatAt: null,
+  accessToken: 'ACT_banner',
+  hmacSecret: 'HMAC_banner',
+  origin: 'test',
+  whatsappPhone: '+15551234567',
+  whatsappPhoneNumberId: 'PNID_banner',
+  sandboxPhoneNumberId: 'SPNID_banner',
+  whatsappApiVersion: 'v20.0',
 };
 
 describe('sandbox listen banner: Logs UI hint', () => {

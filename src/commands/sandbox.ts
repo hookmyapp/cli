@@ -416,13 +416,16 @@ export async function runSandboxStart(opts: {
         ? c.dim('→ Starting sandbox listener…')
         : '→ Starting sandbox listener…',
     );
-    const listenSession: ListenSession = {
+    // sandbox.ts is deleted in Task 15; this cast bridges the old local
+    // SandboxSession shape to the new wire-parsed Session (= SandboxSession
+    // discriminated union) until that deletion lands.
+    const listenSession = {
       id: session.publicId ?? session.id,
       phone: session.phone,
       workspaceId: session.workspaceId,
       status: session.status,
       lastHeartbeatAt: session.lastHeartbeatAt,
-    };
+    } as unknown as ListenSession;
     await runSandboxListenFlow(listenSession, {});
   }
 }
