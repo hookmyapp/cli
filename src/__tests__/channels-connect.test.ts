@@ -47,10 +47,10 @@ describe('buildConnectStartRequest — pure routing helper', () => {
     });
   });
 
-  it('instagram → /instagram/oauth/start with empty body', () => {
+  it('instagram → /instagram/oauth/start with { flow: "cli" } body', () => {
     expect(buildConnectStartRequest('instagram')).toEqual({
       path: '/instagram/oauth/start',
-      body: JSON.stringify({}),
+      body: JSON.stringify({ flow: 'cli' }),
     });
   });
 });
@@ -100,7 +100,7 @@ describe('runChannelsConnect — integration (D2)', () => {
     });
   });
 
-  it('explicit instagram: snapshots first, then POSTs to /instagram/oauth/start with empty body', async () => {
+  it('explicit instagram: snapshots first, then POSTs to /instagram/oauth/start with { flow: "cli" } body', async () => {
     vi.mocked(apiClient)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce({ redirectUrl: 'https://meta.example/ig' });
@@ -111,7 +111,7 @@ describe('runChannelsConnect — integration (D2)', () => {
     expect(calls[1][0]).toBe('/instagram/oauth/start');
     expect(calls[1][1]).toMatchObject({
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify({ flow: 'cli' }),
     });
   });
 
