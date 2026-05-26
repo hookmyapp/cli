@@ -1,4 +1,7 @@
 import { apiClient } from '../../api/client.js';
+import { readCredentials } from '../../auth/store.js';
+import { getEffectiveApiUrl } from '../../config/env-profiles.js';
+import { AuthError } from '../../output/error.js';
 
 /** Wire mirror of backend `DeliveryListItem` (deliveries/dto/delivery.response.ts). */
 export interface DeliveryListItem {
@@ -35,7 +38,19 @@ export interface DeliveryAttempt {
   attemptedAt: string;
 }
 
-/** Wire mirror of backend `DeliveryDetail`. */
+/**
+ * Wire mirror of backend `DeliveryDetail`.
+ *
+ * `senderDisplay` + `senderId` (D8): IG-aware identity, returned by the
+ * backend for every delivery regardless of channel type. WA channels get
+ * `senderDisplay` mirroring `fromPhone`; IG channels carry the `@handle` +
+ * IG scoped ID. Falls back to `fromPhone` in the CLI sender chain for
+ * pre-D8 backends.
+ *
+ * `humanStatusTooltip`: GUI-only field (tooltip text shown on hover in the
+ * web UI). Carried on the DTO for shape parity with sandbox/logs.ts; the
+ * CLI never renders it and `toLogsJson()` strips it from `--json` output.
+ */
 export interface DeliveryDetail {
   id: string;
   workspaceId: string;
@@ -54,11 +69,28 @@ export interface DeliveryDetail {
   isSandbox: boolean;
   requestId: string | null;
   fromPhone: string | null;
+  senderDisplay: string | null;
+  senderId: string | null;
   receivedAt: string;
   humanStatus: string;
   humanStatusCopy: string;
+  humanStatusTooltip: string | null;
   humanStatusColor: 'green' | 'red' | 'gray';
   attempts: DeliveryAttempt[];
+}
+
+/**
+ * JSON-mode projection. `humanStatusTooltip` + `humanStatusColor` are
+ * GUI-only (CLI has no tooltips; colors come from picocolors, not the
+ * backend hex hint). Stripping them keeps the agent-facing stream lean and
+ * avoids implying the backend's color choice is canonical for terminals.
+ * Mirrors sandbox/logs.ts `toLogsJson()` byte-for-byte (D8 parity).
+ */
+export function toLogsJson(
+  d: DeliveryDetail,
+): Omit<DeliveryDetail, 'humanStatusTooltip' | 'humanStatusColor'> {
+  const { humanStatusTooltip: _t, humanStatusColor: _c, ...rest } = d;
+  return rest;
 }
 
 /** Wire mirror of the backend `GET /deliveries` list response. */
@@ -148,4 +180,98 @@ export async function fetchAllDeliveries(
   }
 
   return { deliveries, nextCursor, floorHours };
+}
+
+/**
+ * SSE async generator for `channels logs list --follow`. Opens a stream to
+ * `GET /deliveries/stream?scope=channel:<publicId>`, parses `delivery`
+ * events, fetches the full DeliveryDetail per eventId, and yields each one.
+ *
+ * Mirrors the SSE parsing logic in `src/commands/sandbox/logs.ts` runFollow —
+ * the protocol is identical, only the `scope` value differs (channel: vs
+ * sandbox-session:). Per the plan's DRY guidance the two functions stay
+ * duplicated until a third caller appears, since channel vs sandbox have
+ * different scope shapes and per-row render dispatch.
+ *
+ * Auth: explicit `Authorization: Bearer` + `X-Workspace-Id` header, same as
+ * apiClient. Stops on `taken_over` or `closed` events, or when the stream
+ * naturally ends.
+ */
+export async function* streamDeliveries(args: {
+  channelPublicId: string;
+  workspaceId: string;
+}): AsyncIterableIterator<DeliveryDetail> {
+  const { channelPublicId, workspaceId } = args;
+
+  const creds = await readCredentials();
+  if (!creds) {
+    throw new AuthError('Not logged in. Run: hookmyapp login');
+  }
+
+  const base = getEffectiveApiUrl().replace(/\/$/, '');
+  const scope = `channel:${channelPublicId}`;
+  const url = `${base}/deliveries/stream?scope=${encodeURIComponent(scope)}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${creds.accessToken}`,
+        'X-Workspace-Id': workspaceId,
+        Accept: 'text/event-stream',
+      },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new AuthError(`SSE connect failed: ${msg}`);
+  }
+
+  if (!res.ok || !res.body) {
+    throw new AuthError(`SSE connect failed: HTTP ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const seenIds = new Set<string>();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE events are double-newline-delimited.
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) !== -1) {
+      const chunk = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+
+      let event = 'message';
+      let data = '';
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('event:')) {
+          event = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          data += line.slice(5).trim();
+        }
+      }
+
+      if (event === 'delivery' && data) {
+        try {
+          const payload = JSON.parse(data) as { eventId?: string };
+          const eventId = payload.eventId;
+          if (!eventId || seenIds.has(eventId)) continue;
+          seenIds.add(eventId);
+          const detail = await fetchDeliveryDetail(eventId, workspaceId);
+          yield detail;
+        } catch {
+          // Skip malformed event or transient fetch error.
+        }
+      }
+
+      if (event === 'taken_over' || event === 'closed') {
+        return;
+      }
+    }
+  }
 }
