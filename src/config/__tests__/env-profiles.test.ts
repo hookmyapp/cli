@@ -16,7 +16,9 @@ import {
   getEffectiveAppUrl,
   getEffectiveWorkosClientId,
   getEffectiveSandboxProxyUrl,
+  getEffectiveSandboxInstagramUsername,
 } from '../env-profiles.js';
+import { ConfigurationError } from '../../output/error.js';
 
 describe('env-profiles: built-in profiles', () => {
   it('defines production as default', () => {
@@ -213,5 +215,31 @@ describe('env-profiles: getEffectiveSandboxProxyUrl', () => {
       setPersistedEnv('staging');
       expect(getEffectiveSandboxProxyUrl()).toBe('https://staging-sandbox.hookmyapp.com');
     });
+  });
+});
+
+describe('getEffectiveSandboxInstagramUsername', () => {
+  const originalEnv = process.env.HOOKMYAPP_ENV;
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.HOOKMYAPP_ENV;
+    else process.env.HOOKMYAPP_ENV = originalEnv;
+  });
+
+  it('returns @hookmyappsandboxstaging in local', () => {
+    process.env.HOOKMYAPP_ENV = 'local';
+    expect(getEffectiveSandboxInstagramUsername()).toBe('@hookmyappsandboxstaging');
+  });
+
+  it('returns @hookmyappsandboxstaging in staging', () => {
+    process.env.HOOKMYAPP_ENV = 'staging';
+    expect(getEffectiveSandboxInstagramUsername()).toBe('@hookmyappsandboxstaging');
+  });
+
+  it('throws ConfigurationError in production (handle not yet provisioned)', () => {
+    process.env.HOOKMYAPP_ENV = 'production';
+    expect(() => getEffectiveSandboxInstagramUsername()).toThrow(ConfigurationError);
+    expect(() => getEffectiveSandboxInstagramUsername()).toThrow(
+      /Instagram sandbox is not configured for production yet/,
+    );
   });
 });
