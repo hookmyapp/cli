@@ -8,7 +8,7 @@ vi.mock('../../_helpers.js', () => ({
 }));
 
 import { apiClient } from '../../../api/client.js';
-import { runSandboxWebhookSet } from '../webhook.js';
+import { runSandboxWebhookSet, runSandboxWebhookShow } from '../webhook.js';
 import { ValidationError } from '../../../output/error.js';
 import type {
   WhatsAppSandboxSession,
@@ -85,6 +85,50 @@ describe('runSandboxWebhookSet — positional alone emits deprecation warning (D
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('[deprecated]'));
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('--phone'));
     errSpy.mockRestore();
+  });
+});
+
+describe('runSandboxWebhookShow — JSON shape preserved from pre-0.12.2 sandbox.ts', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+  });
+
+  it('WA + no custom webhook → mode:"cli" with sessionId/identifier/phone/tunnelUrl', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([
+      { ...wa, hostname: 'wa-abc.cloudflare.example', webhookUrl: null },
+    ]);
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runSandboxWebhookShow({ session: 'ssn_WA000001', json: true });
+    const payload = JSON.parse(outSpy.mock.calls[0][0] as string);
+    expect(payload).toEqual({
+      sessionId: 'ssn_WA000001',
+      type: 'whatsapp',
+      identifier: '+15551234567',
+      phone: '15551234567',
+      webhookUrl: null,
+      mode: 'cli',
+      tunnelUrl: 'https://wa-abc.cloudflare.example/webhook',
+    });
+    outSpy.mockRestore();
+  });
+
+  it('IG + custom webhookUrl → mode:"custom", phone:null (channel-agnostic identifier wins)', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([
+      { ...ig, hostname: 'ig-xyz.cloudflare.example', webhookUrl: 'https://my.example/hook' },
+    ]);
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runSandboxWebhookShow({ session: 'ssn_IG000001', json: true });
+    const payload = JSON.parse(outSpy.mock.calls[0][0] as string);
+    expect(payload).toEqual({
+      sessionId: 'ssn_IG000001',
+      type: 'instagram',
+      identifier: '@ordvir',
+      phone: null,
+      webhookUrl: 'https://my.example/hook',
+      mode: 'custom',
+      tunnelUrl: 'https://ig-xyz.cloudflare.example/webhook',
+    });
+    outSpy.mockRestore();
   });
 });
 
