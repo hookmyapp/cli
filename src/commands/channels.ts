@@ -1,6 +1,5 @@
 import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
-import { output } from '../output/format.js';
 import { c } from '../output/color.js';
 import { renderTable } from '../output/table.js';
 import { CliError, ValidationError } from '../output/error.js';
@@ -77,6 +76,21 @@ export async function resolveChannel(ref: string): Promise<Channel> {
       );
     }
   }
+}
+
+/**
+ * Type-aware human-readable label for a Channel, used in success-message
+ * output for `channels disconnect/enable/disable` (Task B7). The
+ * discriminated-union shape gives the compiler full narrowing.
+ *
+ *   whatsapp  → "WhatsApp +972…"
+ *   instagram → "Instagram @ordvir"
+ *   messenger → "Messenger ch_XXXXXXXX"
+ */
+function channelLabel(c: Channel): string {
+  if (c.type === 'whatsapp') return `WhatsApp ${c.displayPhoneNumber ?? c.wabaName ?? c.id}`;
+  if (c.type === 'instagram') return `Instagram @${c.instagramUsername ?? c.id}`;
+  return `Messenger ${c.id}`;
 }
 
 function throwNoMatch(needle: string, channels: Channel[]): never {
@@ -283,6 +297,51 @@ export async function runChannelsShow(
   if (detail.businessName) console.log(`Business: ${detail.businessName}`);
 }
 
+/**
+ * Exported handler for `hookmyapp channels disconnect <ref>` (Task B7).
+ *
+ * Type-agnostic at the backend layer (the endpoint accepts any channel id);
+ * the CLI-side improvement is the type-aware human success line via
+ * `channelLabel`. The previous implementation piped the raw backend
+ * response through `output()`, which surfaced opaque JSON like
+ * `{ enabled: true }`. `--json` mode is intentionally not preserved on these
+ * toggles — the success line is the contract.
+ */
+export async function runChannelsDisconnect(ref: string): Promise<void> {
+  const channel = await resolveChannel(ref);
+  await apiClient(`/meta/channels/${channel.id}/disconnect`, {
+    method: 'POST',
+    workspaceId: channel.workspaceId,
+  });
+  console.log(`✓ Disconnected ${channelLabel(channel)}`);
+}
+
+/**
+ * Exported handler for `hookmyapp channels enable <ref>` (Task B7).
+ * Companion to `runChannelsDisconnect` — same docstring rationale.
+ */
+export async function runChannelsEnable(ref: string): Promise<void> {
+  const channel = await resolveChannel(ref);
+  await apiClient(`/meta/channels/${channel.id}/enable`, {
+    method: 'POST',
+    workspaceId: channel.workspaceId,
+  });
+  console.log(`✓ Enabled forwarding on ${channelLabel(channel)}`);
+}
+
+/**
+ * Exported handler for `hookmyapp channels disable <ref>` (Task B7).
+ * Companion to `runChannelsDisconnect` — same docstring rationale.
+ */
+export async function runChannelsDisable(ref: string): Promise<void> {
+  const channel = await resolveChannel(ref);
+  await apiClient(`/meta/channels/${channel.id}/disable`, {
+    method: 'POST',
+    workspaceId: channel.workspaceId,
+  });
+  console.log(`✓ Disabled forwarding on ${channelLabel(channel)}`);
+}
+
 export function registerChannelsCommand(program: Command): void {
   const channels = program.command('channels').description('Manage WhatsApp channels');
 
@@ -328,12 +387,7 @@ export function registerChannelsCommand(program: Command): void {
     .description('Disconnect a channel')
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
-      const channel = await resolveChannel(channelRef);
-      const result = await apiClient(`/meta/channels/${channel.id}/disconnect`, {
-        method: 'POST',
-        workspaceId: channel.workspaceId,
-      });
-      output(result, { human: !program.opts().json });
+      await runChannelsDisconnect(channelRef);
     });
 
   const channelsEnable = channels
@@ -341,12 +395,7 @@ export function registerChannelsCommand(program: Command): void {
     .description('Enable forwarding for a channel')
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
-      const channel = await resolveChannel(channelRef);
-      const result = await apiClient(`/meta/channels/${channel.id}/enable`, {
-        method: 'POST',
-        workspaceId: channel.workspaceId,
-      });
-      output(result, { human: !program.opts().json });
+      await runChannelsEnable(channelRef);
     });
 
   const channelsDisable = channels
@@ -354,12 +403,7 @@ export function registerChannelsCommand(program: Command): void {
     .description('Disable forwarding for a channel')
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
-      const channel = await resolveChannel(channelRef);
-      const result = await apiClient(`/meta/channels/${channel.id}/disable`, {
-        method: 'POST',
-        workspaceId: channel.workspaceId,
-      });
-      output(result, { human: !program.opts().json });
+      await runChannelsDisable(channelRef);
     });
 
   // ─── Canonical nested commands (D9) ────────────────────────────────────
