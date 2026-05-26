@@ -87,7 +87,7 @@ export async function resolveChannel(ref: string): Promise<Channel> {
  *   instagram → "Instagram @ordvir"
  *   messenger → "Messenger ch_XXXXXXXX"
  */
-function channelLabel(c: Channel): string {
+export function channelLabel(c: Channel): string {
   if (c.type === 'whatsapp') return `WhatsApp ${c.displayPhoneNumber ?? c.wabaName ?? c.id}`;
   if (c.type === 'instagram') return `Instagram @${c.instagramUsername ?? c.id}`;
   return `Messenger ${c.id}`;
