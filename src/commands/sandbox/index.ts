@@ -168,14 +168,13 @@ export function registerSandboxCommand(program: Command): void {
 
   const sandboxLogs = sandbox
     .command('logs')
-    .description('Read webhook delivery logs for a sandbox session (same data as the GUI Deliveries panel)')
+    .description('Verbose dump of webhook deliveries for a sandbox session (inbound body + forward attempt inline)')
     .option('--phone <e164>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--limit <n>', 'Number of deliveries (1-100, default 50)', (v) => parseInt(v, 10))
     .option('-f, --follow', 'Stream new deliveries as they arrive (Ctrl+C to stop)')
-    .option('--detail <id>', 'Show the full inbound body + forward attempt for one delivery (8-char prefix from the list view or full UUID)')
-    .option('--json', 'Machine-readable JSONL (one delivery per line)')
+    .option('--json', 'Machine-readable JSONL (one full delivery DTO per line)')
     .action(
       async (opts: {
         phone?: string;
@@ -183,7 +182,6 @@ export function registerSandboxCommand(program: Command): void {
         session?: string;
         limit?: number;
         follow?: boolean;
-        detail?: string;
         json?: boolean;
       }) => {
         await runSandboxLogs({ ...opts, json: !!(opts.json || program.opts().json) });
@@ -193,10 +191,9 @@ export function registerSandboxCommand(program: Command): void {
     sandboxLogs,
     `EXAMPLES:
   $ hookmyapp sandbox logs --username @ordvir
-  $ hookmyapp sandbox logs --phone +15551234567 --limit 20
+  $ hookmyapp sandbox logs --phone +15551234567 --limit 10
   $ hookmyapp sandbox logs --username @ordvir --follow
-  $ hookmyapp sandbox logs --username @ordvir --json | jq
-  $ hookmyapp sandbox logs --detail a1b2c3d4`,
+  $ hookmyapp sandbox logs --username @ordvir --json | jq`,
   );
 
   const sandboxWebhook = sandbox
