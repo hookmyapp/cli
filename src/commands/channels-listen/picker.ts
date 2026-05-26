@@ -67,9 +67,9 @@ export async function pickChannel(
  * filter (e.g. `channels listen`, post-login wizard) should use `pickChannel`
  * which delegates here after filtering.
  *
- * Generic over the channel shape so the resolver in `channels.ts` can pass
- * its own `ApiChannel` (where `forwardingEnabled` is optional) without
- * needing a structural cast — only the display fields are required.
+ * Generic over the channel shape so callers in `channels.ts` can pass a
+ * `Channel` (where `forwardingEnabled` is required) or any other structurally
+ * compatible shape — only the display fields are required.
  */
 export async function selectChannel<
   T extends {
