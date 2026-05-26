@@ -30,7 +30,7 @@ export function registerSandboxCommand(program: Command): void {
     .option('--listen', 'After bind, immediately start the webhook listener')
     .option('--json', 'Machine-readable output')
     .action(async (opts: { type?: 'whatsapp' | 'instagram'; listen?: boolean; json?: boolean }) => {
-      await runSandboxStart(opts);
+      await runSandboxStart({ ...opts, json: !!program.opts().json });
     });
   addExamples(
     sandboxStart,
@@ -46,7 +46,7 @@ export function registerSandboxCommand(program: Command): void {
     .description('Show active sandbox sessions')
     .option('--json', 'Machine-readable output')
     .action(async (opts: { json?: boolean }) => {
-      await runSandboxStatus(opts);
+      await runSandboxStatus({ ...opts, json: !!program.opts().json });
     });
   addExamples(
     sandboxStatus,
@@ -71,7 +71,7 @@ export function registerSandboxCommand(program: Command): void {
         yes?: boolean;
         json?: boolean;
       }) => {
-        await runSandboxStop(opts);
+        await runSandboxStop({ ...opts, json: !!program.opts().json });
       },
     );
   addExamples(
@@ -101,7 +101,7 @@ export function registerSandboxCommand(program: Command): void {
         force?: boolean;
         json?: boolean;
       }) => {
-        await runSandboxEnv(opts);
+        await runSandboxEnv({ ...opts, json: !!program.opts().json });
       },
     );
   addExamples(
@@ -129,7 +129,7 @@ export function registerSandboxCommand(program: Command): void {
         message?: string;
         json?: boolean;
       }) => {
-        await runSandboxSend(opts);
+        await runSandboxSend({ ...opts, json: !!program.opts().json });
       },
     );
   addExamples(
@@ -157,7 +157,7 @@ export function registerSandboxCommand(program: Command): void {
         positionalPhone: string | undefined,
         opts: { phone?: string; username?: string; session?: string; json?: boolean },
       ) => {
-        await runSandboxWebhookShow({ positionalPhone, ...opts });
+        await runSandboxWebhookShow({ positionalPhone, ...opts, json: !!program.opts().json });
       },
     );
   addExamples(
@@ -188,7 +188,7 @@ export function registerSandboxCommand(program: Command): void {
           json?: boolean;
         },
       ) => {
-        await runSandboxWebhookSet({ positionalPhone, ...opts });
+        await runSandboxWebhookSet({ positionalPhone, ...opts, json: !!program.opts().json });
       },
     );
   addExamples(
@@ -214,7 +214,7 @@ export function registerSandboxCommand(program: Command): void {
         positionalPhone: string | undefined,
         opts: { phone?: string; username?: string; session?: string; json?: boolean },
       ) => {
-        await runSandboxWebhookClear({ positionalPhone, ...opts });
+        await runSandboxWebhookClear({ positionalPhone, ...opts, json: !!program.opts().json });
       },
     );
   addExamples(
