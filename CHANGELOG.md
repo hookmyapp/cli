@@ -33,6 +33,10 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 - **Phase B (D6):** `login --next channels` becomes channel-type-aware — prompts for type in TTY; exits 2 in non-TTY.
 - **Phase B (D9):** **Wire contract change** — `channels logs list --json` now emits JSONL (one detail DTO per line) instead of the raw page envelope. Any automation that parsed the previous page payload must switch to line-delimited JSON parsing.
 
+### Fixed
+
+- **Phase B (D2):** `channels connect` no longer hangs the full 5-minute `CONNECT_TIMEOUT` when re-authing an existing channel. The post-OAuth poll now snapshots `{channelId -> updatedAt}` before opening the browser and treats either a new channel id OR an existing id whose `updatedAt` advanced past the snapshot as "interesting." Token rotation against an existing WABA/IG handle (the common case when the operator picks the same business again) is detected and reported within the 4-second stability window. Requires the paired backend addition of `updatedAt` to the `/meta/channels` list DTO; older backends fall back to id-diff-only behavior.
+
 ## 0.12.1 — 2026-05-17
 
 ### Breaking
