@@ -2154,126 +2154,21 @@ git commit -m "feat(channels/connect): type chooser (D2) + login wizard becomes 
 
 ---
 
-### Task B6: Connect — coexistence multi-channel polling (D2 acceptance criteria)
+### Task B6: Create `channels-connect-poll.ts` + test the REAL polling helper
 
 **Files:**
-- Modify: `src/commands/channels.ts`
+- Create: `src/commands/channels-connect-poll.ts`
+- Create: `src/commands/__tests__/channels-connect-poll.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+Tests for `pollForNewChannels` MUST live in their own test file (not
+`channels-connect.test.ts`) because that file has a top-level
+`vi.mock('../commands/channels-connect-poll.js')` from Task B5 — adding
+the poll tests there would test the mock, not the real helper. Separate
+file = real module = real behavior under test.
 
-```typescript
-// In src/__tests__/channels-connect.test.ts
-describe('runChannelsConnect — coexistence multi-channel polling (D2)', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.mocked(apiClient).mockReset();
-  });
-  afterEach(() => vi.useRealTimers());
+- [ ] **Step 1: Implement `pollForNewChannels` in its own module**
 
-  it('reports BOTH channels that appear during the 4s stability window', async () => {
-    const wa = {
-      id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
-      metaWabaId: '1179', metaResourceId: '1080', connectionType: 'cloud_api',
-      metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-      wabaName: 'New WABA', displayPhoneNumber: '+15551234567', phoneNumberId: '1080',
-      phoneVerifiedName: 'Test', qualityRating: null, qualityRatingCheckedAt: null,
-    };
-    const ig = {
-      id: 'ch_NEW_IG', type: 'instagram', workspaceId: 'ws_TEST0001',
-      metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
-      metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-      instagramUsername: 'newhandle', instagramName: 'New', instagramProfilePictureUrl: null,
-    };
-    // IMPORTANT mock ordering — matches the race-safe call order in
-    // runChannelsConnect (Task B5):
-    //   1. GET /meta/channels — snapshot BEFORE open()
-    //   2. POST /meta/oauth/start — get redirectUrl
-    //   3-N. GET /meta/channels — poll loop
-    vi.mocked(apiClient)
-      .mockResolvedValueOnce([])                                      // 1. snapshot before open (empty workspace)
-      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example', codeChallenge: 'c' })  // 2. OAuth start
-      .mockResolvedValueOnce([wa])                                    // 3. poll 1: WA appeared
-      .mockResolvedValueOnce([wa, ig])                                // 4. poll 2: IG appeared
-      .mockResolvedValueOnce([wa, ig])                                // 5. poll 3: stable
-      .mockResolvedValueOnce([wa, ig]);                               // 6. poll 4: stable → exit
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const promise = runChannelsConnect({ type: 'whatsapp' });
-    await vi.advanceTimersByTimeAsync(2000); // poll 1
-    await vi.advanceTimersByTimeAsync(2000); // poll 2 → 4s window resets
-    await vi.advanceTimersByTimeAsync(2000); // poll 3 → 4s window started after IG
-    await vi.advanceTimersByTimeAsync(2000); // poll 4 → 4s stable → exit
-    await promise;
-    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-    expect(combined).toContain('ch_NEW_WA');
-    expect(combined).toContain('ch_NEW_IG');
-    expect(combined).toContain('WhatsApp');
-    expect(combined).toContain('Instagram');
-    logSpy.mockRestore();
-  });
-
-  it('race-safe: a channel that already exists in the initial snapshot is NOT reported', async () => {
-    const preExisting = {
-      id: 'ch_PRE_EXISTING', type: 'whatsapp', workspaceId: 'ws_TEST0001',
-      metaWabaId: '1179', metaResourceId: '1080', connectionType: 'cloud_api',
-      metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-      wabaName: 'Pre-existing', displayPhoneNumber: '+15550000000', phoneNumberId: '1080',
-      phoneVerifiedName: 'Pre', qualityRating: null, qualityRatingCheckedAt: null,
-    };
-    const wa = {
-      id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
-      metaWabaId: '1179', metaResourceId: '2222', connectionType: 'cloud_api',
-      metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-      wabaName: 'New WABA', displayPhoneNumber: '+15551234567', phoneNumberId: '2222',
-      phoneVerifiedName: 'Test', qualityRating: null, qualityRatingCheckedAt: null,
-    };
-    vi.mocked(apiClient)
-      .mockResolvedValueOnce([preExisting])                  // 1. snapshot — preExisting already present
-      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example', codeChallenge: 'c' })  // 2. OAuth
-      .mockResolvedValueOnce([preExisting, wa])              // 3. poll 1: wa is new
-      .mockResolvedValueOnce([preExisting, wa])              // 4. poll 2: stable
-      .mockResolvedValueOnce([preExisting, wa]);             // 5. poll 3: stable → exit
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const promise = runChannelsConnect({ type: 'whatsapp' });
-    await vi.advanceTimersByTimeAsync(2000);
-    await vi.advanceTimersByTimeAsync(2000);
-    await vi.advanceTimersByTimeAsync(2000);
-    await promise;
-    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-    expect(combined).toContain('ch_NEW_WA');
-    expect(combined).not.toContain('ch_PRE_EXISTING'); // ← the race-safety assertion
-    logSpy.mockRestore();
-  });
-
-  it('hard timeout at 5 minutes', async () => {
-    vi.mocked(apiClient)
-      .mockResolvedValueOnce([])                              // 1. snapshot
-      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example', codeChallenge: 'c' })  // 2. OAuth
-      .mockResolvedValue([]);                                 // 3+. every poll returns no new channels
-    const promise = runChannelsConnect({ type: 'instagram' });
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
-    await expect(promise).rejects.toThrow(/timed out|no channels appeared/i);
-  });
-});
-```
-
-- [ ] **Step 2: Run the test to verify it fails**
-
-```bash
-npx vitest run src/__tests__/channels-connect.test.ts -t "coexistence"
-```
-
-Expected: FAIL — old `runChannelsConnect` stops at first new channel.
-
-- [ ] **Step 3: Implement `pollForNewChannels` in its OWN module**
-
-Create a new file `src/commands/channels-connect-poll.ts` (not inside
-`channels.ts`). Module boundaries are the only ESM mechanism that lets
-tests intercept the poll call via `vi.mock`. If `pollForNewChannels`
-lived inside `channels.ts` alongside `runChannelsConnect`, vi-mocking it
-would intercept callers from OTHER files but not the internal call from
-`runChannelsConnect` itself — that one would bind to the local function
-reference, not the mocked export. The integration tests would then hit
-the real 2s poll loop and either time out or pass for the wrong reasons.
+Create `src/commands/channels-connect-poll.ts`:
 
 ```typescript
 // src/commands/channels-connect-poll.ts
@@ -2281,7 +2176,6 @@ import { apiClient } from '../api/client.js';
 import { parseChannelListItem, type Channel } from '../api/channel.js';
 import { CliError } from '../output/error.js';
 
-```typescript
 /**
  * D2 polling acceptance criteria:
  *   1. Caller snapshots existing channel ids BEFORE opening OAuth (race-safe).
@@ -2295,8 +2189,11 @@ import { CliError } from '../output/error.js';
  * doing the snapshot inside this helper after the browser launches races a
  * fast backend write where the new channel could be included in the
  * "existing" snapshot and never reported.
+ *
+ * EXPORTED (not just declared) so other modules can import it AND so
+ * vi.mock can intercept the import boundary in tests for runChannelsConnect.
  */
-async function pollForNewChannels(
+export async function pollForNewChannels(
   workspaceId: string,
   existingIds: ReadonlySet<string>,
 ): Promise<Channel[]> {
@@ -2329,21 +2226,142 @@ async function pollForNewChannels(
 }
 ```
 
-The polling helper itself is invoked from `runChannelsConnect` (already defined in Task B5 — the snapshot is taken BEFORE `open()`, then `pollForNewChannels(workspaceId, existingIds)` is called AFTER). No additional wiring needed here — Task B5 establishes the call shape.
+- [ ] **Step 2: Write tests for the REAL `pollForNewChannels` in its own test file**
 
-- [ ] **Step 4: Run the tests**
+Create `src/commands/__tests__/channels-connect-poll.test.ts`:
 
-```bash
-npx vitest run src/__tests__/channels-connect.test.ts
+```typescript
+// src/commands/__tests__/channels-connect-poll.test.ts
+//
+// CRITICAL: this file does NOT mock '../channels-connect-poll.js' —
+// we want to test the REAL polling loop. The sibling test file
+// (channels-connect.test.ts) DOES mock it, which is why these tests
+// have to live separately.
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+vi.mock('../../api/client.js', () => ({ apiClient: vi.fn() }));
+
+import { apiClient } from '../../api/client.js';
+import { pollForNewChannels } from '../channels-connect-poll.js';
+
+const wa = {
+  id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+  metaWabaId: '1179', metaResourceId: '1080', connectionType: 'cloud_api',
+  metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+  wabaName: 'New WABA', displayPhoneNumber: '+15551234567', phoneNumberId: '1080',
+  phoneVerifiedName: 'Test', qualityRating: null, qualityRatingCheckedAt: null,
+};
+const ig = {
+  id: 'ch_NEW_IG', type: 'instagram', workspaceId: 'ws_TEST0001',
+  metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+  metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+  instagramUsername: 'newhandle', instagramName: 'New', instagramProfilePictureUrl: null,
+};
+
+describe('pollForNewChannels — D2 acceptance criteria', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.mocked(apiClient).mockReset();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('returns BOTH channels appearing within the 4s stability window', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([wa])           // poll 1: WA appeared
+      .mockResolvedValueOnce([wa, ig])       // poll 2: IG appeared (within 4s of WA)
+      .mockResolvedValueOnce([wa, ig])       // poll 3: stable
+      .mockResolvedValueOnce([wa, ig]);      // poll 4: stable → exit
+    const promise = pollForNewChannels('ws_TEST0001', new Set());
+    await vi.advanceTimersByTimeAsync(2000); // poll 1
+    await vi.advanceTimersByTimeAsync(2000); // poll 2 → stability window resets
+    await vi.advanceTimersByTimeAsync(2000); // poll 3 → window started after IG
+    await vi.advanceTimersByTimeAsync(2000); // poll 4 → 4s stable → exit
+    const result = await promise;
+    expect(result.map((c) => c.id).sort()).toEqual(['ch_NEW_IG', 'ch_NEW_WA']);
+  });
+
+  it('race-safe: a channel already in existingIds is NOT included in the result', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([{ id: 'ch_PRE_EXISTING', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+        metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
+        metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+        wabaName: null, displayPhoneNumber: null, phoneNumberId: null,
+        phoneVerifiedName: null, qualityRating: null, qualityRatingCheckedAt: null }, wa])
+      .mockResolvedValueOnce([{ id: 'ch_PRE_EXISTING' } as any, wa])
+      .mockResolvedValueOnce([{ id: 'ch_PRE_EXISTING' } as any, wa]);
+    const promise = pollForNewChannels('ws_TEST0001', new Set(['ch_PRE_EXISTING']));
+    await vi.advanceTimersByTimeAsync(2000); // poll 1: wa is new
+    await vi.advanceTimersByTimeAsync(2000); // poll 2: stable
+    await vi.advanceTimersByTimeAsync(2000); // poll 3: 4s stable → exit
+    const result = await promise;
+    expect(result.map((c) => c.id)).toEqual(['ch_NEW_WA']);
+    expect(result.map((c) => c.id)).not.toContain('ch_PRE_EXISTING');
+  });
+
+  it('rejects with CONNECT_TIMEOUT after 5 minutes of no new channels', async () => {
+    vi.mocked(apiClient).mockResolvedValue([]); // every poll returns no new channels
+    const promise = pollForNewChannels('ws_TEST0001', new Set());
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
+    await expect(promise).rejects.toThrow(/No channels appeared within 5 minutes/);
+  });
+});
 ```
 
-Expected: PASS.
+- [ ] **Step 3: Add a `runChannelsConnect` integration test that asserts BOTH new channels reach the user-facing render**
+
+This test belongs in `src/__tests__/channels-connect.test.ts` (the file that already has the `pollForNewChannels` mock from Task B5). Add a new `describe` block that uses the mock to return both channels at once:
+
+```typescript
+describe('runChannelsConnect — reports all new channels by type (D7)', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(pollForNewChannels).mockResolvedValue([
+      {
+        id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+        metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
+        metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+        wabaName: null, displayPhoneNumber: '+15551234567', phoneNumberId: '1',
+        phoneVerifiedName: null, qualityRating: null, qualityRatingCheckedAt: null,
+      } as any,
+      {
+        id: 'ch_NEW_IG', type: 'instagram', workspaceId: 'ws_TEST0001',
+        metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+        metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+        instagramUsername: 'newhandle', instagramName: 'New', instagramProfilePictureUrl: null,
+      } as any,
+    ]);
+    process.stdout.isTTY = true;
+  });
+
+  it('prints both WhatsApp +phone and Instagram @handle in the post-connect summary', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])                                                      // snapshot
+      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example', codeChallenge: 'c' });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsConnect({ type: 'whatsapp' });
+    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(combined).toContain('WhatsApp');
+    expect(combined).toContain('+15551234567');
+    expect(combined).toContain('Instagram');
+    expect(combined).toContain('@newhandle');
+    logSpy.mockRestore();
+  });
+});
+```
+
+- [ ] **Step 4: Run all three test files**
+
+```bash
+npx vitest run src/commands/__tests__/channels-connect-poll.test.ts src/__tests__/channels-connect.test.ts
+```
+
+Expected: PASS — both pure-poller tests AND the integration render test.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/commands/channels.ts src/__tests__/channels-connect.test.ts
-git commit -m "feat(channels/connect): coexistence polling (snapshot + stability + timeout) per D2"
+git add src/commands/channels-connect-poll.ts src/commands/__tests__/channels-connect-poll.test.ts src/__tests__/channels-connect.test.ts
+git commit -m "feat(channels/connect): pollForNewChannels module (D2 acceptance) + render-all-by-type integration test (D7)"
 ```
 
 ---
