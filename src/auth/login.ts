@@ -9,6 +9,7 @@ import {
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
 import { posthogAliasAndIdentify } from '../observability/posthog.js';
+import { parseSandboxSessions, type WhatsAppSandboxSession } from '../api/sandbox-session.js';
 
 // --- Phase 122 bootstrap-code exchange DTO ---
 // Mirrors backend/src/auth/bootstrap/dto/exchange-bootstrap.dto.ts (Wave 1
@@ -38,17 +39,6 @@ interface Workspace {
   slug?: string;
 }
 
-interface SandboxSessionLite {
-  id: string;
-  workspaceId?: string;
-  phone: string | null;
-  status: string;
-  // Phase 126: consumed bind code persists on SandboxSession as `accessToken`
-  // (the starter-kit WHATSAPP_ACCESS_TOKEN). See 126-CONTEXT.md §1 for the
-  // rename rationale.
-  accessToken: string;
-  hmacSecret: string;
-}
 
 export interface WizardOpts {
   /** Skip sandbox session picker; use this phone (creates it if missing). */
@@ -380,10 +370,17 @@ export async function runSandboxFlow(
     );
   }
 
-  const sessions = (await apiClient('/sandbox/sessions?active=true', {
+  const dto = await apiClient('/sandbox/sessions?active=true', {
     method: 'GET',
     workspaceId,
-  })) as SandboxSessionLite[];
+  });
+  const allSessions = parseSandboxSessions(dto);
+  // `login --next sandbox --phone +X` legacy path: WA-only by definition. An IG
+  // session cannot fall into this code path even if one exists, because the
+  // matching field doesn't apply. Filter explicitly so the intent is grep-able.
+  const sessions = allSessions.filter(
+    (s): s is WhatsAppSandboxSession => s.type === 'whatsapp',
+  );
 
   // --phone is authoritative: match against existing active sessions only.
   // Phase 126 — we do NOT POST /sandbox/sessions here (endpoint deleted);
@@ -417,7 +414,7 @@ export async function runSandboxFlow(
     // prints the bind code + QR, polls, and (with --listen) chains into
     // runSandboxListenFlow so the final UX is identical to the legacy
     // "create + listen" single step.
-    const { runSandboxStart } = await import('../commands/sandbox.js');
+    const { runSandboxStart } = await import('../commands/sandbox/start.js');
     await runSandboxStart({ listen: true, json: opts.json });
     return;
   }
@@ -430,19 +427,19 @@ export async function runSandboxFlow(
   // N sessions → picker over existing active sessions. No "+ Create new"
   // sentinel — binding is inbound-message-driven; if the user wants to
   // bind another phone they run `hookmyapp sandbox start` directly.
-  const choice = (await select<SandboxSessionLite>({
+  const choice = (await select<WhatsAppSandboxSession>({
     message: 'Select a sandbox session',
     choices: sessions.map((s) => ({
       name: `+${(s.phone ?? '').replace(/^\+/, '')} (${s.status})`,
       value: s,
     })),
-  })) as SandboxSessionLite;
+  })) as WhatsAppSandboxSession;
 
   await startListen(choice, workspaceId, opts.json);
 }
 
 async function startListen(
-  session: SandboxSessionLite,
+  session: WhatsAppSandboxSession,
   workspaceId: string,
   _json?: boolean,
 ): Promise<void> {
@@ -451,7 +448,7 @@ async function startListen(
   const fullSession = {
     id: session.id,
     workspaceId: session.workspaceId ?? workspaceId,
-    phone: session.phone,
+    phone: session.phone ?? null,
     status: session.status,
     lastHeartbeatAt: null,
   };

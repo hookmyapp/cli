@@ -46,11 +46,8 @@ vi.mock('../sandbox-listen/index.js', () => ({
 }));
 
 const runSandboxStartMock = vi.fn();
-vi.mock('../sandbox.js', () => ({
-  registerSandboxCommand: vi.fn(),
+vi.mock('../sandbox/start.js', () => ({
   runSandboxStart: runSandboxStartMock,
-  runSandboxSend: vi.fn(),
-  runSandboxEnv: vi.fn(),
 }));
 
 vi.mock('../../commands/workspace.js', () => ({
@@ -100,10 +97,16 @@ describe('wizard sandbox sub-flow — Phase 126 bind-code rework', () => {
     apiClientMock.mockResolvedValueOnce([
       {
         id: 'ssn_TESTonly',
+        type: 'whatsapp',
         phone: '15551112222',
+        whatsappPhone: '+15551112222',
+        whatsappPhoneNumberId: 'pnid_only',
+        sandboxPhoneNumberId: 'spnid_only',
+        whatsappApiVersion: 'v20.0',
         accessToken: 'abc12345',
         hmacSecret: 'HMAC_only',
         status: 'active',
+        origin: 'sandbox',
       },
     ]);
     await runSandboxFlow();
@@ -117,13 +120,45 @@ describe('wizard sandbox sub-flow — Phase 126 bind-code rework', () => {
 
   it('N sessions → picker over existing sessions only (NO "+ Create new")', async () => {
     apiClientMock.mockResolvedValueOnce([
-      { id: 'a', phone: '15551111111', status: 'active' },
-      { id: 'b', phone: '15552222222', status: 'active' },
+      {
+        id: 'a',
+        type: 'whatsapp',
+        phone: '15551111111',
+        whatsappPhone: '+15551111111',
+        whatsappPhoneNumberId: 'pnid_a',
+        sandboxPhoneNumberId: 'spnid_a',
+        whatsappApiVersion: 'v20.0',
+        accessToken: 'tok_a',
+        hmacSecret: 'hmac_a',
+        status: 'active',
+        origin: 'sandbox',
+      },
+      {
+        id: 'b',
+        type: 'whatsapp',
+        phone: '15552222222',
+        whatsappPhone: '+15552222222',
+        whatsappPhoneNumberId: 'pnid_b',
+        sandboxPhoneNumberId: 'spnid_b',
+        whatsappApiVersion: 'v20.0',
+        accessToken: 'tok_b',
+        hmacSecret: 'hmac_b',
+        status: 'active',
+        origin: 'sandbox',
+      },
     ]);
     selectMock.mockResolvedValueOnce({
       id: 'a',
+      type: 'whatsapp',
       phone: '15551111111',
+      whatsappPhone: '+15551111111',
+      whatsappPhoneNumberId: 'pnid_a',
+      sandboxPhoneNumberId: 'spnid_a',
+      whatsappApiVersion: 'v20.0',
+      accessToken: 'tok_a',
+      hmacSecret: 'hmac_a',
       status: 'active',
+      origin: 'sandbox',
     });
     await runSandboxFlow();
     const pickerCall = selectMock.mock.calls[0][0];
@@ -145,8 +180,32 @@ describe('wizard sandbox sub-flow — Phase 126 bind-code rework', () => {
 
   it('--phone matches existing session → direct listen', async () => {
     apiClientMock.mockResolvedValueOnce([
-      { id: 'a', phone: '15551234567', status: 'active' },
-      { id: 'b', phone: '15552222222', status: 'active' },
+      {
+        id: 'a',
+        type: 'whatsapp',
+        phone: '15551234567',
+        whatsappPhone: '+15551234567',
+        whatsappPhoneNumberId: 'pnid_a',
+        sandboxPhoneNumberId: 'spnid_a',
+        whatsappApiVersion: 'v20.0',
+        accessToken: 'tok_a',
+        hmacSecret: 'hmac_a',
+        status: 'active',
+        origin: 'sandbox',
+      },
+      {
+        id: 'b',
+        type: 'whatsapp',
+        phone: '15552222222',
+        whatsappPhone: '+15552222222',
+        whatsappPhoneNumberId: 'pnid_b',
+        sandboxPhoneNumberId: 'spnid_b',
+        whatsappApiVersion: 'v20.0',
+        accessToken: 'tok_b',
+        hmacSecret: 'hmac_b',
+        status: 'active',
+        origin: 'sandbox',
+      },
     ]);
     await runSandboxFlow({ phone: '+15551234567' });
     expect(selectMock).not.toHaveBeenCalled();
