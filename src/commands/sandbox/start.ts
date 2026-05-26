@@ -157,20 +157,8 @@ export async function runSandboxStart(opts: {
             console.log(`Session created. ${ident}. Token: ${session.accessToken}`);
           }
           if (opts.listen) {
-            // In-process chain into `sandbox listen` (matches existing precedent
-            // for the WA --listen flag). Task 12 will wire this through the new
-            // unified picker contract once the listen integration lands.
             const { runSandboxListenFlow } = await import('../sandbox-listen/index.js');
-            await runSandboxListenFlow(
-              {
-                id: session.id,
-                workspaceId,
-                phone: session.type === 'whatsapp' ? session.whatsappPhone : null,
-                status: session.status,
-                lastHeartbeatAt: session.lastHeartbeatAt ?? null,
-              } as any,
-              {},
-            );
+            await runSandboxListenFlow({ ...session, workspaceId });
           }
           return;
         }
