@@ -83,6 +83,15 @@ interface DeliveryDetail {
   attempts: DeliveryAttemptDetail[];
 }
 
+// JSON-mode projection. humanStatusTooltip + humanStatusColor are GUI-only
+// (CLI has no tooltips; colors are picocolors-driven, not hex hints from the
+// backend). Stripping them keeps the agent-facing stream lean and avoids
+// implying the backend's color choice is canonical for terminal renderers.
+function toLogsJson(d: DeliveryDetail): Omit<DeliveryDetail, 'humanStatusTooltip' | 'humanStatusColor'> {
+  const { humanStatusTooltip: _t, humanStatusColor: _c, ...rest } = d;
+  return rest;
+}
+
 // ---------------------------------------------------------------------------
 // Relative time helper — mirrors GUI's formatRelative() in delivery-row.tsx
 // (lines 88-114). Pure function; tested directly in logs.test.ts.
@@ -279,7 +288,7 @@ export async function runSandboxLogs(opts: {
     // JSON mode: fetch full detail for each summary and emit one DTO per line.
     for (const summary of initial.deliveries) {
       const detail = (await apiClient(`/deliveries/${summary.id}`, { workspaceId })) as DeliveryDetail;
-      process.stdout.write(JSON.stringify(detail) + '\n');
+      process.stdout.write(JSON.stringify(toLogsJson(detail)) + '\n');
     }
   } else {
     // Human mode: empty state or verbose blocks.
@@ -391,7 +400,7 @@ async function runFollow(args: {
           // Fetch full delivery detail for the verbose block.
           const detail = (await apiClient(`/deliveries/${eventId}`, { workspaceId })) as DeliveryDetail;
           if (isJson) {
-            process.stdout.write(JSON.stringify(detail) + '\n');
+            process.stdout.write(JSON.stringify(toLogsJson(detail)) + '\n');
           } else {
             printVerboseDelivery(detail, session.type);
           }
