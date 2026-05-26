@@ -445,16 +445,11 @@ async function startListen(
 ): Promise<void> {
   // IMPORTANT: direct function import — NEVER subprocess spawn.
   const { runSandboxListenFlow } = await import('../commands/sandbox-listen/index.js');
-  // login.ts is superseded by Task 15's per-subcommand split; this cast bridges
-  // the old wire shape to the new Session (= SandboxSession discriminated union)
-  // until that migration lands.
-  const fullSession = {
-    id: session.id,
+  const fullSession: WhatsAppSandboxSession = {
+    ...session,
     workspaceId: session.workspaceId ?? workspaceId,
-    phone: session.phone ?? null,
-    status: session.status,
     lastHeartbeatAt: null,
-  } as unknown as import('../commands/sandbox-listen/picker.js').Session;
+  };
   await runSandboxListenFlow(fullSession);
 }
 
