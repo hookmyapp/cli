@@ -273,9 +273,14 @@ function printSummaryDelivery(d: DeliveryDetail): void {
   const time = new Date(d.receivedAt).toLocaleString();
   const sender = d.senderDisplay ?? d.senderId ?? '(unknown)';
   const lastAttempt = d.attempts[d.attempts.length - 1];
-  const target = lastAttempt?.forwardUrl
-    ? new URL(lastAttempt.forwardUrl).host
-    : '(no forward URL set)';
+  const target = (() => {
+    if (!lastAttempt?.forwardUrl) return '(no forward URL set)';
+    try {
+      return new URL(lastAttempt.forwardUrl).host;
+    } catch {
+      return '(invalid forward URL)';
+    }
+  })();
   const status =
     lastAttempt === undefined
       ? '—'
