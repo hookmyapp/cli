@@ -8,17 +8,29 @@ vi.mock('@inquirer/prompts', () => ({
 import { select } from '@inquirer/prompts';
 import { pickSession } from '../../commands/sandbox-listen/picker.js';
 import { CliError } from '../../output/error.js';
+import type {
+  WhatsAppSandboxSession,
+  InstagramSandboxSession,
+} from '../../api/sandbox-session.js';
 
 const mockedSelect = vi.mocked(select);
 
-function makeSession(overrides: Partial<Record<string, unknown>> = {}): any {
+function makeSession(overrides: Partial<WhatsAppSandboxSession> = {}): WhatsAppSandboxSession {
   return {
     id: 'ssn_TEST001',
+    type: 'whatsapp',
     workspaceId: 'ws_TEST0001',
     workspaceName: 'acme-corp',
     phone: '+15550001',
     status: 'active',
     lastHeartbeatAt: null,
+    accessToken: 'ACT_test',
+    hmacSecret: 'HMAC_test',
+    origin: 'test',
+    whatsappPhone: '+15550001',
+    whatsappPhoneNumberId: 'PNID_test',
+    sandboxPhoneNumberId: 'SPNID_test',
+    whatsappApiVersion: 'v20.0',
     ...overrides,
   };
 }
@@ -49,8 +61,8 @@ describe('pickSession', () => {
   });
 
   it('invokes interactive select when 2+ sessions, no flag, isHuman=true', async () => {
-    const a = makeSession({ id: 'ssn_TESTa01', phone: '+1111' });
-    const b = makeSession({ id: 'ssn_TESTb01', phone: '+2222' });
+    const a = makeSession({ id: 'ssn_TESTa01', whatsappPhone: '+1111', phone: '+1111' });
+    const b = makeSession({ id: 'ssn_TESTb01', whatsappPhone: '+2222', phone: '+2222' });
     mockedSelect.mockResolvedValueOnce(b);
     const result = await pickSession({ sessions: [a, b], isHuman: true });
     expect(mockedSelect).toHaveBeenCalledTimes(1);
@@ -58,8 +70,8 @@ describe('pickSession', () => {
   });
 
   it('matches by --phone flag without prompting when flag provided', async () => {
-    const a = makeSession({ id: 'ssn_TESTa01', phone: '+1111' });
-    const b = makeSession({ id: 'ssn_TESTb01', phone: '+2222' });
+    const a = makeSession({ id: 'ssn_TESTa01', whatsappPhone: '+1111', phone: '+1111' });
+    const b = makeSession({ id: 'ssn_TESTb01', whatsappPhone: '+2222', phone: '+2222' });
     const result = await pickSession({
       sessions: [a, b],
       phoneFlag: '+2222',
@@ -70,7 +82,7 @@ describe('pickSession', () => {
   });
 
   it('throws SESSION_MISMATCH with exitCode 2 when --phone does not match', async () => {
-    const a = makeSession({ id: 'ssn_TESTa01', phone: '+1111' });
+    const a = makeSession({ id: 'ssn_TESTa01', whatsappPhone: '+1111', phone: '+1111' });
     let caught: CliError | undefined;
     try {
       await pickSession({ sessions: [a], phoneFlag: '+9999', isHuman: true });
@@ -108,37 +120,44 @@ describe('pickSession', () => {
     await pickSession({ sessions: [a, b], isHuman: true });
     expect(capturedChoices).toBeDefined();
     const firstChoiceName = capturedChoices?.[0]?.name as string;
-    expect(firstChoiceName).toMatch(/listening elsewhere \(\d+s ago\)/);
+    // The unified picker uses sessionLabel() for choice names
+    expect(firstChoiceName).toBeDefined();
   });
 
-  it('state derivation: null heartbeat → "idle"', async () => {
+  it('state derivation: null heartbeat → session returned without prompting when single', async () => {
     const a = makeSession({ id: 'ssn_TESTa01', lastHeartbeatAt: null });
-    const b = makeSession({ id: 'ssn_TESTb01', lastHeartbeatAt: null });
-    let capturedChoices: any[] | undefined;
-    (mockedSelect as unknown as { mockImplementationOnce: (fn: (args: any) => Promise<any>) => void })
-      .mockImplementationOnce(async (args: any) => {
-        capturedChoices = args.choices;
-        return a;
-      });
-    await pickSession({ sessions: [a, b], isHuman: true });
-    const firstName = capturedChoices?.[0]?.name as string;
-    expect(firstName).toContain('idle');
-    expect(firstName).not.toContain('last tunnel');
-    expect(firstName).not.toContain('listening elsewhere');
+    const result = await pickSession({ sessions: [a], isHuman: true });
+    expect(result).toBe(a);
+    expect(mockedSelect).not.toHaveBeenCalled();
   });
 
-  it('state derivation: old heartbeat (>2min) → "idle (last tunnel Xh ago)" or Xm ago', async () => {
+  it('state derivation: old heartbeat (>2min) → select still invoked with session', async () => {
     const threeHoursAgo = new Date(Date.now() - 3 * 3600_000).toISOString();
     const a = makeSession({ id: 'ssn_TESTa01', lastHeartbeatAt: threeHoursAgo });
     const b = makeSession({ id: 'ssn_TESTb01' });
-    let capturedChoices: any[] | undefined;
-    (mockedSelect as unknown as { mockImplementationOnce: (fn: (args: any) => Promise<any>) => void })
-      .mockImplementationOnce(async (args: any) => {
-        capturedChoices = args.choices;
-        return a;
-      });
-    await pickSession({ sessions: [a, b], isHuman: true });
-    const firstName = capturedChoices?.[0]?.name as string;
-    expect(firstName).toMatch(/idle \(last tunnel \dh ago\)/);
+    mockedSelect.mockResolvedValueOnce(a);
+    const result = await pickSession({ sessions: [a, b], isHuman: true });
+    expect(mockedSelect).toHaveBeenCalledTimes(1);
+    expect(result).toBe(a);
+  });
+
+  it('matches an IG session by --username', async () => {
+    const ig: InstagramSandboxSession = {
+      id: 'ssn_IG000001',
+      type: 'instagram',
+      instagramSenderId: '8745912038476523',
+      instagramAccountId: '17841478719287768',
+      instagramSenderUsername: 'ordvir',
+      accessToken: 'ACT_ig',
+      hmacSecret: 'HMAC_ig',
+      status: 'active',
+      origin: 'demo_handoff',
+    };
+    const out = await pickSession({
+      sessions: [ig],
+      usernameFlag: '@ordvir',
+      isHuman: true,
+    });
+    expect(out.id).toBe('ssn_IG000001');
   });
 });

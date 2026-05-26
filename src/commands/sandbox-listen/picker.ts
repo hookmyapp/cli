@@ -4,103 +4,35 @@
 //   0 sessions → throw NO_ACTIVE_SESSIONS (exit 2)
 //   1 session → return silently (auto-select)
 //   2+ + no flag + human TTY → interactive @inquirer/prompts select
-//   --phone / --session flag → exact match or SESSION_MISMATCH (exit 2) — NO fallback
+//   --phone / --username / --session flag → exact match or SESSION_MISMATCH (exit 2) — NO fallback
 //     to interactive (CI must be deterministic).
 
-import { select } from '@inquirer/prompts';
-import { CliError, ValidationError } from '../../output/error.js';
+import { pickSession as unifiedPick } from '../sandbox/picker.js';
+import { sessionIdentifier } from '../sandbox/helpers.js';
 import { renderTable } from '../../output/table.js';
 import { c } from '../../output/color.js';
+import { ValidationError } from '../../output/error.js';
+import { select } from '@inquirer/prompts';
+import type { SandboxSession } from '../../api/sandbox-session.js';
 
-export interface Session {
-  id: string;
-  workspaceId: string;
-  workspaceName?: string | null;
-  phone: string | null;
-  status: string;
-  lastHeartbeatAt: string | null;
-}
+export type Session = SandboxSession;
 
 export interface PickSessionArgs {
   sessions: Session[];
   phoneFlag?: string;
+  usernameFlag?: string;
   sessionFlag?: string;
   isHuman: boolean;
 }
 
 export async function pickSession(args: PickSessionArgs): Promise<Session> {
-  const { sessions, phoneFlag, sessionFlag, isHuman } = args;
-
-  // 0 sessions → hard exit 2.
-  if (sessions.length === 0) {
-    const err = new CliError(
-      'No active sandbox sessions. Create one in the dashboard or via hookmyapp sandbox start.',
-      'NO_ACTIVE_SESSIONS',
-    );
-    err.exitCode = 2;
-    throw err;
-  }
-
-  // Flag-driven path (CI-friendly). Never falls back to picker on mismatch.
-  if (phoneFlag || sessionFlag) {
-    // Normalize phoneFlag: backend strips leading + before persisting, so
-    // exact-match against stored phone must do the same.
-    const normalizedPhone = phoneFlag?.replace(/^\+/, '');
-    const match = sessions.find(
-      (s) =>
-        (normalizedPhone &&
-          s.phone &&
-          s.phone.replace(/^\+/, '') === normalizedPhone) ||
-        (sessionFlag && s.id === sessionFlag),
-    );
-    if (!match) {
-      const needle = phoneFlag
-        ? `--phone=${phoneFlag}`
-        : `--session=${sessionFlag}`;
-      const err = new CliError(
-        `No active session matches ${needle}. Run hookmyapp sandbox status to list.`,
-        'SESSION_MISMATCH',
-      );
-      err.exitCode = 2;
-      throw err;
-    }
-    return match;
-  }
-
-  // Single session → silent auto-select.
-  if (sessions.length === 1) {
-    return sessions[0];
-  }
-
-  // 2+ sessions, no flag. In non-human (--json / piped) mode we still need a
-  // pick, but without a flag it's ambiguous — surface the same mismatch error.
-  if (!isHuman) {
-    const err = new CliError(
-      'Multiple active sessions. Disambiguate with --phone or --session (required in --json mode).',
-      'SESSION_MISMATCH',
-    );
-    err.exitCode = 2;
-    throw err;
-  }
-
-  // Interactive picker. Preview the sessions as a cli-table3 table above
-  // the select prompt so users see phone + status + Listener state at a
-  // glance (the one-line choice strings are harder to scan).
-  process.stdout.write(renderSessionTable(sessions) + '\n');
-  return select<Session>({
-    message: 'Choose session',
-    choices: sessions.map((s) => ({
-      name: renderRow(s),
-      value: s,
-    })),
+  return unifiedPick({
+    sessions: args.sessions,
+    phoneFlag: args.phoneFlag,
+    usernameFlag: args.usernameFlag,
+    sessionFlag: args.sessionFlag,
+    isHuman: args.isHuman,
   });
-}
-
-/** Format one picker row: "Test phone · Workspace · State". */
-function renderRow(s: Session): string {
-  const phone = s.phone ?? '(no phone)';
-  const workspace = s.workspaceName ?? s.workspaceId;
-  return `${phone}   ${workspace}   ${deriveState(s.lastHeartbeatAt)}`;
 }
 
 /**
@@ -180,31 +112,25 @@ export async function pickSessionByPhone<T extends MinimalSession>(
 }
 
 /**
- * Render a cli-table3 table of sandbox sessions with a "Listener" state
- * column derived from `lastHeartbeatAt`:
+ * Render a cli-table3 table of sandbox sessions with Type | Identifier |
+ * Status | Listener columns. Used as a preview header above the interactive
+ * picker prompt.
+ *
+ * Listener state derived from `lastHeartbeatAt`:
  *   live (green, <90s)  → currently being listened to
  *   idle (dim, ≥90s)    → heartbeat seen but stale
  *   (empty)             → never listened to
- *
- * Used as a preview header above the interactive picker prompt.
  */
-export function renderSessionTable(
-  sessions: Array<{
-    phone: string | null;
-    status: string;
-    lastHeartbeatAt?: string | null;
-  }>,
-): string {
+export function renderSessionTable(sessions: SandboxSession[]): string {
   return renderTable(
     sessions.map((s) => {
       const ts = s.lastHeartbeatAt ? Date.parse(s.lastHeartbeatAt) : NaN;
       const live = Number.isFinite(ts) && Date.now() - ts < 90_000;
       let listener = '';
-      if (s.lastHeartbeatAt) {
-        listener = live ? c.success('live') : c.dim('idle');
-      }
+      if (s.lastHeartbeatAt) listener = live ? c.success('live') : c.dim('idle');
       return {
-        Phone: s.phone ? `+${s.phone.replace(/^\+/, '')}` : '',
+        Type: s.type === 'whatsapp' ? 'WhatsApp' : 'Instagram',
+        Identifier: sessionIdentifier(s),
         Status: s.status,
         Listener: listener,
       };

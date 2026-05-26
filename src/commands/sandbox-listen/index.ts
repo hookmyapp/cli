@@ -13,6 +13,7 @@
 
 import type { Command } from 'commander';
 import { apiClient } from '../../api/client.js';
+import { parseSandboxSessions } from '../../api/sandbox-session.js';
 import { CliError, AuthError, ConflictError, ValidationError } from '../../output/error.js';
 import { resolveEnv } from '../../config/env-profiles.js';
 import { addExamples } from '../../output/help.js';
@@ -36,6 +37,7 @@ export interface ListenOpts {
   port: number;
   path: string;
   phone?: string;
+  username?: string;
   session?: string;
   verbose: boolean;
   json: boolean;
@@ -172,15 +174,20 @@ export async function runSandboxListenFlow(
   // path below emits cli_sandbox_listen_stopped with duration_seconds.
   // All emits are fire-and-forget; fail-open in posthog.ts ensures
   // observability blips never break the listen command.
+  // workspaceId is required for all downstream calls; callers guarantee it is
+  // set (sessionWithWorkspace in the action handler coalesces it before passing
+  // to this function). The ?? '' is a compile-time guard for the optional field
+  // on SandboxSessionBase; at runtime workspaceId is always a real string here.
+  const effectiveWorkspaceId = session.workspaceId ?? '';
   const listenStartedAt = Date.now();
   void emit('cli_sandbox_listen_started', {
     cli_version: getCliVersion(),
     session_public_id: session.id,
-    workspace_public_id: session.workspaceId,
+    workspace_public_id: effectiveWorkspaceId,
   });
   const posthogLiveness = startPosthogLiveness({
     sessionId: session.id,
-    workspaceId: session.workspaceId,
+    workspaceId: effectiveWorkspaceId,
   });
 
   // Step 9 — tunnel heartbeat loop (pings backend /tunnel/heartbeat every 30s
@@ -188,7 +195,7 @@ export async function runSandboxListenFlow(
   // which is pure analytics every 5 minutes — CONTEXT.md §5 decision).
   const hb = startHeartbeat({
     sessionId: session.id,
-    workspaceId: session.workspaceId,
+    workspaceId: effectiveWorkspaceId,
     intervalMs: 30_000,
     onError: (err) => {
       process.stderr.write(
@@ -284,8 +291,9 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       3000,
     )
     .option('--path <p>', 'Webhook path on your app', '/webhook')
-    .option('--phone <e164>', 'Skip session picker by test phone')
-    .option('--session <id>', 'Skip session picker by session publicId (ssn_XXXXXXXX)')
+    .option('--phone <e164>', 'Select WhatsApp session by phone')
+    .option('--username <handle>', 'Select Instagram session by @handle')
+    .option('--session <id>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--verbose', 'Print full request/response bodies', false)
     .option('--json', 'Machine-readable event log', false)
     .option(
@@ -320,16 +328,18 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       // produces typed subclasses (AuthError/NetworkError/ConflictError/...)
       // with the correct exit codes — let them propagate to main().
       const workspaceId = await getDefaultWorkspaceId();
-      const sessions = (await apiClient('/sandbox/sessions?active=true', {
+      const dto = await apiClient('/sandbox/sessions?active=true', {
         method: 'GET',
         workspaceId,
-      })) as Session[];
+      });
+      const sessions = parseSandboxSessions(dto);
 
       // Step 5 — pick. pickSession throws CliError (exit 2) for
       // NO_ACTIVE_SESSIONS / SESSION_MISMATCH — let main() format + exit.
       const chosen = await pickSession({
         sessions,
         phoneFlag: opts.phone,
+        usernameFlag: opts.username,
         sessionFlag: opts.session,
         isHuman: human,
       });
@@ -352,7 +362,9 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
 EXAMPLES:
   $ hookmyapp sandbox listen
   $ hookmyapp sandbox listen --phone +15551234567 --port 3000
+  $ hookmyapp sandbox listen --username @ordvir
   $ hookmyapp sandbox listen --path /webhook --verbose
+  $ hookmyapp sandbox listen --session ssn_POWomFvq
   $ nohup hookmyapp sandbox listen --port 3000 &     # background / CI
 `,
   );
