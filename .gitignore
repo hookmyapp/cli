@@ -13,5 +13,8 @@ test-integration/.cache/
 # npm pack output
 *.tgz
 
+# Stray pnpm-lock left by contributors using pnpm — repo is npm-locked
+pnpm-lock.yaml
+
 # superpowers skill worktrees
 .worktrees/

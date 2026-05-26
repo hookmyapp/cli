@@ -13,7 +13,7 @@ import {
 import { c, icon } from '../../output/color.js';
 import { ValidationError } from '../../output/error.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
-import { sessionLabel } from './helpers.js';
+import { sessionIdentifier, sessionLabel } from './helpers.js';
 import { pickSession } from './picker.js';
 
 interface BaseOpts {
@@ -67,8 +67,28 @@ async function pickForWebhook(opts: BaseOpts, alwaysShowPicker: boolean) {
 export async function runSandboxWebhookShow(opts: BaseOpts): Promise<void> {
   const { session } = await pickForWebhook(opts, false);
   const url = session.webhookUrl ?? null;
+  const tunnelUrl = session.hostname ? `https://${session.hostname}/webhook` : null;
+  const mode: 'cli' | 'custom' = !url || url === tunnelUrl ? 'cli' : 'custom';
   if (opts.json) {
-    process.stdout.write(JSON.stringify({ webhookUrl: url }, null, 2) + '\n');
+    // Structured shape preserved from pre-0.12.2 sandbox.ts so existing
+    // scripts that branch on mode/tunnelUrl/sessionId keep working. `phone`
+    // is retained only for WhatsApp rows (the field never existed on IG);
+    // new code should prefer `identifier` + `type` for channel-agnostic logic.
+    process.stdout.write(
+      JSON.stringify(
+        {
+          sessionId: session.id,
+          type: session.type,
+          identifier: sessionIdentifier(session),
+          phone: session.type === 'whatsapp' ? session.whatsappPhone : null,
+          webhookUrl: url,
+          mode,
+          tunnelUrl,
+        },
+        null,
+        2,
+      ) + '\n',
+    );
     return;
   }
   if (!url) {
