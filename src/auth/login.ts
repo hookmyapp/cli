@@ -390,7 +390,7 @@ export async function runSandboxFlow(
   if (opts.phone) {
     const normalized = opts.phone.replace(/^\+/, '');
     const match = sessions.find(
-      (s) => s.phone && s.phone.replace(/^\+/, '') === normalized,
+      (s) => s.whatsappPhone.replace(/^\+/, '') === normalized,
     );
     if (match) {
       await startListen(match, workspaceId, opts.json);
@@ -430,7 +430,7 @@ export async function runSandboxFlow(
   const choice = (await select<WhatsAppSandboxSession>({
     message: 'Select a sandbox session',
     choices: sessions.map((s) => ({
-      name: `+${(s.phone ?? '').replace(/^\+/, '')} (${s.status})`,
+      name: `+${s.whatsappPhone.replace(/^\+/, '')} (${s.status})`,
       value: s,
     })),
   })) as WhatsAppSandboxSession;
