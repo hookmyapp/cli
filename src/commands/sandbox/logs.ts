@@ -1,19 +1,23 @@
-// `hookmyapp sandbox logs` — verbose dump of webhook delivery logs for a sandbox session.
+// `hookmyapp sandbox logs` — webhook delivery logs for a sandbox session.
 //
-// Verbose-by-default: every delivery prints with the full inbound body + forward
-// attempt(s) inline. Debugging is the only use case for this command — no flag
-// exploration needed to get full bodies. Mirrors the GUI Deliveries panel's
-// expanded-row content (inbound body + forward request + app response).
+// Table-by-default (D9): every delivery prints as a one-line summary
+//   <time>  <sender>  →  <target-host>  <status> (<latency>)  "<preview>"
+// answering "did the message reach my server?" and "what did it say back?"
+// without scrolling. Use --verbose for the full dump (inbound body + forward
+// attempt request/response) when drilling into a single delivery — the
+// `kubectl get pods` → `kubectl describe pod X` pattern.
 //
 // Modes:
-//   default      : fetch last N deliveries, print verbose block per delivery (human)
+//   default      : fetch last N deliveries, print one-line summary per delivery
+//   --verbose    : full inbound body + forward attempt block per delivery (pre-flip default)
 //   --json       : JSONL (one full detail DTO per line, no styling)
-//   --follow / -f: print initial verbose dump then stream new deliveries in same format
+//   --follow / -f: print initial dump then stream new deliveries in same format
 //
-// N+1 note: Verbose-by-default makes one GET /deliveries/<id> call per row. At
-// default limit=50 that's ~51 API calls. Acceptable for a debug command. A batch
-// detail endpoint would reduce to 2 calls; defer until we have telemetry showing
-// latency pain.
+// N+1 note: Both human modes make one GET /deliveries/<id> call per row to
+// pull the inbound body + attempt detail (the list endpoint only returns
+// summaries). At default limit=50 that's ~51 API calls. Acceptable for a
+// debug command. A batch detail endpoint would reduce to 2 calls; defer until
+// we have telemetry showing latency pain.
 
 import pc from 'picocolors';
 import { apiClient } from '../../api/client.js';
@@ -211,7 +215,7 @@ export function printVerboseDelivery(detail: DeliveryDetail, sessionType: string
   console.log();
 
   // Inbound body section
-  console.log(`  What ${noun} sent us:`);
+  console.log(`  Inbound: What ${noun} sent us:`);
   console.log(formatBodyForTerminal(detail.inboundBody));
   console.log();
 
@@ -253,6 +257,58 @@ export function printVerboseDelivery(detail: DeliveryDetail, sessionType: string
 }
 
 // ---------------------------------------------------------------------------
+// Summary renderer (D9 — table-by-default) — one line per delivery.
+//
+// Columns: <local-time>  <senderDisplay>  →  <target-host>  <status>  (<latency>ms)  "<preview>"
+//
+// The two questions a customer reading `sandbox logs` is answering are
+//   1. did the message reach my server?
+//   2. what did my server say back?
+// Both are visible per row without scrolling. --verbose returns the
+// old verbose dump for the rare "I want to see EVERYTHING about ONE row"
+// case (kubectl get pods → kubectl describe pod X pattern).
+// ---------------------------------------------------------------------------
+
+function printSummaryDelivery(d: DeliveryDetail): void {
+  const time = new Date(d.receivedAt).toLocaleString();
+  const sender = d.senderDisplay ?? d.senderId ?? '(unknown)';
+  const lastAttempt = d.attempts[d.attempts.length - 1];
+  const target = lastAttempt?.forwardUrl
+    ? new URL(lastAttempt.forwardUrl).host
+    : '(no forward URL set)';
+  const status =
+    lastAttempt === undefined
+      ? '—'
+      : lastAttempt.forwardStatus !== null
+        ? `${lastAttempt.forwardStatus}`
+        : lastAttempt.outcome; // 'timeout' | 'network_error' | 'success' (latter ⇒ status was set)
+  const latency =
+    lastAttempt?.forwardDurationMs !== null && lastAttempt?.forwardDurationMs !== undefined
+      ? `${lastAttempt.forwardDurationMs}ms`
+      : '';
+  const preview = previewInbound(d.inboundBody);
+  process.stdout.write(
+    `${time}  ${sender}  →  ${target}  ${status}${latency ? ` (${latency})` : ''}  ${preview}\n`,
+  );
+}
+
+function previewInbound(body: string | null): string {
+  if (!body) return '(empty)';
+  let text: string;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    // Common WA + IG message shapes carry a text body in `text` or `message.text`.
+    const obj = parsed as { text?: unknown; message?: { text?: unknown } } | null;
+    text = String(obj?.text ?? obj?.message?.text ?? body);
+  } catch {
+    text = body;
+  }
+  text = text.replace(/\s+/g, ' ').trim();
+  if (text.length > 40) text = text.slice(0, 40) + '…';
+  return `"${text}"`;
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -264,6 +320,7 @@ export async function runSandboxLogs(opts: {
   limit?: number;
   follow?: boolean;
   json?: boolean;
+  verbose?: boolean;
 }): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
   const dto = await apiClient('/sandbox/sessions?active=true', { workspaceId });
@@ -301,7 +358,11 @@ export async function runSandboxLogs(opts: {
     } else {
       for (const summary of initial.deliveries) {
         const detail = (await apiClient(`/deliveries/${summary.id}`, { workspaceId })) as DeliveryDetail;
-        printVerboseDelivery(detail, session.type);
+        if (opts.verbose) {
+          printVerboseDelivery(detail, session.type);
+        } else {
+          printSummaryDelivery(detail);
+        }
       }
     }
   }
@@ -313,6 +374,7 @@ export async function runSandboxLogs(opts: {
     scope,
     workspaceId,
     isJson: !!opts.json,
+    verbose: !!opts.verbose,
     session,
     seenIds: new Set(initial.deliveries.map((d) => d.id)),
   });
@@ -332,10 +394,11 @@ async function runFollow(args: {
   scope: string;
   workspaceId: string;
   isJson: boolean;
+  verbose: boolean;
   session: SandboxSession;
   seenIds: Set<string>;
 }): Promise<void> {
-  const { scope, workspaceId, isJson, session, seenIds } = args;
+  const { scope, workspaceId, isJson, verbose, session, seenIds } = args;
 
   const creds = await readCredentials();
   if (!creds) {
@@ -403,8 +466,10 @@ async function runFollow(args: {
           const detail = (await apiClient(`/deliveries/${eventId}`, { workspaceId })) as DeliveryDetail;
           if (isJson) {
             process.stdout.write(JSON.stringify(toLogsJson(detail)) + '\n');
-          } else {
+          } else if (verbose) {
             printVerboseDelivery(detail, session.type);
+          } else {
+            printSummaryDelivery(detail);
           }
         } catch {
           // Skip malformed event or transient fetch error.

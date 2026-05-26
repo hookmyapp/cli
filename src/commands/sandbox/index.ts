@@ -201,7 +201,7 @@ export function registerSandboxCommand(program: Command): void {
 
   const sandboxLogs = sandbox
     .command('logs')
-    .description('Verbose dump of webhook deliveries for a sandbox session (inbound body + forward attempt inline)')
+    .description('List recent webhook deliveries for a sandbox session (one-line summary by default; --verbose for full body+attempt)')
     .argument(
       '[identifier]',
       'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
@@ -211,6 +211,7 @@ export function registerSandboxCommand(program: Command): void {
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--limit <n>', 'Number of deliveries (1-100, default 50)', (v) => parseInt(v, 10))
     .option('-f, --follow', 'Stream new deliveries as they arrive (Ctrl+C to stop)')
+    .option('-v, --verbose', 'Full inbound body + forward attempt dump (default is one-line summary)')
     .option('--json', 'Machine-readable JSONL (one full delivery DTO per line)')
     .action(
       async (
@@ -221,6 +222,7 @@ export function registerSandboxCommand(program: Command): void {
           session?: string;
           limit?: number;
           follow?: boolean;
+          verbose?: boolean;
           json?: boolean;
         },
       ) => {

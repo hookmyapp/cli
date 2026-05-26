@@ -184,10 +184,10 @@ describe('formatRelativeTime', () => {
 });
 
 // ---------------------------------------------------------------------------
-// List mode (verbose-by-default)
+// List mode (human)
 // ---------------------------------------------------------------------------
 
-describe('runSandboxLogs — list mode (verbose-by-default)', () => {
+describe('runSandboxLogs — list mode (human)', () => {
   beforeEach(() => {
     vi.mocked(apiClient).mockReset();
   });
@@ -235,7 +235,7 @@ describe('runSandboxLogs — list mode (verbose-by-default)', () => {
     logSpy.mockRestore();
   });
 
-  it('renders "What WhatsApp sent us:" for a WA session', async () => {
+  it('renders "What WhatsApp sent us:" for a WA session (--verbose)', async () => {
     const detail = makeDetail();
     vi.mocked(apiClient)
       .mockResolvedValueOnce([wa])
@@ -243,7 +243,7 @@ describe('runSandboxLogs — list mode (verbose-by-default)', () => {
       .mockResolvedValueOnce(detail);
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    await runSandboxLogs({ phone: '+15551234567' });
+    await runSandboxLogs({ phone: '+15551234567', verbose: true });
 
     const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
     expect(output).toContain('What WhatsApp sent us:');
@@ -252,7 +252,7 @@ describe('runSandboxLogs — list mode (verbose-by-default)', () => {
     logSpy.mockRestore();
   });
 
-  it('renders "What Instagram sent us:" for an IG session', async () => {
+  it('renders "What Instagram sent us:" for an IG session (--verbose)', async () => {
     const detail = makeIgDetail();
     vi.mocked(apiClient)
       .mockResolvedValueOnce([ig])
@@ -260,7 +260,7 @@ describe('runSandboxLogs — list mode (verbose-by-default)', () => {
       .mockResolvedValueOnce(detail);
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    await runSandboxLogs({ username: '@ordvir' });
+    await runSandboxLogs({ username: '@ordvir', verbose: true });
 
     const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
     expect(output).toContain('What Instagram sent us:');
@@ -323,7 +323,7 @@ describe('runSandboxLogs — list mode (verbose-by-default)', () => {
     logSpy.mockRestore();
   });
 
-  it('renders "(No forward attempt — destination wasn\'t reachable.)" for zero-attempts delivery', async () => {
+  it('renders "(No forward attempt — destination wasn\'t reachable.)" for zero-attempts delivery (--verbose)', async () => {
     const summary = makeDelivery({ attemptsCount: 0, humanStatus: 'Not delivered', humanStatusColor: 'red', latestAttempt: null });
     const detail = makeDetail({ attempts: [], humanStatus: 'Not delivered', humanStatusColor: 'red', routingDecision: 'forwarded' });
 
@@ -333,7 +333,7 @@ describe('runSandboxLogs — list mode (verbose-by-default)', () => {
       .mockResolvedValueOnce(detail);
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    await runSandboxLogs({ phone: '+15551234567' });
+    await runSandboxLogs({ phone: '+15551234567', verbose: true });
 
     const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
     expect(output).toContain("destination wasn't reachable");
