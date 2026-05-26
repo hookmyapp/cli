@@ -11,6 +11,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 - `--session <ssn_XXXXXXXX>` promoted to a universal selector across the same five subcommand groups (was sandbox-listen-only).
 - `INSTAGRAM_API_URL`, `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_ACCOUNT_ID` env vars emitted by `sandbox env` when the selected session is Instagram.
 - Boundary parser that validates every `GET /sandbox/sessions*` response into a `WhatsAppSandboxSession | InstagramSandboxSession` discriminated union. Malformed wire data surfaces as `UnexpectedError` (`MALFORMED_SANDBOX_SESSION`, exit 1).
+- `hookmyapp sandbox start <whatsapp|instagram>` positional shortcut — alternative to `--type=<channel>` (both still supported; conflict errors if positional and flag disagree).
 
 ### Deprecated
 
