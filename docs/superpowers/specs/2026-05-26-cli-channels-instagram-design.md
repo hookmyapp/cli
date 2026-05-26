@@ -46,7 +46,22 @@ All ~12 subcommands (`list`, `show`, `connect`, `disconnect`, `enable`, `disable
 
 `hookmyapp channels connect whatsapp` opens Meta Embedded Signup (covers cloud_api and coexistence — Meta presents the picker in the browser). `hookmyapp channels connect instagram` opens the single configured IG OAuth URL. No `--via` sub-flag for the IG side; the current product reality is one IG OAuth config.
 
-In both flows, post-connect the CLI polls `GET /meta/channels` and reports every channel that appeared during the polling window. The coexistence case — one OAuth flow registers both a WA and an IG channel — is reported naturally as `✓ Connected: WhatsApp +972... + Instagram @handle`.
+**Bare `channels connect` backward compatibility.** Today `hookmyapp channels connect` (no positional) calls `runChannelsConnect()` directly — it's invoked both manually and by `login --next channels` (see `src/commands/channels.ts:160` and the login wizard at `src/auth/login.ts`). Bare connect cannot become a hard error overnight without breaking the login `--next channels` flow and any documented muscle memory.
+
+Bare connect behavior in this spec:
+- **TTY (interactive):** prompts `Which channel type? [whatsapp / instagram]` via `@inquirer/select`. Same pattern `sandbox start` uses when `--type` is omitted.
+- **Non-TTY (CI, JSON mode):** throws `ValidationError` (`TYPE_REQUIRED_NON_TTY`, exit 2) with hint `Use: hookmyapp channels connect whatsapp | instagram`.
+- **Login `--next channels` wizard:** the wizard becomes channel-type-aware. After successful login, if `--next channels` is set, it calls the same interactive picker (TTY) or passes a `--type` forward from a new `login --next-channel-type whatsapp|instagram` flag (non-TTY). For the milestone's first PR, the simplest path is: `login --next channels` in TTY prompts for type before invoking connect; non-TTY refuses with the same `TYPE_REQUIRED_NON_TTY` error. The wizard never silently defaults to whatsapp — that would re-introduce the "IG is second-class" surface bug we're fixing.
+
+**Post-connect polling acceptance criteria.** Today's `runChannelsConnect` stops at the first new channel ID, which is wrong for the coexistence case (one OAuth flow can return two channels). Rewrite to:
+
+1. Snapshot `existingIds = new Set(channels.map(c => c.id))` BEFORE opening the OAuth URL.
+2. Poll `GET /meta/channels` every 2s after browser launch.
+3. Track `newIds` accumulated across polls (channels whose id is not in `existingIds`).
+4. Exit polling when one of: (a) `newIds.length > 0` AND no new ids appeared in the last 4s window (stability gate), (b) hard timeout of 5 minutes, (c) `SIGINT`.
+5. Report ALL ids in `newIds` grouped by type — see D7 for render shape.
+
+This handles the coexistence case (1 OAuth → 2 channels) deterministically and stays correct for the single-channel case (1 OAuth → 1 channel). The 4s stability window is short enough not to feel slow and long enough to catch staggered backend writes (WA row written before IG row in the coexistence flow).
 
 Non-TTY behavior: `channels connect` (any type) throws `ValidationError` with exit 2 — connect requires a browser launch. Scripts that need programmatic channel creation should call the backend API directly. This mirrors every other OAuth CLI (`gh auth login`, `stripe login`, `gcloud auth login` all refuse without a terminal).
 
@@ -56,22 +71,31 @@ Non-TTY behavior: `channels connect` (any type) throws `ValidationError` with ex
 
 ### D3. Shape-detected positional picker, applied uniformly to `channels` and `sandbox`.
 
-The picker for every channels/sandbox subcommand that operates on a specific entity (so: everything except `list`, `status`, `start`) accepts a single positional whose shape determines the identifier type:
+The picker for every channels/sandbox subcommand that operates on a specific entity (so: everything except `list`, `status`, `start`, `connect`) accepts a single positional whose shape determines the identifier type. **The shape vocabulary is scoped per command family — there is NO cross-family resolution** (no channel publicId → sandbox session lookup, no `ssn_X` accepted by `channels disconnect`, etc.) because the backend's deliveries scoping (`channel:<id>` vs `sandbox-session:<id>`) treats them as distinct entity spaces with no mapping contract.
 
-- `+E164` → WhatsApp phone (e.g., `+972545434384`) — narrows to WA channels/sessions
-- `@handle` → Instagram username (e.g., `@ordvir`) — narrows to IG channels/sessions
+**Channels subcommands** (`channels disconnect`, `channels enable`, `channels disable`, `channels env`, `channels token`, `channels health`, `channels webhook show/set/clear`, `channels listen`, `channels logs`) accept:
+
+- `+E164` → WhatsApp phone (e.g., `+972545434384`) — narrows to WA channels
+- `@handle` → Instagram username (e.g., `@ordvir`) — narrows to IG channels
 - `ch_X` → channel publicId — exact match on `channels` rows
-- `ssn_X` → sandbox session publicId — exact match on `sandbox sessions` rows
 
-`--phone` / `--username` / `--session` / `--channel` flags stay as a typed-fallback path. They remain for:
+**Sandbox subcommands** (`sandbox send`, `sandbox env`, `sandbox stop`, `sandbox logs`, `sandbox listen`, `sandbox webhook show/set/clear`) accept:
+
+- `+E164` → WhatsApp phone — narrows to WA sandbox sessions
+- `@handle` → Instagram username — narrows to IG sandbox sessions
+- `ssn_X` → sandbox session publicId — exact match on `sandbox_sessions` rows
+
+`--phone` / `--username` flags stay as a typed-fallback path across both families. `--channel` is channels-only; `--session` is sandbox-only. They remain for:
 
 - Customers piping values through a script that strips the leading `+` or `@`
 - Programmatic agents that prefer flag-based parameter passing
 - Edge cases where the positional shape is genuinely ambiguous (none today, but defends against future shape collisions)
 
-A bare positional with a shape outside the four recognized prefixes throws `ValidationError` (exit 2) with a sharp suggestion: `"972545434384" is not a recognized identifier shape. Did you mean +972545434384 (phone) or @ordvir (Instagram)?`
+A bare positional with a shape outside the family's recognized prefixes throws `ValidationError` (exit 2) with a sharp suggestion. Examples:
+- `channels disconnect 972545434384` → `"972545434384" is not a recognized identifier shape. Did you mean +972545434384 (phone) or @ordvir (Instagram) or ch_XXXXXXXX (channel id)?`
+- `sandbox send ch_abcdefgh` → `"ch_abcdefgh" is a channel publicId; sandbox commands take ssn_X. Did you mean a sandbox session?`
 
-This applies as a retrofit to the **sandbox** subcommands shipped 4 days ago. The deprecated `[phone]` positional on `sandbox webhook show/set/clear` is repurposed (not removed) to `[+phone | @username | ssn_X | ch_X]`. The deprecation runway already promised "removed in 0.13.0" — this is the 0.13.0 change, but the positional stays, just smarter.
+This applies as a retrofit to the **sandbox** subcommands shipped 4 days ago. The deprecated `[phone]` positional on `sandbox webhook show/set/clear` is repurposed (not removed) to `[+phone | @username | ssn_X]`. The deprecation runway already promised "removed in 0.13.0" — this is the 0.13.0 change, but the positional stays, just smarter.
 
 **Rejected alternative — flag-only, no positional.** What sandbox ships today. Verbose for the dominant case (`sandbox send --phone +972... --message "hi"` vs `sandbox send +972... --message "hi"`), forces customers to learn a flag vocabulary on top of identifier shapes they already know. Best-practice CLI patterns (`git checkout <ref>`, `gh issue view <number-or-url>`, `docker stop <container>`, Stripe `customers retrieve cus_X`) all favor positional when the identifier shape is self-identifying.
 
@@ -79,13 +103,23 @@ This applies as a retrofit to the **sandbox** subcommands shipped 4 days ago. Th
 
 **Rejected alternative — positional with fuzzy free-form matching** (today's `channels disconnect <phone-or-name-or-substring>`, expanded to handle IG). Works for WA-only because phone digits + WABA names are visually distinct. Becomes ambiguous the moment IG handles enter the picture (an `@`-less handle fragment overlaps with WABA name fragments overlap with phone substrings). Sharp shape detection beats fuzzy free-form once identifier types diversify.
 
-### D4. CLI `Channel` type mirrors frontend's discriminated union exactly.
+### D4. CLI `Channel` types mirror backend wire contracts, with separate parsers for list-item vs detail.
 
-The CLI's `Channel` is `WhatsAppChannel | InstagramChannel | MessengerChannel` discriminated by `type`, matching `frontend/src/types/channel.ts` field-for-field. A `parseChannel(dto)` boundary parser at `src/api/channel.ts` validates wire data on the way in; the existing `ApiChannel` interface with its `[key: string]: unknown` escape hatch is deleted.
+The backend exposes two channel shapes:
 
-Same pattern as the sandbox-IG parser at `src/api/sandbox-session.ts`. Parser failures throw `UnexpectedError` with code `MALFORMED_CHANNEL`, mirroring `MALFORMED_SANDBOX_SESSION`.
+- **List item** — `GET /meta/channels` returns the public-wire shape: the fields on `frontend/src/types/channel.ts` (`id`, `type`, `workspaceId`, `metaWabaId`, `metaResourceId`, `connectionType`, `metaConnected`, `forwardingEnabled`, `webhookUrl`, `verifyToken`, optional tunnel fields, plus per-type narrow fields). This is the frozen public contract.
+- **Detail** — `GET /meta/channels/:id` returns the list-item shape **plus** detail-only fields (`accessToken`, `businessName`, `metaBusinessId`, and other detail metadata at `backend/src/meta/meta.controller.ts:249`). These exist because detail callers need a deeper view than list callers.
 
-Reasoning: the `[key: string]: unknown` escape hatch on today's `ApiChannel` lets the CLI accidentally read fields the backend doesn't promise (and lets the backend rename fields the CLI silently depends on). The boundary parser converts every silent contract violation into a loud crash with a stable error code — same discipline the sandbox parser made explicit.
+The CLI gets two corresponding parsers:
+
+- `parseChannelListItem(dto)` — validates the public-wire shape; tolerates unknown extras (forward-compat with backend additions); narrows on `type` discriminator. Used by `channels list` and any flow that takes its first read from `/meta/channels`.
+- `parseChannelDetail(dto)` — extends list-item with the detail-only fields. Used by `channels show` and any flow that needs `accessToken` / `businessName` / `metaBusinessId`. Also tolerates unknown extras.
+
+Both parsers live at `src/api/channel.ts` and throw `UnexpectedError` with `MALFORMED_CHANNEL` on shape-violation of the **frozen** fields. Unknown extras (forward-compat) do NOT throw — the backend gets to add fields without a coordinated CLI release.
+
+The existing `ApiChannel` interface with its `[key: string]: unknown` escape hatch is deleted. Anywhere the CLI today reads a backend-detail field off an `ApiChannel` (which the type couldn't have promised), it switches to `parseChannelDetail` at that call site.
+
+Reasoning: "mirror frontend exactly" was wrong shorthand on my part. The backend has detail fields the frontend doesn't consume; pretending those don't exist in the CLI type would force ugly `as unknown as { accessToken: string }` casts at every detail call site. Two parsers separates the frozen public contract from the optional detail surface and lets each call site declare which it needs.
 
 ### D5. `channels env` is unchanged at the CLI layer.
 
@@ -113,8 +147,10 @@ No separate `channels link` / `channels unlink` command. The two channels are in
 
 Both commands already use the channel picker — they inherit D3's shape-detected positional change for free. The render logic narrows on `channel.type`:
 
-- `channels listen` IG branch: stream the same `webhook_events` rows as WA; the only render difference is the per-event "sender" column showing `@username` for IG vs `+phone` for WA. Helper `sessionIdentifier()` from the sandbox-IG work generalizes to a `channelIdentifier()` for this.
-- `channels logs` IG branch: same. WA-shaped delivery row gets a sibling IG-shape branch; both narrow at render time.
+- `channels listen` IG branch: stream the same `webhook_events` rows as WA; the per-event "sender" column shows the `senderDisplay` field from the deliveries DTO. For WA this is the formatted phone; for IG **today** this is `fromId` (the raw IGSID) because `backend/src/deliveries/deliveries.service.ts:142` maps `senderDisplay` directly to `fromId` with no username enrichment.
+- `channels logs` IG branch: same. WA-shaped delivery row gets a sibling IG-shape branch; both narrow at render time and render `senderDisplay` verbatim.
+
+**Username enrichment is a backend follow-up, not a CLI dependency.** The CLI ships passthrough today (IG rows show IGSID in the sender column). When the backend later enriches `senderDisplay` to include `@username` for IG deliveries (probably via a `users` join on `webhook_events.from_id` against the IG profile lookup the sandbox path already does), the CLI picks up the enrichment automatically with zero release coordination. The spec calls this out so the IG render's IGSID-instead-of-handle behavior is documented behavior, not a bug to chase.
 
 No new flags. No new env vars. Same tunnel mechanism, same SSE stream, same deliveries-list endpoint.
 
