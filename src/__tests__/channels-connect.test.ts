@@ -1,0 +1,169 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// IMPORTANT: vi.mock replaces the ENTIRE module surface. runChannelsConnect
+// imports BOTH `apiClient` AND `forceTokenRefresh` from '../api/client.js'
+// (the latter is called once at the top of the function — see B6 Step 3 +
+// the legacy assertion in channels.test.ts:222). Both must be in the mock
+// or Vitest crashes with "forceTokenRefresh is not a function" before any
+// assertion runs.
+vi.mock('../api/client.js', () => ({
+  apiClient: vi.fn(),
+  forceTokenRefresh: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../commands/_helpers.js', () => ({
+  getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0001'),
+}));
+vi.mock('@inquirer/prompts', () => ({
+  select: vi.fn(),
+}));
+vi.mock('open', () => ({ default: vi.fn() }));
+// Mock the polling helper so integration tests complete cleanly without
+// running the real 2s poll loop. Routing-only assertions don't need this
+// (buildConnectStartRequest is pure); integration tests use it.
+//
+// IMPORTANT: pollForNewChannels lives in its OWN module
+// (src/commands/channels-connect-poll.ts) — vi.mock'ing the channels.js
+// module wouldn't work because runChannelsConnect's internal call binds
+// to the local function reference, not the re-exported one. ESM module
+// boundaries are the only way to intercept.
+vi.mock('../commands/channels-connect-poll.js', () => ({
+  pollForNewChannels: vi.fn(),
+}));
+
+import {
+  runChannelsConnect,
+  buildConnectStartRequest,
+} from '../commands/channels.js';
+import { pollForNewChannels } from '../commands/channels-connect-poll.js';
+import { apiClient, forceTokenRefresh } from '../api/client.js';
+import { select } from '@inquirer/prompts';
+import { ValidationError } from '../output/error.js';
+
+describe('buildConnectStartRequest — pure routing helper', () => {
+  it('whatsapp → /meta/oauth/start with redirectPath body', () => {
+    expect(buildConnectStartRequest('whatsapp')).toEqual({
+      path: '/meta/oauth/start',
+      body: JSON.stringify({ redirectPath: '/cli/callback' }),
+    });
+  });
+
+  it('instagram → /instagram/oauth/start with empty body', () => {
+    expect(buildConnectStartRequest('instagram')).toEqual({
+      path: '/instagram/oauth/start',
+      body: JSON.stringify({}),
+    });
+  });
+});
+
+describe('runChannelsConnect — integration (D2)', () => {
+  // The integration tests below mock pollForNewChannels to resolve
+  // immediately with a stub channel. This lets the full runChannelsConnect
+  // complete cleanly (no .catch(() => {}) swallowing) so any unexpected
+  // exception bubbles up and fails the test rather than being silently
+  // dropped. Routing-only assertions live in buildConnectStartRequest
+  // tests above; these integration tests assert the full call ordering.
+  beforeEach(() => {
+    vi.mocked(select).mockReset();
+    vi.mocked(apiClient).mockReset();
+    // Reset call history (not the implementation) so toHaveBeenCalledOnce()
+    // in the WhatsApp routing test is isolated from any other test in the
+    // file that triggers runChannelsConnect. mockClear keeps the
+    // mockResolvedValue(undefined) implementation from the top-level mock
+    // factory; mockReset would wipe the implementation too and the
+    // resolved-undefined would have to be re-asserted here.
+    vi.mocked(forceTokenRefresh).mockClear();
+    vi.mocked(pollForNewChannels).mockResolvedValue([
+      {
+        id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+        metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
+        metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+        wabaName: null, displayPhoneNumber: null, phoneNumberId: null,
+        phoneVerifiedName: null, qualityRating: null, qualityRatingCheckedAt: null,
+      } as any,
+    ]);
+    process.stdout.isTTY = true;
+  });
+
+  it('explicit whatsapp: forceTokenRefresh runs, then snapshot, then POSTs to /meta/oauth/start with redirectPath body', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])  // 1. snapshot BEFORE open
+      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example/wa', codeChallenge: 'c' }); // 2. OAuth
+    await runChannelsConnect({ type: 'whatsapp' });
+    expect(vi.mocked(select)).not.toHaveBeenCalled();
+    expect(vi.mocked(forceTokenRefresh)).toHaveBeenCalledOnce(); // legacy assertion preserved
+    const calls = vi.mocked(apiClient).mock.calls;
+    expect(calls[0][0]).toBe('/meta/channels');
+    expect(calls[1][0]).toBe('/meta/oauth/start');
+    expect(calls[1][1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ redirectPath: '/cli/callback' }),
+    });
+  });
+
+  it('explicit instagram: snapshots first, then POSTs to /instagram/oauth/start with empty body', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ redirectUrl: 'https://meta.example/ig' });
+    await runChannelsConnect({ type: 'instagram' });
+    expect(vi.mocked(select)).not.toHaveBeenCalled();
+    const calls = vi.mocked(apiClient).mock.calls;
+    expect(calls[0][0]).toBe('/meta/channels');
+    expect(calls[1][0]).toBe('/instagram/oauth/start');
+    expect(calls[1][1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  });
+
+  it('bare (no type) in TTY → prompts via @inquirer/select', async () => {
+    vi.mocked(select).mockResolvedValueOnce('instagram');
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ redirectUrl: 'https://meta.example/ig' });
+    await runChannelsConnect({});
+    expect(vi.mocked(select)).toHaveBeenCalled();
+  });
+
+  it('bare in non-TTY → ValidationError CONNECT_REQUIRES_TTY (D6)', async () => {
+    process.stdout.isTTY = false;
+    await expect(runChannelsConnect({})).rejects.toThrow(ValidationError);
+    await expect(runChannelsConnect({})).rejects.toThrow(/CONNECT_REQUIRES_TTY|connect requires/);
+  });
+});
+
+describe('runChannelsConnect — reports all new channels by type (D7)', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(forceTokenRefresh).mockClear();
+    vi.mocked(pollForNewChannels).mockResolvedValue([
+      {
+        id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+        metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
+        metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+        wabaName: null, displayPhoneNumber: '+15551234567', phoneNumberId: '1',
+        phoneVerifiedName: null, qualityRating: null, qualityRatingCheckedAt: null,
+      } as any,
+      {
+        id: 'ch_NEW_IG', type: 'instagram', workspaceId: 'ws_TEST0001',
+        metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+        metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+        instagramUsername: 'newhandle', instagramName: 'New', instagramProfilePictureUrl: null,
+      } as any,
+    ]);
+    process.stdout.isTTY = true;
+  });
+
+  it('prints both WhatsApp +phone and Instagram @handle in the post-connect summary', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])                                                      // snapshot
+      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example', codeChallenge: 'c' });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsConnect({ type: 'whatsapp' });
+    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(combined).toContain('WhatsApp');
+    expect(combined).toContain('+15551234567');
+    expect(combined).toContain('Instagram');
+    expect(combined).toContain('@newhandle');
+    logSpy.mockRestore();
+  });
+});

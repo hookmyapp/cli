@@ -358,10 +358,22 @@ async function startListen(
 }
 
 async function runChannelsConnectFlow(): Promise<void> {
+  // D6 — OAuth requires a TTY (interactive prompt + browser launch). Fail
+  // early in non-interactive contexts. The hint intentionally does NOT
+  // recommend `hookmyapp channels connect` — that command also refuses
+  // non-TTY for the same reason.
+  const isTty = Boolean(process.stdout.isTTY);
+  if (!isTty) {
+    throw new ValidationError(
+      'login --next channels requires an interactive terminal (OAuth needs a browser). ' +
+        'Re-run from a TTY, or call the backend API directly for programmatic channel creation.',
+      'CONNECT_REQUIRES_TTY',
+    );
+  }
   // Direct function import — never subprocess spawn. Lazy import breaks the
   // index.ts → commands/channels.ts → auth/login.ts cycle.
   const { runChannelsConnect } = await import('../commands/channels.js');
-  await runChannelsConnect();
+  await runChannelsConnect({}); // bare → interactive prompt in TTY
 }
 
 /**

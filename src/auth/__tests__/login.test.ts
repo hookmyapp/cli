@@ -217,6 +217,10 @@ describe('post-login wizard', () => {
   });
 
   it('--next channels → delegates to runChannelsConnect', async () => {
+    // Task B6 — runChannelsConnectFlow now refuses non-TTY (D6: OAuth needs
+    // a browser). Set isTTY=true so the flow proceeds and delegates to
+    // runChannelsConnect (which is mocked at the module level).
+    process.stdout.isTTY = true;
     apiClientMock.mockResolvedValueOnce([
       {
         id: 'ws_TEST0001',
