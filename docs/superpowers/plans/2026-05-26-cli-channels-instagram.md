@@ -1621,8 +1621,19 @@ vi.mock('../commands/_helpers.js', () => ({
 import { apiClient } from '../api/client.js';
 import { runChannelsList } from '../commands/channels.js'; // export this from channels.ts
 
-const wa = { /* ...as before... */ };
-const ig = { /* ...as before... */ };
+const wa = {
+  id: 'ch_WAaaaaaa', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+  metaWabaId: '1179', metaResourceId: '1080', connectionType: 'cloud_api',
+  metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+  wabaName: 'My WABA', displayPhoneNumber: '+15551234567', phoneNumberId: '1080',
+  phoneVerifiedName: 'Test', qualityRating: null, qualityRatingCheckedAt: null,
+};
+const ig = {
+  id: 'ch_IGaaaaaa', type: 'instagram', workspaceId: 'ws_TEST0001',
+  metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+  metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+  instagramUsername: 'ordvir', instagramName: 'Or', instagramProfilePictureUrl: null,
+};
 
 describe('runChannelsList — IG rows are visible', () => {
   beforeEach(() => vi.mocked(apiClient).mockReset());
@@ -1853,53 +1864,106 @@ vi.mock('@inquirer/prompts', () => ({
   select: vi.fn(),
 }));
 vi.mock('open', () => ({ default: vi.fn() }));
+// Mock the polling helper so integration tests complete cleanly without
+// running the real 2s poll loop. Routing-only assertions don't need this
+// (buildConnectStartRequest is pure); integration tests use it.
+vi.mock('../commands/channels.js', async () => {
+  const actual = await vi.importActual<typeof import('../commands/channels.js')>('../commands/channels.js');
+  return {
+    ...actual,
+    pollForNewChannels: vi.fn(),
+  };
+});
 
-import { runChannelsConnect } from '../commands/channels.js';
+import {
+  runChannelsConnect,
+  buildConnectStartRequest,
+  pollForNewChannels,
+} from '../commands/channels.js';
 import { select } from '@inquirer/prompts';
 import { ValidationError } from '../output/error.js';
 
-describe('runChannelsConnect — type chooser (D2)', () => {
+describe('buildConnectStartRequest — pure routing helper', () => {
+  it('whatsapp → /meta/oauth/start with redirectPath body', () => {
+    expect(buildConnectStartRequest('whatsapp')).toEqual({
+      path: '/meta/oauth/start',
+      body: JSON.stringify({ redirectPath: '/cli/callback' }),
+    });
+  });
+
+  it('instagram → /instagram/oauth/start with empty body', () => {
+    expect(buildConnectStartRequest('instagram')).toEqual({
+      path: '/instagram/oauth/start',
+      body: JSON.stringify({}),
+    });
+  });
+});
+
+describe('runChannelsConnect — integration (D2)', () => {
+  // The integration tests below mock pollForNewChannels to resolve
+  // immediately with a stub channel. This lets the full runChannelsConnect
+  // complete cleanly (no .catch(() => {}) swallowing) so any unexpected
+  // exception bubbles up and fails the test rather than being silently
+  // dropped. Routing-only assertions live in buildConnectStartRequest
+  // tests above; these integration tests assert the full call ordering.
   beforeEach(() => {
     vi.mocked(select).mockReset();
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(pollForNewChannels).mockResolvedValue([
+      {
+        id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+        metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
+        metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+        wabaName: null, displayPhoneNumber: null, phoneNumberId: null,
+        phoneVerifiedName: null, qualityRating: null, qualityRatingCheckedAt: null,
+      } as any,
+    ]);
     process.stdout.isTTY = true;
   });
 
-  it('explicit whatsapp → no prompt, POSTs to /meta/oauth/start', async () => {
+  it('explicit whatsapp: snapshots first, then POSTs to /meta/oauth/start with redirectPath body', async () => {
     vi.mocked(apiClient)
-      .mockResolvedValueOnce([])  // initial /meta/channels snapshot (BEFORE open)
-      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example/wa-oauth', codeChallenge: 'c' })
-      .mockResolvedValueOnce([]); // first poll tick — empty (test only cares about routing)
-    await runChannelsConnect({ type: 'whatsapp' }).catch(() => {}); // OK if it times out; we only assert routing
+      .mockResolvedValueOnce([])  // 1. snapshot BEFORE open
+      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example/wa', codeChallenge: 'c' }); // 2. OAuth
+    await runChannelsConnect({ type: 'whatsapp' });
     expect(vi.mocked(select)).not.toHaveBeenCalled();
-    const startCall = vi.mocked(apiClient).mock.calls.find((c) => c[0] === '/meta/oauth/start');
-    expect(startCall).toBeDefined();
+    const calls = vi.mocked(apiClient).mock.calls;
+    expect(calls[0][0]).toBe('/meta/channels');
+    expect(calls[1][0]).toBe('/meta/oauth/start');
+    expect(calls[1][1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ redirectPath: '/cli/callback' }),
+    });
   });
 
-  it('explicit instagram → no prompt, POSTs to /instagram/oauth/start', async () => {
+  it('explicit instagram: snapshots first, then POSTs to /instagram/oauth/start with empty body', async () => {
     vi.mocked(apiClient)
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce({ redirectUrl: 'https://meta.example/ig-oauth' })
-      .mockResolvedValueOnce([]);
-    await runChannelsConnect({ type: 'instagram' }).catch(() => {});
+      .mockResolvedValueOnce({ redirectUrl: 'https://meta.example/ig' });
+    await runChannelsConnect({ type: 'instagram' });
     expect(vi.mocked(select)).not.toHaveBeenCalled();
-    const startCall = vi.mocked(apiClient).mock.calls.find((c) => c[0] === '/instagram/oauth/start');
-    expect(startCall).toBeDefined();
+    const calls = vi.mocked(apiClient).mock.calls;
+    expect(calls[0][0]).toBe('/meta/channels');
+    expect(calls[1][0]).toBe('/instagram/oauth/start');
+    expect(calls[1][1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
   });
 
   it('bare (no type) in TTY → prompts via @inquirer/select', async () => {
     vi.mocked(select).mockResolvedValueOnce('instagram');
     vi.mocked(apiClient)
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce({ redirectUrl: 'https://meta.example/ig-oauth' })
-      .mockResolvedValueOnce([]);
-    await runChannelsConnect({}).catch(() => {});
+      .mockResolvedValueOnce({ redirectUrl: 'https://meta.example/ig' });
+    await runChannelsConnect({});
     expect(vi.mocked(select)).toHaveBeenCalled();
   });
 
   it('bare in non-TTY → ValidationError CONNECT_REQUIRES_TTY (D6)', async () => {
     process.stdout.isTTY = false;
     await expect(runChannelsConnect({})).rejects.toThrow(ValidationError);
-    await expect(runChannelsConnect({})).rejects.toThrow(/CONNECT_REQUIRES_TTY|connect requires a browser/);
+    await expect(runChannelsConnect({})).rejects.toThrow(/CONNECT_REQUIRES_TTY|connect requires/);
   });
 });
 ```
@@ -1912,9 +1976,9 @@ npx vitest run src/__tests__/channels-connect.test.ts
 
 Expected: FAIL — no `runChannelsConnect` export with `{ type? }` opts.
 
-- [ ] **Step 3: Refactor the existing `channels connect` action**
+- [ ] **Step 3: Refactor the existing `channels connect` action — define the pure routing helper first**
 
-In `src/commands/channels.ts`:
+In `src/commands/channels.ts`, add a small pure helper that maps `type` → endpoint path + request body. This is the surface unit tests assert against — it has zero side effects and no `apiClient` / `open` / `select` dependencies, so test setup is one line.
 
 ```typescript
 import { select } from '@inquirer/prompts';
@@ -1922,6 +1986,29 @@ import { select } from '@inquirer/prompts';
 
 interface ChannelsConnectOpts {
   type?: 'whatsapp' | 'instagram';
+}
+
+/**
+ * Pure helper: maps a channel type to the per-endpoint OAuth start
+ * request shape. The two endpoints have different body requirements
+ * (WA needs an allowlisted redirectPath; IG accepts an empty body).
+ * Extracted so routing can be unit-tested without invoking the full
+ * runChannelsConnect flow (which would also need the browser + polling
+ * mocked). See Step 1's `buildConnectStartRequest` test.
+ */
+export function buildConnectStartRequest(
+  type: 'whatsapp' | 'instagram',
+): { path: string; body: string } {
+  if (type === 'whatsapp') {
+    return {
+      path: '/meta/oauth/start',
+      body: JSON.stringify({ redirectPath: '/cli/callback' }),
+    };
+  }
+  return {
+    path: '/instagram/oauth/start',
+    body: JSON.stringify({}),
+  };
 }
 
 export async function runChannelsConnect(opts: ChannelsConnectOpts): Promise<void> {
@@ -1952,15 +2039,13 @@ export async function runChannelsConnect(opts: ChannelsConnectOpts): Promise<voi
   const initialDtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
   const existingIds = new Set(initialDtos.map(parseChannelListItem).map((c) => c.id));
 
-  // 2. Route to the per-type OAuth start endpoint. WA and IG are
-  //    distinct controllers; the request body is `OAuthStartDto` for
-  //    both (only `redirectPath`, no `channelType`). Both responses
-  //    return `{ redirectUrl }`. WA additionally returns
-  //    `{ state, codeChallenge }` which the CLI does not consume.
-  const startPath = type === 'whatsapp' ? '/meta/oauth/start' : '/instagram/oauth/start';
-  const { redirectUrl } = (await apiClient(startPath, {
+  // 2. Route to the per-type OAuth start endpoint via the pure helper
+  //    buildConnectStartRequest() — extracted so unit tests can assert
+  //    the routing without spinning up the full poll+browser flow.
+  const { path, body } = buildConnectStartRequest(type);
+  const { redirectUrl } = (await apiClient(path, {
     method: 'POST',
-    body: JSON.stringify({}),
+    body,
     workspaceId,
   })) as { redirectUrl: string };
 
@@ -2011,10 +2096,13 @@ Find where `runChannelsConnect()` is called from login. Update to call the same 
 if (opts.next === 'channels') {
   const isTty = Boolean(process.stdout.isTTY);
   if (!isTty) {
-    // D6 — exit 2; the wizard never silently picks a type
+    // D6 — exit 2; the wizard never silently picks a type. The hint
+    // intentionally does NOT recommend `hookmyapp channels connect` —
+    // that command also refuses non-TTY for the same reason (OAuth
+    // requires a browser).
     throw new ValidationError(
-      'login --next channels requires a TTY (interactive type chooser). ' +
-        'In CI, run: hookmyapp channels connect <whatsapp|instagram>',
+      'login --next channels requires an interactive terminal (OAuth needs a browser). ' +
+        'Re-run from a TTY, or call the backend API directly for programmatic channel creation.',
       'CONNECT_REQUIRES_TTY',
     );
   }
@@ -2058,8 +2146,19 @@ describe('runChannelsConnect — coexistence multi-channel polling (D2)', () => 
   afterEach(() => vi.useRealTimers());
 
   it('reports BOTH channels that appear during the 4s stability window', async () => {
-    const wa = { /* ...as before, id: 'ch_NEW_WA' */ };
-    const ig = { /* ...as before, id: 'ch_NEW_IG' */ };
+    const wa = {
+      id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+      metaWabaId: '1179', metaResourceId: '1080', connectionType: 'cloud_api',
+      metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+      wabaName: 'New WABA', displayPhoneNumber: '+15551234567', phoneNumberId: '1080',
+      phoneVerifiedName: 'Test', qualityRating: null, qualityRatingCheckedAt: null,
+    };
+    const ig = {
+      id: 'ch_NEW_IG', type: 'instagram', workspaceId: 'ws_TEST0001',
+      metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+      metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+      instagramUsername: 'newhandle', instagramName: 'New', instagramProfilePictureUrl: null,
+    };
     // IMPORTANT mock ordering — matches the race-safe call order in
     // runChannelsConnect (Task B5):
     //   1. GET /meta/channels — snapshot BEFORE open()
@@ -2088,8 +2187,20 @@ describe('runChannelsConnect — coexistence multi-channel polling (D2)', () => 
   });
 
   it('race-safe: a channel that already exists in the initial snapshot is NOT reported', async () => {
-    const preExisting = { /* ...as before, id: 'ch_PRE_EXISTING' */ };
-    const wa = { /* ...as before, id: 'ch_NEW_WA' */ };
+    const preExisting = {
+      id: 'ch_PRE_EXISTING', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+      metaWabaId: '1179', metaResourceId: '1080', connectionType: 'cloud_api',
+      metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+      wabaName: 'Pre-existing', displayPhoneNumber: '+15550000000', phoneNumberId: '1080',
+      phoneVerifiedName: 'Pre', qualityRating: null, qualityRatingCheckedAt: null,
+    };
+    const wa = {
+      id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+      metaWabaId: '1179', metaResourceId: '2222', connectionType: 'cloud_api',
+      metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+      wabaName: 'New WABA', displayPhoneNumber: '+15551234567', phoneNumberId: '2222',
+      phoneVerifiedName: 'Test', qualityRating: null, qualityRatingCheckedAt: null,
+    };
     vi.mocked(apiClient)
       .mockResolvedValueOnce([preExisting])                  // 1. snapshot — preExisting already present
       .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example', codeChallenge: 'c' })  // 2. OAuth
