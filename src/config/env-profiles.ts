@@ -28,7 +28,7 @@ export const ENV_PROFILES: Record<EnvName, EnvProfile> = {
   local: {
     apiUrl: 'https://uninked-robbi-boughless.ngrok-free.dev',
     appUrl: 'https://uninked-robbi-boughless.ngrok-free.dev',
-    workosClientId: 'client_01KPAJA2CKGFMASZMABKDTS2X8',
+    workosClientId: 'client_01KPB6HCD7Q26ATBM9ZNKX97GD',
     // local dev shares the staging sandbox WABA (+972 55 704 6276)
     sandboxWhatsAppNumber: '972557046276',
   },
