@@ -227,8 +227,12 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
     return;
   }
 
+  if (opts.next === 'exit') return;
+
   // Human-mode: the "✓ Logged in to workspace: <name>" line already printed
-  // above is the user-facing confirmation. Just return.
+  // above is the user-facing confirmation. Add a single hint pointing at
+  // --help so new users have an obvious next move.
+  console.log(`  ${c.dim('Run `' + cliCommandPrefix() + ' --help` for commands')}`);
 }
 
 /**
