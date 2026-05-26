@@ -25,6 +25,7 @@
 | `src/lib/parseIdentifier.ts` | Shared shape-detected identifier parser. Input: any string. Output: discriminated union `{ kind: 'phone' \| 'username' \| 'sessionId' \| 'channelId', value: string }` or throws `ValidationError` with a sharp suggestion. Phase A foundation; Phase B reuses for `resolveChannel`. |
 | `src/lib/__tests__/parseIdentifier.test.ts` | Unit tests for every shape branch + every invalid-shape error message. |
 | `src/api/channel.ts` | `parseChannelListItem(dto)` + `parseChannelDetail(dto)` boundary parsers. Exports `Channel = WhatsAppChannel \| InstagramChannel \| MessengerChannel` discriminated union (mirror frontend `frontend/src/types/channel.ts`) and `ChannelDetail` extending it with backend detail-only fields. Throws `UnexpectedError` with code `MALFORMED_CHANNEL` on shape violation of frozen fields; tolerates unknown extras. |
+| `src/commands/channels-connect-poll.ts` | `pollForNewChannels(workspaceId, existingIds)` — own module so vi.mock can intercept the call from `runChannelsConnect`. Implements the D2 polling acceptance criteria (snapshot before, 2s poll interval, 4s stability gate, 5min hard timeout). |
 | `src/api/__tests__/channel.test.ts` | Parser tests: valid WA list-item, valid IG list-item, valid Messenger list-item, valid detail (each type), malformed (each invariant). |
 | `src/commands/sandbox/__tests__/logs-default-format.test.ts` | Asserts the new table-by-default logs format per D9 (one-line summary: timestamp · sender · forward target · status · latency · preview). |
 | `src/commands/channels-logs/__tests__/follow-mode.test.ts` | Asserts `channels logs list --follow` initiates an SSE stream and emits the same DTO shape as one-shot mode. |
@@ -1867,19 +1868,21 @@ vi.mock('open', () => ({ default: vi.fn() }));
 // Mock the polling helper so integration tests complete cleanly without
 // running the real 2s poll loop. Routing-only assertions don't need this
 // (buildConnectStartRequest is pure); integration tests use it.
-vi.mock('../commands/channels.js', async () => {
-  const actual = await vi.importActual<typeof import('../commands/channels.js')>('../commands/channels.js');
-  return {
-    ...actual,
-    pollForNewChannels: vi.fn(),
-  };
-});
+//
+// IMPORTANT: pollForNewChannels lives in its OWN module
+// (src/commands/channels-connect-poll.ts) — vi.mock'ing the channels.js
+// module wouldn't work because runChannelsConnect's internal call binds
+// to the local function reference, not the re-exported one. ESM module
+// boundaries are the only way to intercept.
+vi.mock('../commands/channels-connect-poll.js', () => ({
+  pollForNewChannels: vi.fn(),
+}));
 
 import {
   runChannelsConnect,
   buildConnectStartRequest,
-  pollForNewChannels,
 } from '../commands/channels.js';
+import { pollForNewChannels } from '../commands/channels-connect-poll.js';
 import { select } from '@inquirer/prompts';
 import { ValidationError } from '../output/error.js';
 
@@ -1982,7 +1985,9 @@ In `src/commands/channels.ts`, add a small pure helper that maps `type` → endp
 
 ```typescript
 import { select } from '@inquirer/prompts';
-// existing imports
+import { pollForNewChannels } from './channels-connect-poll.js';
+// existing imports — note pollForNewChannels lives in a SEPARATE module
+// (Task B6 creates it) so vi.mock can intercept the import boundary.
 
 interface ChannelsConnectOpts {
   type?: 'whatsapp' | 'instagram';
@@ -2112,19 +2117,39 @@ if (opts.next === 'channels') {
 
 (Adjust import to use the new exported function name.)
 
-- [ ] **Step 5: Run the test + login wizard tests**
+- [ ] **Step 5: Migrate existing `src/__tests__/channels.test.ts` connect tests**
+
+Two describe blocks in the existing test file assert the OLD call ordering (OAuth start BEFORE the snapshot) and call `runChannelsConnect()` with no args. After this refactor, both break. Migrate in-place:
+
+1. **`src/__tests__/channels.test.ts:197` — `it('connectChannel calls forceTokenRefresh and opens server-minted Embedded Signup URL')`**
+   - Change `runChannelsConnect()` → `runChannelsConnect({ type: 'whatsapp' })` (explicit type bypasses the new interactive prompt).
+   - Swap mock ordering: snapshot call (`/meta/channels` returning `[]`) FIRST, then `/meta/oauth/start` response.
+   - Keep the `forceTokenRefresh` assertion (still called at the top of the new function).
+   - Update the body-assertion to match: `body: JSON.stringify({ redirectPath: '/cli/callback' })` is unchanged.
+   - Add `vi.mock('../commands/channels-connect-poll.js', () => ({ pollForNewChannels: vi.fn().mockResolvedValue([]) }))` at the top of the file so polling completes immediately.
+
+2. **`src/__tests__/channels.test.ts:523` — `describe('channels connect — npx prefix roll-out (cliCommandPrefix)')`**
+   - Same shape: pass `{ type: 'whatsapp' }` explicitly to each `runChannelsConnect` call (lines 579, 626).
+   - Swap mock ordering to snapshot-first.
+   - The polling-helper mock added above applies here too.
+
+If a test asserted on the OLD polling shape (return-first-new-channel), update its assertion to match the new "report ALL new channels grouped by type" output. Or, if the test specifically targets WA-single-channel-only behavior, leave the assertion as-is (the new poller still works for the single-channel case — it just doesn't stop early).
+
+Skip-or-delete is not an option: the legacy tests catch real WA regressions; they need updating, not deletion.
+
+- [ ] **Step 6: Run the test + login wizard tests + the migrated channels.test.ts**
 
 ```bash
-npx vitest run src/__tests__/channels-connect.test.ts src/auth/__tests__/
+npx vitest run src/__tests__/channels-connect.test.ts src/__tests__/channels.test.ts src/auth/__tests__/
 ```
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/commands/channels.ts src/auth/login.ts src/__tests__/channels-connect.test.ts
-git commit -m "feat(channels/connect): type chooser (D2) + login wizard becomes type-aware"
+git add src/commands/channels.ts src/auth/login.ts src/__tests__/channels-connect.test.ts src/__tests__/channels.test.ts
+git commit -m "feat(channels/connect): type chooser (D2) + login wizard becomes type-aware + migrate existing tests"
 ```
 
 ---
@@ -2239,9 +2264,22 @@ npx vitest run src/__tests__/channels-connect.test.ts -t "coexistence"
 
 Expected: FAIL — old `runChannelsConnect` stops at first new channel.
 
-- [ ] **Step 3: Implement `pollForNewChannels`**
+- [ ] **Step 3: Implement `pollForNewChannels` in its OWN module**
 
-In `src/commands/channels.ts`:
+Create a new file `src/commands/channels-connect-poll.ts` (not inside
+`channels.ts`). Module boundaries are the only ESM mechanism that lets
+tests intercept the poll call via `vi.mock`. If `pollForNewChannels`
+lived inside `channels.ts` alongside `runChannelsConnect`, vi-mocking it
+would intercept callers from OTHER files but not the internal call from
+`runChannelsConnect` itself — that one would bind to the local function
+reference, not the mocked export. The integration tests would then hit
+the real 2s poll loop and either time out or pass for the wrong reasons.
+
+```typescript
+// src/commands/channels-connect-poll.ts
+import { apiClient } from '../api/client.js';
+import { parseChannelListItem, type Channel } from '../api/channel.js';
+import { CliError } from '../output/error.js';
 
 ```typescript
 /**
