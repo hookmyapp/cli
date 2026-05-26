@@ -1,6 +1,70 @@
 import type { DeliveryListItem, DeliveryAttempt, DeliveryDetail } from './api.js';
 
 /**
+ * One-line summary row for `channels logs list` (D9 — table-by-default).
+ *
+ * Format: `<time>  <sender>  →  <target-host>  <status>(<latency>)  "<preview>"`
+ *
+ * Mirrors sandbox/logs.ts `printSummaryDelivery` byte-for-byte. The plan's
+ * DRY guidance: "cross-command duplication of a single render function is
+ * acceptable until a third caller appears." Keeping them in lockstep here
+ * is intentional — the two commands answer the same question (did the
+ * message reach my server, and what did the server say back?) and the same
+ * UX should follow.
+ *
+ * Sender resolution chain (D8): senderDisplay → senderId → fromPhone →
+ * '(unknown)'. fromPhone is the WA-only field; senderDisplay/senderId are
+ * the IG-aware fields the backend provides for both channel types.
+ *
+ * Target host parse guards malformed forward URLs with a `(invalid forward
+ * URL)` fallback — same try/catch shape as the sandbox-logs implementation
+ * (introduced in Task A6).
+ */
+export function printSummaryRow(d: DeliveryDetail): void {
+  const time = new Date(d.receivedAt).toLocaleString();
+  const sender = d.senderDisplay ?? d.senderId ?? d.fromPhone ?? '(unknown)';
+  const lastAttempt = d.attempts[d.attempts.length - 1];
+  const target = (() => {
+    if (!lastAttempt?.forwardUrl) return '(no forward URL set)';
+    try {
+      return new URL(lastAttempt.forwardUrl).host;
+    } catch {
+      return '(invalid forward URL)';
+    }
+  })();
+  const status =
+    lastAttempt === undefined
+      ? '—'
+      : lastAttempt.forwardStatus !== null
+        ? `${lastAttempt.forwardStatus}`
+        : lastAttempt.outcome;
+  const latency =
+    lastAttempt?.forwardDurationMs !== null && lastAttempt?.forwardDurationMs !== undefined
+      ? `${lastAttempt.forwardDurationMs}ms`
+      : '';
+  const preview = previewInbound(d.inboundBody);
+  process.stdout.write(
+    `${time}  ${sender}  →  ${target}  ${status}${latency ? ` (${latency})` : ''}  ${preview}\n`,
+  );
+}
+
+function previewInbound(body: string | null): string {
+  if (!body) return '(empty)';
+  let text: string;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    // Common WA + IG message shapes carry a text body in `text` or `message.text`.
+    const obj = parsed as { text?: unknown; message?: { text?: unknown } } | null;
+    text = String(obj?.text ?? obj?.message?.text ?? body);
+  } catch {
+    text = body;
+  }
+  text = text.replace(/\s+/g, ' ').trim();
+  if (text.length > 40) text = text.slice(0, 40) + '…';
+  return `"${text}"`;
+}
+
+/**
  * Compact "time ago" label for the list table's `Received` column.
  */
 export function relativeTime(iso: string, now: Date = new Date()): string {
