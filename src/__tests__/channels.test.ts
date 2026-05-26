@@ -156,25 +156,28 @@ describe('channels commands', () => {
     stdoutSpy.mockRestore();
   });
 
-  it('showChannel calls list to resolve, then calls detail endpoint, outputs without routing keys', async () => {
+  it('showChannel calls list to resolve, then calls detail endpoint, renders WA type-aware fields (Task B4)', async () => {
     mockedApiClient
       .mockResolvedValueOnce(fakeChannels) // list call for resolveChannel (with workspaceId)
       .mockResolvedValueOnce(fakeDetailResponse); // detail endpoint call
 
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const program = new Command();
     registerChannelsCommand(program);
     await program.parseAsync(['channels', 'show', 'ch_TEST0002'], { from: 'user' });
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0002');
-    // pickDisplayFields removes id, workspaceId, and qualityRating (coexistence + null = not re-added)
-    expect(mockedOutput).toHaveBeenCalledTimes(1);
-    const outputArgs = mockedOutput.mock.calls[0][0];
-    expect(outputArgs).not.toHaveProperty('id');
-    expect(outputArgs).not.toHaveProperty('workspaceId');
-    expect(outputArgs).not.toHaveProperty('qualityRating');
-    expect(outputArgs).toHaveProperty('metaWabaId', 'waba-2');
-    expect(outputArgs).toHaveProperty('accessToken', 'real-token-value');
+    // Task B4: runChannelsShow writes via console.log (bypasses output()), so
+    // assert against the rendered lines instead of mockedOutput call args.
+    expect(mockedOutput).not.toHaveBeenCalled();
+    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(combined).toContain('Type: whatsapp');
+    expect(combined).toContain('ID: ch_TEST0002');
+    expect(combined).toContain('Another WABA');
+    expect(combined).toContain('+1 987 654 321');
+    expect(combined).toContain('Acme Corp');
+    logSpy.mockRestore();
   });
 
   it('throws when channel reference is not a recognized identifier shape', async () => {

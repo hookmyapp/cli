@@ -29,19 +29,6 @@ import { parseIdentifier } from '../lib/parseIdentifier.js';
 
 export type { Channel, ChannelDetail };
 
-/** Pick only customer-facing fields for CLI display output */
-function pickDisplayFields(channel: ChannelDetail | Record<string, unknown>): unknown {
-  const { id, workspaceId, qualityRating, ...display } =
-    channel as Record<string, unknown> & { qualityRating?: unknown };
-  void id;
-  void workspaceId;
-  const connectionType = (channel as Record<string, unknown>).connectionType;
-  if (connectionType !== 'coexistence' && qualityRating) {
-    (display as Record<string, unknown>).qualityRating = qualityRating;
-  }
-  return display;
-}
-
 /**
  * Resolve a CLI channel reference (D3 — shape-detected positional) to a parsed
  * Channel. Accepted shapes:
@@ -242,6 +229,44 @@ export async function runChannelsList(opts: { json?: boolean }): Promise<void> {
   process.stdout.write(renderTable(rows) + '\n');
 }
 
+/**
+ * Exported handler for `hookmyapp channels show <ref>` (Task B4).
+ *
+ * Type-aware detail render: WA channels print wabaName/+phone/phoneNumberId/
+ * qualityRating; IG channels print @handle/display name. Common fields (type,
+ * id, forwarding, webhookUrl, businessName) render for both. JSON mode emits
+ * the parsed `ChannelDetail` verbatim. Bypasses `output(...)` and writes
+ * directly via `process.stdout.write` / `console.log` so tests can spy on
+ * exact bytes (mirroring B3's `runChannelsList` style).
+ */
+export async function runChannelsShow(
+  ref: string,
+  opts: { json?: boolean },
+): Promise<void> {
+  const channel = await resolveChannel(ref);
+  const detail: ChannelDetail = parseChannelDetail(
+    await apiClient(`/meta/channels/${channel.id}`),
+  );
+  if (opts.json) {
+    process.stdout.write(JSON.stringify(detail, null, 2) + '\n');
+    return;
+  }
+  console.log(`Type: ${detail.type}`);
+  console.log(`ID: ${detail.id}`);
+  if (detail.type === 'whatsapp') {
+    console.log(`WABA: ${detail.wabaName ?? '(unnamed)'}`);
+    console.log(`Phone: ${detail.displayPhoneNumber ?? '(none)'}`);
+    console.log(`Phone Number ID: ${detail.phoneNumberId ?? '(none)'}`);
+    console.log(`Quality rating: ${detail.qualityRating ?? '(unknown)'}`);
+  } else if (detail.type === 'instagram') {
+    console.log(`Instagram: @${detail.instagramUsername ?? '(no handle)'}`);
+    console.log(`Display name: ${detail.instagramName ?? '(none)'}`);
+  }
+  console.log(`Forwarding: ${detail.forwardingEnabled ? 'on' : 'off'}`);
+  console.log(`Webhook URL: ${detail.webhookUrl ?? '(uses CLI tunnel)'}`);
+  if (detail.businessName) console.log(`Business: ${detail.businessName}`);
+}
+
 export function registerChannelsCommand(program: Command): void {
   const channels = program.command('channels').description('Manage WhatsApp channels');
 
@@ -265,9 +290,7 @@ export function registerChannelsCommand(program: Command): void {
     .description('Show channel details')
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
-      const channel = await resolveChannel(channelRef);
-      const detail = (await apiClient(`/meta/channels/${channel.id}`)) as ChannelDetail;
-      output(pickDisplayFields(detail), { human: !program.opts().json });
+      await runChannelsShow(channelRef, { json: !!program.opts().json });
     });
 
   const channelsConnect = channels
