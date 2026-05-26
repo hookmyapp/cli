@@ -2044,7 +2044,16 @@ The D7 render-all-by-type integration test (asserts both new channels reach the 
 // src/__tests__/channels-connect.test.ts
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.mock('../api/client.js', () => ({ apiClient: vi.fn() }));
+// IMPORTANT: vi.mock replaces the ENTIRE module surface. runChannelsConnect
+// imports BOTH `apiClient` AND `forceTokenRefresh` from '../api/client.js'
+// (the latter is called once at the top of the function — see B6 Step 3 +
+// the legacy assertion in channels.test.ts:222). Both must be in the mock
+// or Vitest crashes with "forceTokenRefresh is not a function" before any
+// assertion runs.
+vi.mock('../api/client.js', () => ({
+  apiClient: vi.fn(),
+  forceTokenRefresh: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('../commands/_helpers.js', () => ({
   getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0001'),
 }));
@@ -2070,6 +2079,7 @@ import {
   buildConnectStartRequest,
 } from '../commands/channels.js';
 import { pollForNewChannels } from '../commands/channels-connect-poll.js';
+import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { select } from '@inquirer/prompts';
 import { ValidationError } from '../output/error.js';
 
@@ -2111,12 +2121,13 @@ describe('runChannelsConnect — integration (D2)', () => {
     process.stdout.isTTY = true;
   });
 
-  it('explicit whatsapp: snapshots first, then POSTs to /meta/oauth/start with redirectPath body', async () => {
+  it('explicit whatsapp: forceTokenRefresh runs, then snapshot, then POSTs to /meta/oauth/start with redirectPath body', async () => {
     vi.mocked(apiClient)
       .mockResolvedValueOnce([])  // 1. snapshot BEFORE open
       .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example/wa', codeChallenge: 'c' }); // 2. OAuth
     await runChannelsConnect({ type: 'whatsapp' });
     expect(vi.mocked(select)).not.toHaveBeenCalled();
+    expect(vi.mocked(forceTokenRefresh)).toHaveBeenCalledOnce(); // legacy assertion preserved
     const calls = vi.mocked(apiClient).mock.calls;
     expect(calls[0][0]).toBe('/meta/channels');
     expect(calls[1][0]).toBe('/meta/oauth/start');
