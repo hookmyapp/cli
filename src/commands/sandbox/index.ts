@@ -247,17 +247,20 @@ export function registerSandboxCommand(program: Command): void {
   const webhookShow = sandboxWebhook
     .command('show')
     .description('Show the current webhook URL on a sandbox session')
-    .argument('[phone]', '[deprecated] Use --phone instead. Removed in 0.13.0.')
+    .argument(
+      '[identifier]',
+      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+    )
     .option('--phone <e164>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--json', 'Machine-readable output')
     .action(
       async (
-        positionalPhone: string | undefined,
+        identifier: string | undefined,
         opts: { phone?: string; username?: string; session?: string; json?: boolean },
       ) => {
-        await runSandboxWebhookShow({ positionalPhone, ...opts, json: !!(opts.json || program.opts().json) });
+        await runSandboxWebhookShow({ ...opts, identifierArg: identifier, json: !!(opts.json || program.opts().json) });
       },
     );
   addExamples(
@@ -271,7 +274,10 @@ export function registerSandboxCommand(program: Command): void {
   const webhookSet = sandboxWebhook
     .command('set')
     .description('Point this sandbox session at a custom webhook URL')
-    .argument('[phone]', '[deprecated] Use --phone instead. Removed in 0.13.0.')
+    .argument(
+      '[identifier]',
+      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+    )
     .option('--phone <e164>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
@@ -279,7 +285,7 @@ export function registerSandboxCommand(program: Command): void {
     .option('--json', 'Machine-readable output')
     .action(
       async (
-        positionalPhone: string | undefined,
+        identifier: string | undefined,
         opts: {
           phone?: string;
           username?: string;
@@ -288,7 +294,7 @@ export function registerSandboxCommand(program: Command): void {
           json?: boolean;
         },
       ) => {
-        await runSandboxWebhookSet({ positionalPhone, ...opts, json: !!(opts.json || program.opts().json) });
+        await runSandboxWebhookSet({ ...opts, identifierArg: identifier, json: !!(opts.json || program.opts().json) });
       },
     );
   addExamples(
@@ -304,17 +310,20 @@ export function registerSandboxCommand(program: Command): void {
     .description(
       'Clear a custom webhook URL on a sandbox session (revert to HookMyApp CLI tunnel)',
     )
-    .argument('[phone]', '[deprecated] Use --phone instead. Removed in 0.13.0.')
+    .argument(
+      '[identifier]',
+      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+    )
     .option('--phone <e164>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--json', 'Machine-readable output')
     .action(
       async (
-        positionalPhone: string | undefined,
+        identifier: string | undefined,
         opts: { phone?: string; username?: string; session?: string; json?: boolean },
       ) => {
-        await runSandboxWebhookClear({ positionalPhone, ...opts, json: !!(opts.json || program.opts().json) });
+        await runSandboxWebhookClear({ ...opts, identifierArg: identifier, json: !!(opts.json || program.opts().json) });
       },
     );
   addExamples(
