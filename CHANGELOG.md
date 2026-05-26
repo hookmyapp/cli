@@ -6,6 +6,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 ### Added
 
+- `hookmyapp sandbox logs --phone|--username|--session [--follow] [--detail <id>] [--json]` — read webhook delivery logs for a sandbox session. Mirrors the GUI Deliveries panel (same status labels, copy, colors, sender, relative time, and detail expansion). Useful for debugging when a custom webhook URL is set via `sandbox webhook set` and `sandbox listen` isn't running.
 - `hookmyapp sandbox start --type=instagram` — bind an Instagram sandbox session by DMing the env-configured sandbox IG handle (`@hookmyappsandboxstaging` on local + staging; production gated until the prod handle is provisioned).
 - `--username <@handle>` selector flag on `sandbox env`, `sandbox send`, `sandbox stop`, `sandbox webhook show/set/clear`, and `sandbox listen` — selects an Instagram session by handle. Falls back to IGSID match when the username is still being backfilled by the backend.
 - `--session <ssn_XXXXXXXX>` promoted to a universal selector across the same five subcommand groups (was sandbox-listen-only).
