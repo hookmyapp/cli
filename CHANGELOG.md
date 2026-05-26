@@ -13,14 +13,15 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 - `INSTAGRAM_API_URL`, `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_ACCOUNT_ID` env vars emitted by `sandbox env` when the selected session is Instagram.
 - Boundary parser that validates every `GET /sandbox/sessions*` response into a `WhatsAppSandboxSession | InstagramSandboxSession` discriminated union. Malformed wire data surfaces as `UnexpectedError` (`MALFORMED_SANDBOX_SESSION`, exit 1).
 - `hookmyapp sandbox start <whatsapp|instagram>` positional shortcut — alternative to `--type=<channel>` (both still supported; conflict errors if positional and flag disagree).
-
-### Deprecated
-
-- Positional `[phone]` argument on `sandbox webhook show`, `sandbox webhook set`, `sandbox webhook clear`. Use `--phone`, `--username`, or `--session` instead. Positional still works in 0.12.2 with a stderr deprecation warning; removed no earlier than 0.13.0.
+- **Phase A (D3 + D9):** Positional shape-detected `[identifier]` argument on `sandbox stop`, `sandbox env`, `sandbox send`, `sandbox logs`, `sandbox listen`, and `sandbox webhook show/set/clear` — `hookmyapp sandbox send +972545434384 --message "hi"` instead of `--phone +972545434384`. Accepts `+<phone>`, `@<username>`, or `ssn_XXXXXXXX`. Existing `--phone` / `--username` / `--session` flags remain as a typed-fallback path; positional and flag conflict errors if both are provided and disagree.
+- **Phase A (D9):** `sandbox logs --verbose` (`-v`) flag — full inbound body + forward attempt dump (the previous default).
+- **Phase A:** `parseIdentifier()` shared helper at `src/lib/parseIdentifier.ts` for shape detection across sandbox (and future channels) commands.
 
 ### Changed
 
 - `sandbox status` table now renders `Type | Identifier | Status | Listener` columns instead of `Phone | Status | Listener`. Identifier is `+<phone>` for WhatsApp and `@<handle>` for Instagram (falls back to IGSID).
+- **Phase A (D9):** `sandbox logs` default render flipped to **table-by-default** — one-line summary per delivery (timestamp · sender · target · status · latency · preview). Use `--verbose` for the previous full-dump format. Rationale: scanning recent deliveries is the common case; full-body dumps are the debugging-only case.
+- **Phase A (D3):** The previously-deprecated `[phone]` positional on `sandbox webhook show/set/clear` is repurposed to a first-class `[identifier]` positional (accepts `+phone`, `@username`, `ssn_XXXXXXXX`). The earlier stderr deprecation warning is removed — positional is now the recommended shape across the sandbox surface, so the `### Deprecated` section is no longer carried in this release.
 
 ## 0.12.1 — 2026-05-17
 
