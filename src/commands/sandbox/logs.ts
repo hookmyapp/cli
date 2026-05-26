@@ -1,25 +1,26 @@
-// `hookmyapp sandbox logs` — read webhook delivery logs for a sandbox session.
+// `hookmyapp sandbox logs` — verbose dump of webhook delivery logs for a sandbox session.
 //
-// Mirrors the GUI Deliveries panel verbatim: same status labels, copy, colors,
-// sender, and relative time. The ONE deliberate CLI deviation from the GUI is
-// appending the first 8 chars of the delivery id at the end of each list row.
-// The GUI has no need for a stable copy-pasteable identifier (users click to
-// expand). The CLI cannot click, so `--detail <id>` is the mechanism for
-// expansion — and the 8-char id at the end of the row is the cue that you
-// can pass it there. It's the minimum necessary deviation to preserve the
-// "no invisible state" principle of a good CLI.
+// Verbose-by-default: every delivery prints with the full inbound body + forward
+// attempt(s) inline. Debugging is the only use case for this command — no flag
+// exploration needed to get full bodies. Mirrors the GUI Deliveries panel's
+// expanded-row content (inbound body + forward request + app response).
 //
 // Modes:
-//   default      : fetch last N deliveries, print one row per delivery (human)
-//   --json       : JSONL (one backend DTO per line, no styling)
-//   --follow / -f: print initial list then stream new deliveries via SSE
-//   --detail <id>: fetch + print one full delivery (inbound body + attempts)
+//   default      : fetch last N deliveries, print verbose block per delivery (human)
+//   --json       : JSONL (one full detail DTO per line, no styling)
+//   --follow / -f: print initial verbose dump then stream new deliveries in same format
+//
+// N+1 note: Verbose-by-default makes one GET /deliveries/<id> call per row. At
+// default limit=50 that's ~51 API calls. Acceptable for a debug command. A batch
+// detail endpoint would reduce to 2 calls; defer until we have telemetry showing
+// latency pain.
 
 import pc from 'picocolors';
 import { apiClient } from '../../api/client.js';
 import { parseSandboxSessions } from '../../api/sandbox-session.js';
+import type { SandboxSession } from '../../api/sandbox-session.js';
 import { c } from '../../output/color.js';
-import { AuthError, ValidationError } from '../../output/error.js';
+import { AuthError } from '../../output/error.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
 import { getEffectiveApiUrl } from '../../config/env-profiles.js';
 import { readCredentials } from '../../auth/store.js';
@@ -142,43 +143,104 @@ function statusLabel(label: string, color: 'green' | 'red' | 'gray'): string {
 }
 
 // ---------------------------------------------------------------------------
-// Row rendering — matches GUI list row shape exactly (+ 8-char id deviation)
-//
-// GUI column order (delivery-row.tsx:155-224):
-//   ● | humanStatus | humanStatusCopy | from {senderDisplay} | timestamp
-//
-// CLI adds: 8-char id at the end (see top-of-file comment for justification)
-//
-// Fixed column widths after ANSI stripping (padEnd on plain text before color):
-//   status label  : 14 chars
-//   status copy   : 36 chars
-//   sender        : 22 chars
-//   timestamp     : 12 chars
-//   id (8 chars)  : trailing dim
+// Body formatting helpers
 // ---------------------------------------------------------------------------
 
-function stripAnsi(s: string): string {
-  // Strips ESC [ ... m sequences emitted by picocolors.
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/\x1b\[[0-9;]*m/g, '');
+const BODY_TRUNCATE_LIMIT = 4096;
+const SEPARATOR = c.dim('─'.repeat(68));
+
+// formatBodyForTerminal — pretty-prints a JSON body string, indented by `indent`.
+// Non-JSON falls back to raw text. Truncates at BODY_TRUNCATE_LIMIT chars in
+// human mode (pass unlimited=true to skip truncation, e.g. --json mode).
+function formatBodyForTerminal(
+  body: string | null | undefined,
+  indent = '    ',
+  unlimited = false,
+): string {
+  if (!body) return `${indent}(empty)`;
+  let text: string;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    text = JSON.stringify(parsed, null, 2);
+  } catch {
+    text = body;
+  }
+  if (!unlimited && text.length > BODY_TRUNCATE_LIMIT) {
+    text = text.slice(0, BODY_TRUNCATE_LIMIT) + '\n... [truncated — use --json for full body]';
+  }
+  return text
+    .split('\n')
+    .map((l) => `${indent}${l}`)
+    .join('\n');
 }
 
-function pad(s: string, width: number): string {
-  const plain = stripAnsi(s);
-  const needed = width - plain.length;
-  return needed > 0 ? s + ' '.repeat(needed) : s;
+// Derive the provider noun from session.type for copy like "What X sent us:".
+function providerNoun(sessionType: string): string {
+  switch (sessionType) {
+    case 'instagram':
+      return 'Instagram';
+    case 'whatsapp':
+    default:
+      return 'WhatsApp';
+  }
 }
 
-export function formatListRow(d: DeliverySummary, now = Date.now()): string {
-  const dot = statusDot(d.humanStatusColor);
-  const lbl = pad(statusLabel(d.humanStatus, d.humanStatusColor), 14);
-  const copy = pad(c.dim(d.humanStatusCopy), 36);
-  const sender = d.senderDisplay
-    ? pad(c.dim(`from ${d.senderDisplay}`), 22)
-    : pad('', 22);
-  const ts = pad(formatRelativeTime(d.receivedAt, now), 12);
-  const shortId = c.dim(d.id.slice(0, 8));
-  return `${dot} ${lbl} ${copy} ${sender} ${ts} ${shortId}`;
+// ---------------------------------------------------------------------------
+// Verbose block renderer — mirrors GUI expanded row content.
+// Call from both the initial-page loop and the SSE event handler.
+// ---------------------------------------------------------------------------
+
+export function printVerboseDelivery(detail: DeliveryDetail, sessionType: string): void {
+  const noun = providerNoun(sessionType);
+  const dot = statusDot(detail.humanStatusColor);
+  const lbl = statusLabel(detail.humanStatus, detail.humanStatusColor);
+  const sender = detail.senderDisplay ?? detail.senderId ?? detail.fromPhone ?? '—';
+  const relTime = formatRelativeTime(detail.receivedAt);
+
+  // Header line: ● Delivered  Delivered to your app  ·  from 828667679804698  ·  5m ago
+  console.log(`${dot} ${lbl}  ${detail.humanStatusCopy}  ·  from ${sender}  ·  ${relTime}`);
+  console.log();
+
+  // Inbound body section
+  console.log(`  What ${noun} sent us:`);
+  console.log(formatBodyForTerminal(detail.inboundBody));
+  console.log();
+
+  if (detail.attempts.length === 0) {
+    // Skipped or destination offline — no attempt made.
+    if (detail.routingDecision === 'skipped') {
+      // Nothing additional needed for skipped; header already conveys it.
+    } else {
+      console.log(`  ${c.dim('(No forward attempt — destination wasn\'t reachable.)')}`);
+    }
+  } else {
+    // Render each attempt (usually just 1; show all for completeness).
+    for (const a of detail.attempts) {
+      const ok =
+        a.forwardStatus != null && a.forwardStatus >= 200 && a.forwardStatus < 300;
+      const isErr =
+        a.forwardStatus != null && (a.forwardStatus < 200 || a.forwardStatus >= 400);
+      const statusStr = `HTTP ${a.forwardStatus ?? '—'} in ${a.forwardDurationMs ?? '—'}ms`;
+      const coloredStatus = ok
+        ? c.success(statusStr)
+        : isErr
+          ? c.error(statusStr)
+          : statusStr;
+
+      console.log(`  We sent it to your app`);
+      console.log(`    ${pc.bold('POST')} ${a.forwardUrl}`);
+      console.log(`    Request body:`);
+      console.log(formatBodyForTerminal(a.forwardRequestBody));
+      console.log();
+      console.log(`  Your app responded`);
+      console.log(`    ${coloredStatus}`);
+      console.log(`    Response body:`);
+      console.log(formatBodyForTerminal(a.forwardResponseBody));
+      console.log();
+    }
+  }
+
+  console.log(SEPARATOR);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,14 +253,8 @@ export async function runSandboxLogs(opts: {
   session?: string;
   limit?: number;
   follow?: boolean;
-  detail?: string;
   json?: boolean;
 }): Promise<void> {
-  // --detail short-circuits: no session picker needed.
-  if (opts.detail) {
-    return runDetail(opts.detail, !!opts.json);
-  }
-
   const workspaceId = await getDefaultWorkspaceId();
   const dto = await apiClient('/sandbox/sessions?active=true', { workspaceId });
   const sessions = parseSandboxSessions(dto);
@@ -220,20 +276,21 @@ export async function runSandboxLogs(opts: {
   const initial = (await apiClient(`/deliveries?${qs.toString()}`, { workspaceId })) as DeliveriesListResponse;
 
   if (opts.json) {
-    for (const d of initial.deliveries) {
-      process.stdout.write(JSON.stringify(d) + '\n');
+    // JSON mode: fetch full detail for each summary and emit one DTO per line.
+    for (const summary of initial.deliveries) {
+      const detail = (await apiClient(`/deliveries/${summary.id}`, { workspaceId })) as DeliveryDetail;
+      process.stdout.write(JSON.stringify(detail) + '\n');
     }
   } else {
-    // Empty state (mirrors GUI: "No deliveries yet. Send a message to this
-    // sandbox to see webhook deliveries appear here in real time.")
+    // Human mode: empty state or verbose blocks.
     if (initial.deliveries.length === 0) {
       console.log(
         'No deliveries yet. Send a message to this sandbox to see webhook deliveries appear here in real time.',
       );
     } else {
-      const now = Date.now();
-      for (const d of initial.deliveries) {
-        console.log(formatListRow(d, now));
+      for (const summary of initial.deliveries) {
+        const detail = (await apiClient(`/deliveries/${summary.id}`, { workspaceId })) as DeliveryDetail;
+        printVerboseDelivery(detail, session.type);
       }
     }
   }
@@ -245,72 +302,9 @@ export async function runSandboxLogs(opts: {
     scope,
     workspaceId,
     isJson: !!opts.json,
+    session,
     seenIds: new Set(initial.deliveries.map((d) => d.id)),
   });
-}
-
-// ---------------------------------------------------------------------------
-// Detail mode — mirrors GUI ExpandedDetail (delivery-row.tsx:239-283)
-// ---------------------------------------------------------------------------
-
-async function runDetail(id: string, isJson: boolean): Promise<void> {
-  const workspaceId = await getDefaultWorkspaceId();
-  const detail = (await apiClient(`/deliveries/${id}`, { workspaceId })) as DeliveryDetail;
-
-  if (isJson) {
-    process.stdout.write(JSON.stringify(detail, null, 2) + '\n');
-    return;
-  }
-  printDetail(detail);
-}
-
-function printDetail(detail: DeliveryDetail): void {
-  const a = detail.attempts[0] ?? null;
-  console.log();
-
-  if (!a) {
-    // No attempts: show inbound body + no-destination alert (GUI lines 249-257)
-    console.log(pc.bold('What WhatsApp sent us'));
-    console.log(formatBody(detail.inboundBody));
-    console.log();
-    console.log(
-      c.dim(
-        'We got this message but couldn\'t forward it because no destination was configured at the time. Future messages will be delivered once one is set up.',
-      ),
-    );
-  } else {
-    // Has attempt: show forward request + app response (GUI lines 258-268)
-    console.log(pc.bold('We sent it to your app'));
-    console.log(`  POST ${a.forwardUrl}`);
-    console.log('  Request body:');
-    console.log(formatBody(a.forwardRequestBody, '    '));
-    console.log();
-
-    const ok = a.forwardStatus != null && a.forwardStatus >= 200 && a.forwardStatus < 300;
-    const statusStr = `HTTP ${a.forwardStatus ?? '—'} in ${a.forwardDurationMs ?? '—'}ms`;
-    console.log(pc.bold('Your app responded'));
-    console.log(`  ${ok ? c.success(statusStr) : c.error(statusStr)}`);
-    console.log('  Response body:');
-    console.log(formatBody(a.forwardResponseBody, '    '));
-  }
-  console.log();
-}
-
-function formatBody(body: string | null | undefined, indent = '  '): string {
-  if (!body) return `${indent}(empty)`;
-  try {
-    const parsed: unknown = JSON.parse(body);
-    return JSON.stringify(parsed, null, 2)
-      .split('\n')
-      .map((l) => `${indent}${l}`)
-      .join('\n');
-  } catch {
-    const truncated = body.length > 2048 ? body.slice(0, 2048) + '... [truncated]' : body;
-    return truncated
-      .split('\n')
-      .map((l) => `${indent}${l}`)
-      .join('\n');
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -327,9 +321,10 @@ async function runFollow(args: {
   scope: string;
   workspaceId: string;
   isJson: boolean;
+  session: SandboxSession;
   seenIds: Set<string>;
 }): Promise<void> {
-  const { scope, workspaceId, isJson, seenIds } = args;
+  const { scope, workspaceId, isJson, session, seenIds } = args;
 
   const creds = await readCredentials();
   if (!creds) {
@@ -393,12 +388,12 @@ async function runFollow(args: {
           if (!eventId || seenIds.has(eventId)) continue;
           seenIds.add(eventId);
 
-          // Fetch full delivery detail so we have all list-row fields.
+          // Fetch full delivery detail for the verbose block.
           const detail = (await apiClient(`/deliveries/${eventId}`, { workspaceId })) as DeliveryDetail;
           if (isJson) {
             process.stdout.write(JSON.stringify(detail) + '\n');
           } else {
-            console.log(formatListRow(toSummary(detail)));
+            printVerboseDelivery(detail, session.type);
           }
         } catch {
           // Skip malformed event or transient fetch error.
@@ -413,33 +408,6 @@ async function runFollow(args: {
       }
     }
   }
-}
-
-// Project the full DeliveryDetail (from /deliveries/:id) down to the
-// DeliverySummary shape used by formatListRow. Used during SSE follow mode.
-function toSummary(detail: DeliveryDetail): DeliverySummary {
-  const attempts = Array.isArray(detail.attempts) ? detail.attempts : [];
-  const latest = attempts.length > 0 ? attempts[attempts.length - 1] : null;
-  return {
-    id: detail.id,
-    receivedAt: detail.receivedAt,
-    fromPhone: detail.fromPhone ?? null,
-    senderId: detail.senderId ?? null,
-    senderDisplay: detail.senderDisplay ?? null,
-    routingDecision: detail.routingDecision ?? '—',
-    attemptsCount: attempts.length,
-    humanStatus: detail.humanStatus ?? '—',
-    humanStatusCopy: detail.humanStatusCopy ?? '',
-    humanStatusTooltip: detail.humanStatusTooltip ?? null,
-    humanStatusColor: detail.humanStatusColor ?? 'gray',
-    latestAttempt: latest
-      ? {
-          outcome: latest.outcome,
-          forwardStatus: latest.forwardStatus ?? null,
-          attemptedAt: latest.attemptedAt,
-        }
-      : null,
-  };
 }
 
 // Exported only so logs.test.ts can import without re-exporting the whole module.
