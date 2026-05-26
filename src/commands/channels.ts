@@ -177,11 +177,15 @@ export async function runChannelsConnect(
   const { getDefaultWorkspaceId } = await import('./_helpers.js');
   const workspaceId = await getDefaultWorkspaceId();
 
-  // 1. SNAPSHOT EXISTING CHANNEL IDS BEFORE OPENING THE BROWSER (D2).
+  // 1. SNAPSHOT {channelId -> updatedAt} BEFORE OPENING THE BROWSER (D2).
   //    Doing this AFTER open() races a fast backend write — the "new"
   //    channel could be included in the snapshot and never reported.
+  //    updatedAt lets the poll also detect re-auth of an existing channel
+  //    (token rotation bumps the row without creating a new id).
   const initialDtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
-  const existingIds = new Set(initialDtos.map(parseChannelListItem).map((c) => c.id));
+  const snapshot = new Map<string, string | undefined>(
+    initialDtos.map(parseChannelListItem).map((c) => [c.id, c.updatedAt]),
+  );
 
   // 2. Route to the per-type OAuth start endpoint via the pure helper.
   const { path, body } = buildConnectStartRequest(type);
@@ -196,8 +200,8 @@ export async function runChannelsConnect(
   await open(redirectUrl);
   console.log('Waiting for channel(s)...');
 
-  // 4. Poll for new channels per D2 acceptance criteria.
-  const newChannels = await pollForNewChannels(workspaceId, existingIds);
+  // 4. Poll for new/updated channels per D2 acceptance criteria.
+  const newChannels = await pollForNewChannels(workspaceId, snapshot);
 
   // 5. Report all new channels by type (D7 coexistence shape).
   console.log('\n✓ Connected:');
