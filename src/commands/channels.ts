@@ -133,7 +133,7 @@ export function buildConnectStartRequest(
   }
   return {
     path: '/instagram/oauth/start',
-    body: JSON.stringify({}),
+    body: JSON.stringify({ flow: 'cli' }),
   };
 }
 
