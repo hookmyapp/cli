@@ -27,12 +27,20 @@ hookmyapp channels connect
 
 ## Listening for webhooks on localhost
 
-Two flavors — pick based on which kind of WhatsApp number you have.
+Two flavors — pick based on which channel you have.
 
-**Sandbox** — a shared WABA managed by HookMyApp, for dev and testing:
+**Sandbox** — a shared sandbox managed by HookMyApp, for dev and testing. Supports WhatsApp and Instagram:
 
 ```bash
+# WhatsApp: bind a session, get env vars, listen
+hookmyapp sandbox start --type=whatsapp
+hookmyapp sandbox env --phone +<your-phone> --write .env
 hookmyapp sandbox listen --phone +<your-phone> --port 3000
+
+# Instagram: bind a session, get env vars, listen
+hookmyapp sandbox start --type=instagram
+hookmyapp sandbox env --username @<your-handle> --write .env
+hookmyapp sandbox listen --username @<your-handle> --port 3000
 ```
 
 **Real channel** — your own onboarded WABA, no customer-owned HTTPS URL
