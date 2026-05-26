@@ -46,4 +46,14 @@ describe('runChannelsList — IG rows are visible', () => {
     expect(combined).toContain('+15551234567');
     outSpy.mockRestore();
   });
+
+  it('empty list → prints "channels connect" hint', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([]);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsList({ json: false });
+    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(combined).toContain('No channels');
+    expect(combined).toContain('channels connect');
+    logSpy.mockRestore();
+  });
 });

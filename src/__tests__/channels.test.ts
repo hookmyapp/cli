@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 
 // Mock api client
 vi.mock('../api/client.js', () => ({
@@ -296,11 +296,7 @@ describe('channels commands', () => {
 // directly via `process.stdout.write` (bypassing the mocked `output()`), so
 // the spies attach there.
 describe('channels list — rendered table contents (Task 8 / B3)', () => {
-  // Typed as `any` because `vi.spyOn(process.stdout, 'write')`'s call-signature
-  // overload isn't assignable to `MockInstance<(...args: unknown[]) => unknown>`.
-  // The narrow type is checked at the spy creation site below; the let-binding
-  // just needs to hold whatever vitest returns.
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: MockInstance<typeof process.stdout.write>;
   let Command: typeof import('commander').Command;
   let registerChannelsCommand: typeof import('../commands/channels.js').registerChannelsCommand;
 
@@ -309,9 +305,7 @@ describe('channels list — rendered table contents (Task 8 / B3)', () => {
     mockedApiClient.mockReset();
     mockedApiClient.mockResolvedValue(fakeChannels);
     mockedOutput.mockReset();
-    stdoutSpy = vi
-      .spyOn(process.stdout, 'write')
-      .mockImplementation(() => true) as unknown as ReturnType<typeof vi.spyOn>;
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
     const commander = await import('commander');
     Command = commander.Command;
