@@ -13,6 +13,8 @@ interface ChannelBase {
   hasActiveCliTunnel?: boolean;
   hostname?: string | null;
   lastHeartbeatAt?: string | null;
+  /** ISO timestamp; absent on older backends — poll falls back to id-diff only. */
+  updatedAt?: string;
 }
 
 export interface WhatsAppChannel extends ChannelBase {
@@ -88,6 +90,7 @@ function parseBase(d: Record<string, unknown>, id: string): ChannelBase {
     hasActiveCliTunnel: typeof d.hasActiveCliTunnel === 'boolean' ? d.hasActiveCliTunnel : undefined,
     hostname: isStringOrNull(d.hostname) ? d.hostname : undefined,
     lastHeartbeatAt: isStringOrNull(d.lastHeartbeatAt) ? d.lastHeartbeatAt : undefined,
+    updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : undefined,
   };
 }
 
