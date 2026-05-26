@@ -10,7 +10,7 @@ import { registerTokenCommand } from './commands/token.js';
 import { registerEnvCommand } from './commands/env.js';
 import { registerBillingCommand } from './commands/billing.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
-import { registerSandboxCommand } from './commands/sandbox.js';
+import { registerSandboxCommand } from './commands/sandbox/index.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { registerConfigCommand } from './commands/config.js';
 import { CliError, UnexpectedError, exitCodeFor, outputError } from './output/error.js';
