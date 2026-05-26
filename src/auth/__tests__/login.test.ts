@@ -71,7 +71,7 @@ beforeEach(async () => {
 });
 
 describe('post-login wizard', () => {
-  it('single workspace, no --next → prints Next steps block and never calls select', async () => {
+  it('single workspace, no --next → auto-selects workspace and exits without Next steps block', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
         id: 'ws_TEST0001',
@@ -91,10 +91,7 @@ describe('post-login wizard', () => {
       }),
     );
     const out = logSpy.mock.calls.flat().join('\n');
-    expect(out).toContain('Next steps');
-    expect(out).toContain('hookmyapp sandbox start');
-    expect(out).toContain('hookmyapp channels connect');
-    expect(out).toContain('hookmyapp help');
+    expect(out).not.toContain('Next steps');
     expect(runSandboxListenFlowMock).not.toHaveBeenCalled();
     expect(runChannelsConnectMock).not.toHaveBeenCalled();
     logSpy.mockRestore();
@@ -135,7 +132,7 @@ describe('post-login wizard', () => {
       pickerCall.choices.map((c: any) => c.name).join(' '),
     ).toMatch(/acme-corp/);
     const out = logSpy.mock.calls.flat().join('\n');
-    expect(out).toContain('Next steps');
+    expect(out).not.toContain('Next steps');
     logSpy.mockRestore();
   });
 
@@ -237,7 +234,7 @@ describe('post-login wizard', () => {
     logSpy.mockRestore();
   });
 
-  it('--json (no --next, no --phone) → emits JSON payload with nextSteps array, suppresses human block', async () => {
+  it('--json (no --next, no --phone) → emits JSON payload without nextSteps, suppresses human block', async () => {
     apiClientMock.mockResolvedValueOnce([
       {
         id: 'ws_TEST0001',
@@ -256,15 +253,10 @@ describe('post-login wizard', () => {
     const payloadLine = writes.find((w) => w.trim().startsWith('{'));
     expect(payloadLine).toBeDefined();
     const payload = JSON.parse((payloadLine as string).trim());
-    expect(payload).toMatchObject({
-      ok: true,
-      workspaceId: 'ws_TEST0001',
-      next: 'exit',
-    });
-    expect(Array.isArray(payload.nextSteps)).toBe(true);
-    expect(payload.nextSteps.join(' ')).toContain('hookmyapp sandbox start');
-    expect(payload.nextSteps.join(' ')).toContain('hookmyapp channels connect');
-    expect(payload.nextSteps.join(' ')).toContain('hookmyapp help');
+    expect(payload.ok).toBe(true);
+    expect(payload.workspaceId).toBe('ws_TEST0001');
+    expect(payload.next).toBe('exit');
+    expect('nextSteps' in payload).toBe(false);
     const humanOut = logSpy.mock.calls.flat().join('\n');
     expect(humanOut).not.toContain('Next steps');
     writeSpy.mockRestore();
