@@ -6,6 +6,7 @@ import type { Command } from 'commander';
 import { addExamples } from '../../output/help.js';
 import { ValidationError } from '../../output/error.js';
 import { runSandboxEnv } from './env.js';
+import { runSandboxLogs } from './logs.js';
 import { runSandboxSend } from './send.js';
 import { runSandboxStart } from './start.js';
 import { runSandboxStatus } from './status.js';
@@ -165,6 +166,39 @@ export function registerSandboxCommand(program: Command): void {
   $ hookmyapp sandbox send --session ssn_POWomFvq --message "ack"`,
   );
 
+  const sandboxLogs = sandbox
+    .command('logs')
+    .description('Read webhook delivery logs for a sandbox session (same data as the GUI Deliveries panel)')
+    .option('--phone <e164>', 'Select WhatsApp session by phone')
+    .option('--username <handle>', 'Select Instagram session by @handle')
+    .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
+    .option('--limit <n>', 'Number of deliveries (1-100, default 50)', (v) => parseInt(v, 10))
+    .option('-f, --follow', 'Stream new deliveries as they arrive (Ctrl+C to stop)')
+    .option('--detail <id>', 'Show the full inbound body + forward attempt for one delivery (8-char prefix from the list view or full UUID)')
+    .option('--json', 'Machine-readable JSONL (one delivery per line)')
+    .action(
+      async (opts: {
+        phone?: string;
+        username?: string;
+        session?: string;
+        limit?: number;
+        follow?: boolean;
+        detail?: string;
+        json?: boolean;
+      }) => {
+        await runSandboxLogs({ ...opts, json: !!(opts.json || program.opts().json) });
+      },
+    );
+  addExamples(
+    sandboxLogs,
+    `EXAMPLES:
+  $ hookmyapp sandbox logs --username @ordvir
+  $ hookmyapp sandbox logs --phone +15551234567 --limit 20
+  $ hookmyapp sandbox logs --username @ordvir --follow
+  $ hookmyapp sandbox logs --username @ordvir --json | jq
+  $ hookmyapp sandbox logs --detail a1b2c3d4`,
+  );
+
   const sandboxWebhook = sandbox
     .command('webhook')
     .description('Manage the destination webhook URL for a sandbox session');
@@ -255,7 +289,8 @@ export function registerSandboxCommand(program: Command): void {
   $ hookmyapp sandbox start --type=instagram
   $ hookmyapp sandbox status
   $ hookmyapp sandbox env --username @ordvir --write
-  $ hookmyapp sandbox send --username @ordvir --message "hello"`,
+  $ hookmyapp sandbox send --username @ordvir --message "hello"
+  $ hookmyapp sandbox logs --username @ordvir`,
   );
 
   addExamples(
