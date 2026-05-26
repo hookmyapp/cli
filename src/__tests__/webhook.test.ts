@@ -33,7 +33,24 @@ const mockedApiClient = vi.mocked(apiClient);
 const mockedOutput = vi.mocked(output);
 
 const fakeChannels = [
-  { id: 'ch_TEST0001', metaWabaId: 'waba-1', wabaName: 'Test WABA', phoneNumberId: 'phone-1', workspaceId: 'ws_TEST0010' },
+  {
+    id: 'ch_TEST0001',
+    type: 'whatsapp',
+    workspaceId: 'ws_TEST0010',
+    metaWabaId: 'waba-1',
+    metaResourceId: 'phone-1',
+    wabaName: 'Test WABA',
+    displayPhoneNumber: '+1 234 567 890',
+    phoneNumberId: 'phone-1',
+    phoneVerifiedName: null,
+    qualityRating: null,
+    qualityRatingCheckedAt: null,
+    connectionType: 'cloud_api',
+    metaConnected: true,
+    forwardingEnabled: true,
+    webhookUrl: null,
+    verifyToken: null,
+  },
 ];
 
 // Mock global fetch for webhook set command's direct fetch call
