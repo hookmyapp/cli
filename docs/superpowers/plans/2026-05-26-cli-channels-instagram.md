@@ -423,7 +423,7 @@ git commit -m "feat(sandbox/picker): accept positional shape-detected identifier
 
 Locate each of these blocks in `src/commands/sandbox/index.ts` and add `.argument('[identifier]', '...')` before the existing `.option('--phone ...')` line. Also extend the action signature.
 
-For `sandboxStop`:
+For `sandboxStop` — **preserve the existing `-y, --yes` flag** (skips confirmation in CI / scripted deletion flows). The new positional is purely additive:
 
 ```typescript
 const sandboxStop = sandbox
@@ -436,6 +436,7 @@ const sandboxStop = sandbox
   .option('--phone <e164>', 'Select WhatsApp session by phone')
   .option('--username <handle>', 'Select Instagram session by @handle')
   .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
+  .option('-y, --yes', 'Skip confirmation')
   .option('--json', 'Machine-readable output')
   .action(
     async (
@@ -444,6 +445,7 @@ const sandboxStop = sandbox
         phone?: string;
         username?: string;
         session?: string;
+        yes?: boolean;
         json?: boolean;
       },
     ) => {
@@ -1672,18 +1674,21 @@ export async function runChannelsList(opts: { json?: boolean }): Promise<void> {
     console.log('No channels. Run: hookmyapp channels connect <whatsapp|instagram>');
     return;
   }
-  const rows = channels.map((c) => ({
-    Type: c.type === 'whatsapp' ? 'WhatsApp' : c.type === 'instagram' ? 'Instagram' : 'Messenger',
+  // Rename loop var to `ch` so it doesn't shadow the imported color helper
+  // `c` from src/output/color.js — calling `c.success('on')` would otherwise
+  // type-error against Channel.
+  const rows = channels.map((ch) => ({
+    Type: ch.type === 'whatsapp' ? 'WhatsApp' : ch.type === 'instagram' ? 'Instagram' : 'Messenger',
     Identifier:
-      c.type === 'whatsapp'
-        ? c.displayPhoneNumber ?? c.wabaName ?? c.id
-        : c.type === 'instagram'
-          ? c.instagramUsername
-            ? `@${c.instagramUsername}`
-            : c.id
-          : c.id,
-    'Channel ID': c.id,
-    Forwarding: c.forwardingEnabled ? c.success('on') : c.dim('off'),
+      ch.type === 'whatsapp'
+        ? ch.displayPhoneNumber ?? ch.wabaName ?? ch.id
+        : ch.type === 'instagram'
+          ? ch.instagramUsername
+            ? `@${ch.instagramUsername}`
+            : ch.id
+          : ch.id,
+    'Channel ID': ch.id,
+    Forwarding: ch.forwardingEnabled ? c.success('on') : c.dim('off'),
   }));
   process.stdout.write(renderTable(rows) + '\n');
 }
@@ -1753,8 +1758,63 @@ if (channel.businessName) console.log(`Business: ${channel.businessName}`);
 In `src/__tests__/channels-show.test.ts`:
 
 ```typescript
-// Test that runChannelsShow on a WA ref prints +phone + wabaName + quality rating
-// and on an IG ref prints @handle + display name. Two cases, mock apiClient twice each.
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+vi.mock('../api/client.js', () => ({ apiClient: vi.fn() }));
+vi.mock('../commands/_helpers.js', () => ({
+  getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0001'),
+}));
+
+import { apiClient } from '../api/client.js';
+import { runChannelsShow } from '../commands/channels.js';
+
+const wa = {
+  id: 'ch_WAaaaaaa', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+  metaWabaId: '1179', metaResourceId: '1080', connectionType: 'cloud_api',
+  metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+  wabaName: 'My WABA', displayPhoneNumber: '+15551234567', phoneNumberId: '1080',
+  phoneVerifiedName: 'Test', qualityRating: 'GREEN', qualityRatingCheckedAt: '2026-05-26T12:00:00Z',
+};
+const ig = {
+  id: 'ch_IGaaaaaa', type: 'instagram', workspaceId: 'ws_TEST0001',
+  metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+  metaConnected: true, forwardingEnabled: true, webhookUrl: 'https://my.example/hook', verifyToken: null,
+  instagramUsername: 'ordvir', instagramName: 'Or Dvir', instagramProfilePictureUrl: null,
+};
+
+describe('runChannelsShow — type-aware detail render', () => {
+  beforeEach(() => vi.mocked(apiClient).mockReset());
+
+  it('WA channel prints +phone + wabaName + quality rating', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([wa])  // resolveChannel list fetch
+      .mockResolvedValueOnce({ ...wa, accessToken: 'EAAxxx', businessName: 'Test Biz' });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsShow('+15551234567', { json: false });
+    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(combined).toContain('+15551234567');
+    expect(combined).toContain('My WABA');
+    expect(combined).toContain('GREEN');
+    expect(combined).toContain('Test Biz');
+    expect(combined).not.toContain('Instagram');
+    logSpy.mockRestore();
+  });
+
+  it('IG channel prints @handle + display name + webhook URL', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([ig])
+      .mockResolvedValueOnce(ig);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsShow('@ordvir', { json: false });
+    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(combined).toContain('@ordvir');
+    expect(combined).toContain('Or Dvir');
+    expect(combined).toContain('https://my.example/hook');
+    expect(combined).not.toContain('WABA');
+    expect(combined).not.toContain('quality');
+    logSpy.mockRestore();
+  });
+});
 ```
 
 - [ ] **Step 3: Run the test**
@@ -1804,25 +1864,35 @@ describe('runChannelsConnect — type chooser (D2)', () => {
     process.stdout.isTTY = true;
   });
 
-  it('explicit whatsapp → no prompt, opens WA OAuth URL', async () => {
-    vi.mocked(apiClient).mockResolvedValueOnce({ oauthUrl: 'https://meta.example/wa-oauth' })
-      .mockResolvedValueOnce([]); // initial /meta/channels snapshot
-    await runChannelsConnect({ type: 'whatsapp' });
+  it('explicit whatsapp → no prompt, POSTs to /meta/oauth/start', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])  // initial /meta/channels snapshot (BEFORE open)
+      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example/wa-oauth', codeChallenge: 'c' })
+      .mockResolvedValueOnce([]); // first poll tick — empty (test only cares about routing)
+    await runChannelsConnect({ type: 'whatsapp' }).catch(() => {}); // OK if it times out; we only assert routing
     expect(vi.mocked(select)).not.toHaveBeenCalled();
+    const startCall = vi.mocked(apiClient).mock.calls.find((c) => c[0] === '/meta/oauth/start');
+    expect(startCall).toBeDefined();
   });
 
-  it('explicit instagram → no prompt, opens IG OAuth URL', async () => {
-    vi.mocked(apiClient).mockResolvedValueOnce({ oauthUrl: 'https://meta.example/ig-oauth' })
+  it('explicit instagram → no prompt, POSTs to /instagram/oauth/start', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ redirectUrl: 'https://meta.example/ig-oauth' })
       .mockResolvedValueOnce([]);
-    await runChannelsConnect({ type: 'instagram' });
+    await runChannelsConnect({ type: 'instagram' }).catch(() => {});
     expect(vi.mocked(select)).not.toHaveBeenCalled();
+    const startCall = vi.mocked(apiClient).mock.calls.find((c) => c[0] === '/instagram/oauth/start');
+    expect(startCall).toBeDefined();
   });
 
   it('bare (no type) in TTY → prompts via @inquirer/select', async () => {
     vi.mocked(select).mockResolvedValueOnce('instagram');
-    vi.mocked(apiClient).mockResolvedValueOnce({ oauthUrl: 'https://meta.example/ig-oauth' })
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ redirectUrl: 'https://meta.example/ig-oauth' })
       .mockResolvedValueOnce([]);
-    await runChannelsConnect({});
+    await runChannelsConnect({}).catch(() => {});
     expect(vi.mocked(select)).toHaveBeenCalled();
   });
 
@@ -1873,9 +1943,45 @@ export async function runChannelsConnect(opts: ChannelsConnectOpts): Promise<voi
       ],
     });
   }
-  // ... existing connect logic, but use `type` to pick the OAuth URL ...
-  // call /meta/oauth/start with body { channelType: type } (backend already supports this).
-  // open the URL, then run pollForNewChannels (Task B6).
+
+  const workspaceId = await getDefaultWorkspaceId();
+
+  // 1. SNAPSHOT EXISTING CHANNEL IDS BEFORE OPENING THE BROWSER (D2).
+  //    Doing this AFTER open() races a fast backend write — the "new"
+  //    channel could be included in the snapshot and never reported.
+  const initialDtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
+  const existingIds = new Set(initialDtos.map(parseChannelListItem).map((c) => c.id));
+
+  // 2. Route to the per-type OAuth start endpoint. WA and IG are
+  //    distinct controllers; the request body is `OAuthStartDto` for
+  //    both (only `redirectPath`, no `channelType`). Both responses
+  //    return `{ redirectUrl }`. WA additionally returns
+  //    `{ state, codeChallenge }` which the CLI does not consume.
+  const startPath = type === 'whatsapp' ? '/meta/oauth/start' : '/instagram/oauth/start';
+  const { redirectUrl } = (await apiClient(startPath, {
+    method: 'POST',
+    body: JSON.stringify({}),
+    workspaceId,
+  })) as { redirectUrl: string };
+
+  // 3. Open in browser.
+  const { default: open } = await import('open');
+  await open(redirectUrl);
+
+  // 4. Poll for new channels — see Task B6 for the acceptance criteria.
+  const newChannels = await pollForNewChannels(workspaceId, existingIds);
+
+  // 5. Report all new channels by type (D7 coexistence shape).
+  console.log('✓ Connected:');
+  for (const ch of newChannels) {
+    const label =
+      ch.type === 'whatsapp'
+        ? `  WhatsApp  ${ch.displayPhoneNumber ?? '(no phone)'}  (${ch.id})`
+        : ch.type === 'instagram'
+          ? `  Instagram @${ch.instagramUsername ?? '(no handle)'}  (${ch.id})`
+          : `  Messenger (${ch.id})`;
+    console.log(label);
+  }
 }
 ```
 
@@ -1954,13 +2060,18 @@ describe('runChannelsConnect — coexistence multi-channel polling (D2)', () => 
   it('reports BOTH channels that appear during the 4s stability window', async () => {
     const wa = { /* ...as before, id: 'ch_NEW_WA' */ };
     const ig = { /* ...as before, id: 'ch_NEW_IG' */ };
+    // IMPORTANT mock ordering — matches the race-safe call order in
+    // runChannelsConnect (Task B5):
+    //   1. GET /meta/channels — snapshot BEFORE open()
+    //   2. POST /meta/oauth/start — get redirectUrl
+    //   3-N. GET /meta/channels — poll loop
     vi.mocked(apiClient)
-      .mockResolvedValueOnce({ oauthUrl: 'https://meta.example' })  // /meta/oauth/start
-      .mockResolvedValueOnce([])                                      // initial snapshot (empty)
-      .mockResolvedValueOnce([wa])                                    // poll 1: WA appeared
-      .mockResolvedValueOnce([wa, ig])                                // poll 2: IG appeared
-      .mockResolvedValueOnce([wa, ig])                                // poll 3: stable
-      .mockResolvedValueOnce([wa, ig]);                               // poll 4: stable → exit
+      .mockResolvedValueOnce([])                                      // 1. snapshot before open (empty workspace)
+      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example', codeChallenge: 'c' })  // 2. OAuth start
+      .mockResolvedValueOnce([wa])                                    // 3. poll 1: WA appeared
+      .mockResolvedValueOnce([wa, ig])                                // 4. poll 2: IG appeared
+      .mockResolvedValueOnce([wa, ig])                                // 5. poll 3: stable
+      .mockResolvedValueOnce([wa, ig]);                               // 6. poll 4: stable → exit
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const promise = runChannelsConnect({ type: 'whatsapp' });
     await vi.advanceTimersByTimeAsync(2000); // poll 1
@@ -1976,10 +2087,32 @@ describe('runChannelsConnect — coexistence multi-channel polling (D2)', () => 
     logSpy.mockRestore();
   });
 
+  it('race-safe: a channel that already exists in the initial snapshot is NOT reported', async () => {
+    const preExisting = { /* ...as before, id: 'ch_PRE_EXISTING' */ };
+    const wa = { /* ...as before, id: 'ch_NEW_WA' */ };
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([preExisting])                  // 1. snapshot — preExisting already present
+      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example', codeChallenge: 'c' })  // 2. OAuth
+      .mockResolvedValueOnce([preExisting, wa])              // 3. poll 1: wa is new
+      .mockResolvedValueOnce([preExisting, wa])              // 4. poll 2: stable
+      .mockResolvedValueOnce([preExisting, wa]);             // 5. poll 3: stable → exit
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const promise = runChannelsConnect({ type: 'whatsapp' });
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    await promise;
+    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(combined).toContain('ch_NEW_WA');
+    expect(combined).not.toContain('ch_PRE_EXISTING'); // ← the race-safety assertion
+    logSpy.mockRestore();
+  });
+
   it('hard timeout at 5 minutes', async () => {
     vi.mocked(apiClient)
-      .mockResolvedValueOnce({ oauthUrl: 'https://meta.example' })
-      .mockResolvedValue([]); // every poll returns no new channels
+      .mockResolvedValueOnce([])                              // 1. snapshot
+      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example', codeChallenge: 'c' })  // 2. OAuth
+      .mockResolvedValue([]);                                 // 3+. every poll returns no new channels
     const promise = runChannelsConnect({ type: 'instagram' });
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000);
     await expect(promise).rejects.toThrow(/timed out|no channels appeared/i);
@@ -2002,16 +2135,22 @@ In `src/commands/channels.ts`:
 ```typescript
 /**
  * D2 polling acceptance criteria:
- *   1. Snapshot existing channel ids BEFORE opening OAuth.
+ *   1. Caller snapshots existing channel ids BEFORE opening OAuth (race-safe).
  *   2. Poll /meta/channels every 2s after browser launch.
  *   3. Track newIds = channels not in the snapshot.
  *   4. Exit when: (a) newIds.length > 0 AND no new id in last 4s (stability), OR
  *      (b) 5min hard timeout, OR (c) SIGINT.
  *   5. Return ALL new channels.
+ *
+ * The `existingIds` Set MUST be captured BEFORE `open()` in the caller —
+ * doing the snapshot inside this helper after the browser launches races a
+ * fast backend write where the new channel could be included in the
+ * "existing" snapshot and never reported.
  */
-async function pollForNewChannels(workspaceId: string): Promise<Channel[]> {
-  const initial = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
-  const existingIds = new Set(initial.map(parseChannelListItem).map((c) => c.id));
+async function pollForNewChannels(
+  workspaceId: string,
+  existingIds: ReadonlySet<string>,
+): Promise<Channel[]> {
   const POLL_INTERVAL_MS = 2000;
   const STABILITY_WINDOW_MS = 4000;
   const HARD_TIMEOUT_MS = 5 * 60 * 1000;
@@ -2041,22 +2180,7 @@ async function pollForNewChannels(workspaceId: string): Promise<Channel[]> {
 }
 ```
 
-Wire it into `runChannelsConnect`:
-
-```typescript
-// after opening OAuth URL:
-const newChannels = await pollForNewChannels(workspaceId);
-console.log('✓ Connected:');
-for (const ch of newChannels) {
-  const label =
-    ch.type === 'whatsapp'
-      ? `  WhatsApp  ${ch.displayPhoneNumber ?? '(no phone)'}  (${ch.id})`
-      : ch.type === 'instagram'
-        ? `  Instagram @${ch.instagramUsername ?? '(no handle)'}  (${ch.id})`
-        : `  Messenger (${ch.id})`;
-  console.log(label);
-}
-```
+The polling helper itself is invoked from `runChannelsConnect` (already defined in Task B5 — the snapshot is taken BEFORE `open()`, then `pollForNewChannels(workspaceId, existingIds)` is called AFTER). No additional wiring needed here — Task B5 establishes the call shape.
 
 - [ ] **Step 4: Run the tests**
 
@@ -2084,13 +2208,62 @@ git commit -m "feat(channels/connect): coexistence polling (snapshot + stability
 
 ```typescript
 // src/__tests__/channels-toggles.test.ts
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+vi.mock('../api/client.js', () => ({ apiClient: vi.fn() }));
+vi.mock('../commands/_helpers.js', () => ({
+  getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0001'),
+}));
+
+import { apiClient } from '../api/client.js';
+import {
+  runChannelsDisconnect,
+  runChannelsEnable,
+  runChannelsDisable,
+} from '../commands/channels.js';
+
+const ig = {
+  id: 'ch_IGaaaaaa', type: 'instagram', workspaceId: 'ws_TEST0001',
+  metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+  metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+  instagramUsername: 'ordvir', instagramName: 'Or', instagramProfilePictureUrl: null,
+};
+
 describe('channels toggle actions accept IG channels', () => {
-  it('disconnect on @ordvir hits POST /meta/channels/ch_IG.../disconnect', async () => {
-    // arrange: mock /meta/channels returning [ig], mock disconnect endpoint
-    // act: runChannelsDisconnect('@ordvir')
-    // assert: second apiClient call URL contains 'ch_IGaaaaaa/disconnect'
+  beforeEach(() => vi.mocked(apiClient).mockReset());
+
+  it('disconnect on @ordvir POSTs to /meta/channels/ch_IGaaaaaa/disconnect', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([ig])           // resolveChannel
+      .mockResolvedValueOnce({ ok: true });  // disconnect endpoint
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsDisconnect('@ordvir');
+    expect(vi.mocked(apiClient).mock.calls[1][0]).toBe('/meta/channels/ch_IGaaaaaa/disconnect');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Instagram @ordvir'));
+    logSpy.mockRestore();
   });
-  // repeat for enable + disable
+
+  it('enable on @ordvir POSTs to /meta/channels/ch_IGaaaaaa/enable', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([ig])
+      .mockResolvedValueOnce({ forwardingEnabled: true });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsEnable('@ordvir');
+    expect(vi.mocked(apiClient).mock.calls[1][0]).toBe('/meta/channels/ch_IGaaaaaa/enable');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Instagram @ordvir'));
+    logSpy.mockRestore();
+  });
+
+  it('disable on @ordvir POSTs to /meta/channels/ch_IGaaaaaa/disable', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([ig])
+      .mockResolvedValueOnce({ forwardingEnabled: false });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsDisable('@ordvir');
+    expect(vi.mocked(apiClient).mock.calls[1][0]).toBe('/meta/channels/ch_IGaaaaaa/disable');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Instagram @ordvir'));
+    logSpy.mockRestore();
+  });
 });
 ```
 
@@ -2272,8 +2445,49 @@ process.stdout.write(`✓ Tunnel active for ${subjectLabel}: https://${tunnelHos
 
 ```typescript
 // src/commands/channels-listen/__tests__/listen-ig.test.ts
-// Mock /meta/channels returning [ig], mock tunnel/start, assert the banner contains 'Instagram @ordvir'.
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+vi.mock('../../../api/client.js', () => ({ apiClient: vi.fn() }));
+vi.mock('../../_helpers.js', () => ({
+  getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0001'),
+}));
+// Stub heavy tunnel + heartbeat side-effects so the test asserts banner copy only.
+vi.mock('../lifecycle.js', () => ({
+  startHeartbeat: vi.fn(),
+  stopHeartbeat: vi.fn(),
+}));
+
+import { apiClient } from '../../../api/client.js';
+import { printChannelListenBanner } from '../index.js';
+import type { Channel } from '../../../api/channel.js';
+
+const ig: Channel = {
+  id: 'ch_IGaaaaaa', type: 'instagram', workspaceId: 'ws_TEST0001',
+  metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+  metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+  instagramUsername: 'ordvir', instagramName: 'Or', instagramProfilePictureUrl: null,
+};
+
+describe('channels listen — IG banner copy', () => {
+  beforeEach(() => vi.mocked(apiClient).mockReset());
+
+  it('prints "Instagram @ordvir" + tunnel URL', () => {
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    printChannelListenBanner({
+      channel: ig,
+      tunnelHost: 'abc.cloudflare.example',
+      localPort: 3000,
+    });
+    const combined = outSpy.mock.calls.map((c) => c[0]).join('');
+    expect(combined).toContain('Instagram @ordvir');
+    expect(combined).toContain('abc.cloudflare.example');
+    expect(combined).not.toContain('WhatsApp');
+    outSpy.mockRestore();
+  });
+});
 ```
+
+Note: the test extracts the banner-printing into a named export (`printChannelListenBanner`) so it's directly callable without the full tunnel side-effects. Mirror the pattern used by `printBanner` in `src/commands/sandbox-listen/index.ts`.
 
 - [ ] **Step 4: Run the test**
 
@@ -2366,18 +2580,155 @@ Same shape as Task A6's `printSummaryDelivery` — extract the format into a sha
 
 - [ ] **Step 5: Write tests for follow + json**
 
-`follow-mode.test.ts`:
+`src/commands/channels-logs/__tests__/follow-mode.test.ts`:
 
 ```typescript
-// Mock the SSE stream as an async iterator yielding 2 DeliveryDetail objects.
-// Run runChannelLogsList with { follow: true }. Assert both renders occurred.
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+vi.mock('../../../api/client.js', () => ({ apiClient: vi.fn() }));
+vi.mock('../../_helpers.js', () => ({
+  getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0001'),
+}));
+vi.mock('../api.js', async () => {
+  const actual = await vi.importActual<typeof import('../api.js')>('../api.js');
+  return {
+    ...actual,
+    streamDeliveries: vi.fn(),
+    fetchDeliveriesPage: vi.fn(),
+    fetchDeliveryDetail: vi.fn(),
+  };
+});
+
+import { apiClient } from '../../../api/client.js';
+import { runChannelLogsList } from '../index.js';
+import { streamDeliveries, fetchDeliveriesPage, fetchDeliveryDetail } from '../api.js';
+import type { Channel } from '../../../api/channel.js';
+
+const ig: Channel = {
+  id: 'ch_IGaaaaaa', type: 'instagram', workspaceId: 'ws_TEST0001',
+  metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+  metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+  instagramUsername: 'ordvir', instagramName: 'Or', instagramProfilePictureUrl: null,
+};
+
+const sampleDetail = {
+  id: 'wph_001', routingDecision: 'forward',
+  inboundBody: '{"text":"hi"}', fromPhone: null,
+  senderDisplay: '@ordvir', senderId: '1907', receivedAt: '2026-05-26T14:30:01Z',
+  humanStatus: 'delivered', humanStatusCopy: 'Delivered', humanStatusTooltip: null,
+  humanStatusColor: 'green' as const,
+  attempts: [{
+    id: 'a1', attemptNumber: 1,
+    forwardUrl: 'https://n8n.example/webhook',
+    forwardRequestBody: '', forwardStatus: 200, forwardDurationMs: 150,
+    forwardResponseBody: null, outcome: 'success',
+    attemptedAt: '2026-05-26T14:30:01.150Z',
+  }],
+};
+
+describe('channels logs list --follow streams deliveries', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(streamDeliveries).mockReset();
+    vi.mocked(fetchDeliveriesPage).mockReset();
+    vi.mocked(fetchDeliveryDetail).mockReset();
+  });
+
+  it('emits the initial snapshot + each streamed delivery', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([ig]); // resolveChannel
+    vi.mocked(fetchDeliveriesPage).mockResolvedValueOnce({ deliveries: [{ id: 'wph_001' }], nextCursor: null } as any);
+    vi.mocked(fetchDeliveryDetail).mockResolvedValueOnce(sampleDetail as any);
+    vi.mocked(streamDeliveries).mockReturnValueOnce(
+      (async function* () {
+        yield { ...sampleDetail, id: 'wph_002' } as any;
+        yield { ...sampleDetail, id: 'wph_003' } as any;
+      })(),
+    );
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runChannelLogsList('@ordvir', { follow: true, limit: '1' }, false);
+    const combined = outSpy.mock.calls.map((c) => c[0]).join('');
+    expect(combined).toContain('@ordvir');     // sender in summary
+    expect(combined).toContain('n8n.example');  // target host
+    expect(streamDeliveries).toHaveBeenCalledWith({
+      channelPublicId: 'ch_IGaaaaaa',
+      workspaceId: 'ws_TEST0001',
+    });
+    outSpy.mockRestore();
+  });
+});
 ```
 
-`json-mode.test.ts`:
+`src/commands/channels-logs/__tests__/json-mode.test.ts`:
 
 ```typescript
-// Run runChannelLogsList with { json: true }. Assert process.stdout received
-// JSON.parseable lines, one per delivery, with humanStatusTooltip + humanStatusColor stripped.
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+vi.mock('../../../api/client.js', () => ({ apiClient: vi.fn() }));
+vi.mock('../../_helpers.js', () => ({
+  getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0001'),
+}));
+vi.mock('../api.js', async () => {
+  const actual = await vi.importActual<typeof import('../api.js')>('../api.js');
+  return {
+    ...actual,
+    fetchDeliveriesPage: vi.fn(),
+    fetchDeliveryDetail: vi.fn(),
+  };
+});
+
+import { apiClient } from '../../../api/client.js';
+import { runChannelLogsList } from '../index.js';
+import { fetchDeliveriesPage, fetchDeliveryDetail } from '../api.js';
+
+const ig = {
+  id: 'ch_IGaaaaaa', type: 'instagram', workspaceId: 'ws_TEST0001',
+  metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+  metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+  instagramUsername: 'ordvir', instagramName: 'Or', instagramProfilePictureUrl: null,
+};
+
+describe('channels logs list --json emits JSONL with GUI fields stripped', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(fetchDeliveriesPage).mockReset();
+    vi.mocked(fetchDeliveryDetail).mockReset();
+  });
+
+  it('emits one JSON object per line; humanStatusTooltip + humanStatusColor stripped', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([ig]);
+    vi.mocked(fetchDeliveriesPage).mockResolvedValueOnce({
+      deliveries: [{ id: 'wph_001' }, { id: 'wph_002' }], nextCursor: null,
+    } as any);
+    vi.mocked(fetchDeliveryDetail)
+      .mockResolvedValueOnce({
+        id: 'wph_001', routingDecision: 'forward', inboundBody: '{}',
+        fromPhone: null, senderDisplay: '@ordvir', senderId: '1907',
+        receivedAt: '2026-05-26T14:30:01Z',
+        humanStatus: 'delivered', humanStatusCopy: 'Delivered',
+        humanStatusTooltip: 'shown on hover', humanStatusColor: 'green',
+        attempts: [],
+      } as any)
+      .mockResolvedValueOnce({
+        id: 'wph_002', routingDecision: 'forward', inboundBody: '{}',
+        fromPhone: null, senderDisplay: '@ordvir', senderId: '1907',
+        receivedAt: '2026-05-26T14:30:05Z',
+        humanStatus: 'failed', humanStatusCopy: 'Failed',
+        humanStatusTooltip: 'shown on hover', humanStatusColor: 'red',
+        attempts: [],
+      } as any);
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runChannelLogsList('@ordvir', {}, true);
+    const writes = outSpy.mock.calls.map((c) => c[0] as string).filter((s) => s.startsWith('{'));
+    expect(writes).toHaveLength(2);
+    for (const line of writes) {
+      const dto = JSON.parse(line);
+      expect(dto.humanStatusTooltip).toBeUndefined();
+      expect(dto.humanStatusColor).toBeUndefined();
+      expect(dto.id).toMatch(/^wph_/);
+    }
+    outSpy.mockRestore();
+  });
+});
 ```
 
 - [ ] **Step 6: Run the tests**
