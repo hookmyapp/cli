@@ -5,47 +5,60 @@
 // behavior (phone/username/sessionId routing) is covered by the unified
 // picker tests at `src/commands/sandbox/__tests__/picker.test.ts` (A2).
 //
-// We mock the wrapper itself to keep this test from driving the full tunnel
-// + heartbeat flow — the goal is contract: index.ts → picker.ts → unifiedPick
-// without dropping `identifierArg`.
+// Strategy: mock the INNER unified picker so we can spy on what the local
+// wrapper forwards. The local wrapper at sandbox-listen/picker.ts under test
+// stays REAL — its `return unifiedPick({...})` body runs, exercising the
+// forwarding logic.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.mock('../picker.js', async () => {
-  const actual = await vi.importActual<typeof import('../picker.js')>('../picker.js');
-  return { ...actual, pickSession: vi.fn() };
-});
+// Mock the INNER unified picker so we can spy on what the wrapper forwards.
+// The local wrapper at sandbox-listen/picker.ts under test stays REAL.
+vi.mock('../../sandbox/picker.js', () => ({
+  pickSession: vi.fn(),
+}));
 
+import { pickSession as unifiedPick } from '../../sandbox/picker.js';
 import { pickSession } from '../picker.js';
 import type { InstagramSandboxSession } from '../../../api/sandbox-session.js';
 
 const ig: InstagramSandboxSession = {
   id: 'ssn_IG000001',
   type: 'instagram',
-  instagramSenderId: '1907',
-  instagramAccountId: '1784',
+  instagramSenderId: '8745912038476523',
+  instagramAccountId: '17841478719287768',
   instagramSenderUsername: 'ordvir',
-  accessToken: 'tok',
-  hmacSecret: 'hmac',
+  accessToken: 'ACT_ig',
+  hmacSecret: 'HMAC_ig',
   status: 'active',
   origin: 'demo_handoff',
 };
 
-describe('sandbox-listen picker — positional identifier forwarding (D3)', () => {
-  beforeEach(() => vi.mocked(pickSession).mockReset());
+describe('sandbox-listen pickSession wrapper — forwards identifierArg to unified picker (D3)', () => {
+  beforeEach(() => vi.mocked(unifiedPick).mockReset());
 
-  it('passes identifierArg through to the unified picker', async () => {
-    vi.mocked(pickSession).mockResolvedValueOnce(ig);
-
+  it('passes identifierArg through to unifiedPick', async () => {
+    vi.mocked(unifiedPick).mockResolvedValueOnce(ig);
     const result = await pickSession({
       sessions: [ig],
       identifierArg: '@ordvir',
       isHuman: false,
     });
-
     expect(result).toBe(ig);
-    expect(vi.mocked(pickSession)).toHaveBeenCalledWith(
+    expect(vi.mocked(unifiedPick)).toHaveBeenCalledWith(
       expect.objectContaining({ identifierArg: '@ordvir' }),
     );
+  });
+
+  it('omits identifierArg when caller does not provide it (back-compat)', async () => {
+    vi.mocked(unifiedPick).mockResolvedValueOnce(ig);
+    await pickSession({
+      sessions: [ig],
+      phoneFlag: '+15551234567',
+      isHuman: false,
+    });
+    const forwarded = vi.mocked(unifiedPick).mock.calls[0][0];
+    expect(forwarded.identifierArg).toBeUndefined();
+    expect(forwarded.phoneFlag).toBe('+15551234567');
   });
 });
