@@ -257,6 +257,7 @@ export function printVerboseDelivery(detail: DeliveryDetail, sessionType: string
 // ---------------------------------------------------------------------------
 
 export async function runSandboxLogs(opts: {
+  identifierArg?: string;
   phone?: string;
   username?: string;
   session?: string;
@@ -271,6 +272,7 @@ export async function runSandboxLogs(opts: {
   const isHumanTty = !opts.json && Boolean(process.stdout.isTTY);
   const session = await pickSession({
     sessions,
+    identifierArg: opts.identifierArg,
     phoneFlag: opts.phone,
     usernameFlag: opts.username,
     sessionFlag: opts.session,
