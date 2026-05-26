@@ -2,6 +2,24 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.12.2 (unreleased)
+
+### Added
+
+- `hookmyapp sandbox start --type=instagram` — bind an Instagram sandbox session by DMing the env-configured sandbox IG handle (`@hookmyappsandboxstaging` on local + staging; production gated until the prod handle is provisioned).
+- `--username <@handle>` selector flag on `sandbox env`, `sandbox send`, `sandbox stop`, `sandbox webhook show/set/clear`, and `sandbox listen` — selects an Instagram session by handle. Falls back to IGSID match when the username is still being backfilled by the backend.
+- `--session <ssn_XXXXXXXX>` promoted to a universal selector across the same five subcommand groups (was sandbox-listen-only).
+- `INSTAGRAM_API_URL`, `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_ACCOUNT_ID` env vars emitted by `sandbox env` when the selected session is Instagram.
+- Boundary parser that validates every `GET /sandbox/sessions*` response into a `WhatsAppSandboxSession | InstagramSandboxSession` discriminated union. Malformed wire data surfaces as `UnexpectedError` (`MALFORMED_SANDBOX_SESSION`, exit 1).
+
+### Deprecated
+
+- Positional `[phone]` argument on `sandbox webhook show`, `sandbox webhook set`, `sandbox webhook clear`. Use `--phone`, `--username`, or `--session` instead. Positional still works in 0.12.2 with a stderr deprecation warning; removed no earlier than 0.13.0.
+
+### Changed
+
+- `sandbox status` table now renders `Type | Identifier | Status | Listener` columns instead of `Phone | Status | Listener`. Identifier is `+<phone>` for WhatsApp and `@<handle>` for Instagram (falls back to IGSID).
+
 ## 0.12.1 — 2026-05-17
 
 ### Breaking
