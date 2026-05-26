@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { isValidPublicId } from '../lib/publicId.js';
 import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
+import { ConfigurationError } from '../output/error.js';
 
 export type EnvName = 'local' | 'staging' | 'production';
 
@@ -122,8 +123,9 @@ export function unsetPersistedEnv(): void {
 export function resolveEnv(): EnvName {
   const candidate = process.env.HOOKMYAPP_ENV ?? getPersistedEnv() ?? DEFAULT_ENV;
   if (!isValidEnv(candidate)) {
-    throw new Error(
+    throw new ConfigurationError(
       `Invalid env "${candidate}". Valid values: ${VALID_ENV_NAMES.join(', ')}.`,
+      'INVALID_ENV',
     );
   }
   return candidate;
@@ -164,6 +166,29 @@ export function getEffectiveWorkosClientId(): string {
  */
 export function getEffectiveSandboxWhatsAppNumber(): string {
   return resolveEnvProfile().sandboxWhatsAppNumber;
+}
+
+/**
+ * Resolve the sandbox Instagram handle used by `sandbox start --type=instagram`
+ * for the bind-code IG deep link. Per-env, mirrors WA's pattern:
+ *
+ *   local + staging → @hookmyappsandboxstaging
+ *   production      → not yet provisioned — throws ConfigurationError
+ *
+ * Per project memory reference_sandbox_ig_account: production IG sandbox
+ * handle is genuinely TBD. Shipping a placeholder would silently produce a
+ * broken ig.me deep link that consumes a bind code that never gets matched.
+ * Fail fast at the env-profile boundary.
+ */
+export function getEffectiveSandboxInstagramUsername(): string {
+  const env = resolveEnv();
+  if (env === 'production') {
+    throw new ConfigurationError(
+      'Instagram sandbox is not configured for production yet. Use --type=whatsapp, or switch to staging/local.',
+      'IG_SANDBOX_NOT_CONFIGURED_PROD',
+    );
+  }
+  return '@hookmyappsandboxstaging';
 }
 
 /**
