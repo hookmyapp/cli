@@ -44,7 +44,7 @@ describe('env-profiles: built-in profiles', () => {
   it('local uses the ngrok-app tunnel for both api + app, local-dedicated WorkOS client', () => {
     expect(ENV_PROFILES.local.apiUrl).toBe('https://uninked-robbi-boughless.ngrok-free.dev');
     expect(ENV_PROFILES.local.appUrl).toBe('https://uninked-robbi-boughless.ngrok-free.dev');
-    expect(ENV_PROFILES.local.workosClientId).toBe('client_01KPAJA2CKGFMASZMABKDTS2X8');
+    expect(ENV_PROFILES.local.workosClientId).toBe('client_01KPB6HCD7Q26ATBM9ZNKX97GD');
   });
 
   it('isValidEnv narrows to EnvName for the three valid strings and rejects others', () => {
