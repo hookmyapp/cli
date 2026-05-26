@@ -2,7 +2,7 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
-## 0.12.2 (unreleased)
+## 0.13.0 — 2026-05-26
 
 ### Added
 
@@ -16,12 +16,22 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 - **Phase A (D3 + D9):** Positional shape-detected `[identifier]` argument on `sandbox stop`, `sandbox env`, `sandbox send`, `sandbox logs`, `sandbox listen`, and `sandbox webhook show/set/clear` — `hookmyapp sandbox send +972545434384 --message "hi"` instead of `--phone +972545434384`. Accepts `+<phone>`, `@<username>`, or `ssn_XXXXXXXX`. Existing `--phone` / `--username` / `--session` flags remain as a typed-fallback path; positional and flag conflict errors if both are provided and disagree.
 - **Phase A (D9):** `sandbox logs --verbose` (`-v`) flag — full inbound body + forward attempt dump (the previous default).
 - **Phase A:** `parseIdentifier()` shared helper at `src/lib/parseIdentifier.ts` for shape detection across sandbox (and future channels) commands.
+- **Phase B (D6):** `hookmyapp channels connect [type]` — `whatsapp` opens Meta Embedded Signup; `instagram` opens the IG OAuth URL. Bare invocation prompts in TTY; non-TTY exits 2.
+- **Phase B (D2):** Coexistence post-connect polling — when one OAuth flow returns both a WhatsApp and Instagram channel, both are reported.
+- **Phase B (D8):** `channels logs list --follow` — SSE live tail of webhook deliveries.
+- **Phase B (D9):** `channels logs list --json` — JSONL output (one delivery DTO per line).
+- **Phase B (D9):** `channels logs list --verbose` — full detailed dump (default switched to one-line summary).
+- **Phase B:** Every `channels` subcommand (`list`, `show`, `disconnect`, `enable`, `disable`, `env`, `token`, `health`, `webhook show/set`, `listen`, `logs`) now accepts Instagram channels — same flag surface, same exit codes, same JSON shape per type.
 
 ### Changed
 
 - `sandbox status` table now renders `Type | Identifier | Status | Listener` columns instead of `Phone | Status | Listener`. Identifier is `+<phone>` for WhatsApp and `@<handle>` for Instagram (falls back to IGSID).
 - **Phase A (D9):** `sandbox logs` default render flipped to **table-by-default** — one-line summary per delivery (timestamp · sender · target · status · latency · preview). Use `--verbose` for the previous full-dump format. Rationale: scanning recent deliveries is the common case; full-body dumps are the debugging-only case.
 - **Phase A (D3):** The previously-deprecated `[phone]` positional on `sandbox webhook show/set/clear` is repurposed to a first-class `[identifier]` positional (accepts `+phone`, `@username`, `ssn_XXXXXXXX`). The earlier stderr deprecation warning is removed — positional is now the recommended shape across the sandbox surface, so the `### Deprecated` section is no longer carried in this release.
+- **Phase B:** `ApiChannel` interface replaced with boundary-parsed `Channel` discriminated union (`parseChannelListItem` + `parseChannelDetail` at `src/api/channel.ts`). Tolerates unknown wire extras.
+- **Phase B:** `channels list` table renders `@username` for Instagram rows and `+phone` for WhatsApp rows.
+- **Phase B (D6):** `login --next channels` becomes channel-type-aware — prompts for type in TTY; exits 2 in non-TTY.
+- **Phase B (D9):** **BREAKING vs 0.12.x** — `channels logs list --json` contract now emits JSONL (one detail DTO per line) instead of the raw page envelope. Any automation that parsed the previous page payload must switch to line-delimited JSON parsing.
 
 ## 0.12.1 — 2026-05-17
 
