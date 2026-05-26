@@ -190,6 +190,66 @@ describe('pickSession — non-TTY mode', () => {
   });
 });
 
+describe('pickSession — identifierArg positional (D3)', () => {
+  it('+phone positional resolves to WA session', async () => {
+    const result = await pickSession({
+      sessions: [wa, ig],
+      identifierArg: '+15551234567',
+      isHuman: false,
+    });
+    expect(result.id).toBe('ssn_WA000001');
+  });
+
+  it('@handle positional resolves to IG session', async () => {
+    const result = await pickSession({
+      sessions: [wa, ig],
+      identifierArg: '@ordvir',
+      isHuman: false,
+    });
+    expect(result.id).toBe('ssn_IG000001');
+  });
+
+  it('ssn_X positional resolves to exact session by id', async () => {
+    const result = await pickSession({
+      sessions: [wa, ig],
+      identifierArg: 'ssn_IG000001',
+      isHuman: false,
+    });
+    expect(result.id).toBe('ssn_IG000001');
+  });
+
+  it('ch_X positional → ValidationError (wrong family — channel id used on sandbox)', async () => {
+    await expect(
+      pickSession({
+        sessions: [wa, ig],
+        identifierArg: 'ch_abcdefgh',
+        isHuman: false,
+      }),
+    ).rejects.toThrow(/channel publicId.*sandbox commands take ssn_X/);
+  });
+
+  it('positional + flag → CONFLICTING_SELECTORS', async () => {
+    await expect(
+      pickSession({
+        sessions: [wa],
+        identifierArg: '+15551234567',
+        phoneFlag: '+15551234567',
+        isHuman: false,
+      }),
+    ).rejects.toThrow(/Conflicting selectors/);
+  });
+
+  it('bare digits positional → sharp suggestion', async () => {
+    await expect(
+      pickSession({
+        sessions: [wa],
+        identifierArg: '15551234567',
+        isHuman: false,
+      }),
+    ).rejects.toThrow(/Did you mean \+15551234567/);
+  });
+});
+
 describe('pickSession — alwaysShowPicker (sandbox send)', () => {
   it('shows interactive picker even with a single session when alwaysShowPicker is true', async () => {
     // The top-of-file static import has already cached pickSession.js. To

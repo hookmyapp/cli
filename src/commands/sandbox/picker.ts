@@ -17,9 +17,12 @@ import {
 } from '../../output/error.js';
 import { sessionIdentifier, sessionLabel } from './helpers.js';
 import type { SandboxSession } from '../../api/sandbox-session.js';
+import { parseIdentifier } from '../../lib/parseIdentifier.js';
 
 export interface PickSessionArgs {
   sessions: SandboxSession[];
+  /** Positional shape-detected identifier (D3). Mutually exclusive with the three flag fields. */
+  identifierArg?: string;
   phoneFlag?: string;
   usernameFlag?: string;
   sessionFlag?: string;
@@ -33,13 +36,23 @@ export interface PickSessionArgs {
 }
 
 export async function pickSession(args: PickSessionArgs): Promise<SandboxSession> {
-  const { sessions, phoneFlag, usernameFlag, sessionFlag, isHuman, alwaysShowPicker } = args;
+  const {
+    sessions,
+    identifierArg,
+    phoneFlag,
+    usernameFlag,
+    sessionFlag,
+    isHuman,
+    alwaysShowPicker,
+  } = args;
 
-  // 1. Conflict check: at most one selector flag.
-  const flagsSet = [phoneFlag, usernameFlag, sessionFlag].filter((f) => f !== undefined).length;
+  // 1. Conflict check: at most one selector (positional or flag).
+  const flagsSet = [identifierArg, phoneFlag, usernameFlag, sessionFlag].filter(
+    (f) => f !== undefined,
+  ).length;
   if (flagsSet > 1) {
     throw new ValidationError(
-      'Conflicting selectors. Provide at most one of --phone, --username, --session.',
+      'Conflicting selectors. Provide at most one of [positional identifier], --phone, --username, --session.',
       'CONFLICTING_SELECTORS',
     );
   }
@@ -52,6 +65,42 @@ export async function pickSession(args: PickSessionArgs): Promise<SandboxSession
     );
     err.exitCode = 2;
     throw err;
+  }
+
+  // 3a. Positional identifier path (D3) — shape-detected.
+  if (identifierArg !== undefined) {
+    const parsed = parseIdentifier(identifierArg);
+    switch (parsed.kind) {
+      case 'phone': {
+        const match = sessions.find(
+          (s) =>
+            s.type === 'whatsapp' && s.whatsappPhone.replace(/^\+/, '') === parsed.value,
+        );
+        if (!match) return throwMismatch(`+${parsed.value}`, sessions);
+        return match;
+      }
+      case 'username': {
+        const match = sessions.find(
+          (s) =>
+            s.type === 'instagram' &&
+            s.instagramSenderUsername !== null &&
+            s.instagramSenderUsername === parsed.value,
+        );
+        if (!match) return throwMismatch(`@${parsed.value}`, sessions);
+        return match;
+      }
+      case 'sessionId': {
+        const match = sessions.find((s) => s.id === parsed.value);
+        if (!match) return throwMismatch(parsed.value, sessions);
+        return match;
+      }
+      case 'channelId': {
+        throw new ValidationError(
+          `"${identifierArg}" is a channel publicId; sandbox commands take ssn_X. Did you mean a sandbox session?`,
+          'WRONG_IDENTIFIER_FAMILY',
+        );
+      }
+    }
   }
 
   // 3. Flag-driven path.
