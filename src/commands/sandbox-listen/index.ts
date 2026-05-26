@@ -24,6 +24,7 @@ import { isValidPublicId } from '../../lib/publicId.js';
 import { ensureCloudflaredBinary } from './binary.js';
 import { startProxyServer, type LogLine } from './proxy-server.js';
 import { pickSession, type Session } from './picker.js';
+import { sessionIdentifier } from '../sandbox/helpers.js';
 import {
   spawnCloudflared,
   startHeartbeat,
@@ -397,7 +398,7 @@ export function printBanner(args: {
     `📋 Logs UI:         http://localhost:${args.localPort}/logs\n`,
   );
   process.stdout.write(
-    `  Test phone: ${args.session.phone ?? '(no phone)'} · Workspace: ${workspace}\n`,
+    `  Test ${args.session.type === 'whatsapp' ? 'phone' : 'account'}: ${sessionIdentifier(args.session)} · Workspace: ${workspace}\n`,
   );
   process.stdout.write(`  Press Ctrl-C to stop.\n\n`);
 }
