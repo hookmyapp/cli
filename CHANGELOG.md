@@ -2,7 +2,7 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
-## 0.13.0 — 2026-05-26
+## 0.12.3 — 2026-05-26
 
 ### Added
 
@@ -31,7 +31,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 - **Phase B:** `ApiChannel` interface replaced with boundary-parsed `Channel` discriminated union (`parseChannelListItem` + `parseChannelDetail` at `src/api/channel.ts`). Tolerates unknown wire extras.
 - **Phase B:** `channels list` table renders `@username` for Instagram rows and `+phone` for WhatsApp rows.
 - **Phase B (D6):** `login --next channels` becomes channel-type-aware — prompts for type in TTY; exits 2 in non-TTY.
-- **Phase B (D9):** **BREAKING vs 0.12.x** — `channels logs list --json` contract now emits JSONL (one detail DTO per line) instead of the raw page envelope. Any automation that parsed the previous page payload must switch to line-delimited JSON parsing.
+- **Phase B (D9):** **Wire contract change** — `channels logs list --json` now emits JSONL (one detail DTO per line) instead of the raw page envelope. Any automation that parsed the previous page payload must switch to line-delimited JSON parsing.
 
 ## 0.12.1 — 2026-05-17
 
