@@ -5,22 +5,41 @@ vi.mock('@inquirer/prompts', () => ({
 }));
 
 import { select } from '@inquirer/prompts';
-import {
-  pickChannel,
-  type Channel,
-} from '../../commands/channels-listen/picker.js';
+import { pickChannel } from '../../commands/channels-listen/picker.js';
+import type { WhatsAppChannel } from '../../api/channel.js';
 import { CliError } from '../../output/error.js';
 
 const mockedSelect = vi.mocked(select);
 
-function makeChannel(overrides: Partial<Channel> = {}): Channel {
+function makeChannel(
+  overrides: Partial<WhatsAppChannel> = {},
+): WhatsAppChannel {
+  // Factory returns a WhatsAppChannel — the picker is forwarding-shaped-
+  // agnostic (it only reads .id + .forwardingEnabled) so a single concrete
+  // variant of the discriminated union suffices for every existing
+  // pickChannel assertion. The overrides type is `Partial<WhatsAppChannel>`
+  // rather than `Partial<Channel>` because a Partial<Channel> collapses to
+  // a per-variant union that can't be merged into a concrete arm — pinning
+  // the variant keeps the spread well-typed. Migrated from the legacy
+  // local Channel shape in B10 when picker.ts adopted the parsed
+  // discriminated union from src/api/channel.ts.
   return {
     id: 'ch_TEST0001',
+    type: 'whatsapp',
     workspaceId: 'ws_TEST0010',
     metaWabaId: '1276334778010256',
+    metaResourceId: '1080996501762047',
+    connectionType: 'embedded_signup',
+    metaConnected: true,
+    forwardingEnabled: true,
+    webhookUrl: null,
+    verifyToken: null,
     wabaName: 'Test WABA',
     displayPhoneNumber: '+1 (555) 111-1111',
-    forwardingEnabled: true,
+    phoneNumberId: null,
+    phoneVerifiedName: null,
+    qualityRating: null,
+    qualityRatingCheckedAt: null,
     ...overrides,
   };
 }

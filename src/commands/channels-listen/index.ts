@@ -16,13 +16,11 @@ import {
   AuthError,
   CliError,
   ConflictError,
-  ValidationError,
 } from '../../output/error.js';
 import { addExamples } from '../../output/help.js';
 import { cliCommandPrefix } from '../../output/cli-self.js';
 import { readCredentials } from '../../auth/store.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
-import { isValidPublicId } from '../../lib/publicId.js';
 import { ensureCloudflaredBinary } from '../sandbox-listen/binary.js';
 import { startProxyServer, type LogLine } from '../sandbox-listen/proxy-server.js';
 import { spawnCloudflared, gracefulShutdown } from '../sandbox-listen/lifecycle.js';
@@ -256,7 +254,7 @@ export function registerChannelsListenCommand(
     .option('--path <p>', 'Webhook path on your app', '/webhook')
     .argument(
       '[channel]',
-      'Channel ID (ch_xxxxxxxx). If omitted, an interactive picker is shown.',
+      'Channel: ch_xxxxxxxx, +<phone>, or @<username>. If omitted, an interactive picker is shown.',
     )
     .option('--verbose', 'Print full request/response bodies', false)
     .option('--json', 'Machine-readable event log', false)
@@ -268,11 +266,10 @@ export function registerChannelsListenCommand(
     .action(async (channelRef: string | undefined, opts: ChannelListenOpts) => {
       const human = !program.opts().json && !opts.json;
 
-      if (channelRef && !isValidPublicId(channelRef, 'ch')) {
-        throw new ValidationError(
-          `"${channelRef}" must be a publicId (ch_<8-char>). Run: ${cliCommandPrefix()} channels list`,
-        );
-      }
+      // Positional shape validation is delegated to resolveChannel ->
+      // parseIdentifier (which throws IDENTIFIER_UNRECOGNIZED_SHAPE with a
+      // helpful suggestion). The legacy `isValidPublicId(channelRef, 'ch')`
+      // gate would reject the newly-accepted +phone / @handle shapes.
 
       if (!(await readCredentials())) {
         throw new AuthError(`Not logged in. Run: ${cliCommandPrefix()} login`);
@@ -280,29 +277,48 @@ export function registerChannelsListenCommand(
 
       await checkForNewerCli();
 
-      const workspaceId = await getDefaultWorkspaceId();
-      const allChannels = (await apiClient('/meta/channels', {
-        method: 'GET',
-        workspaceId,
-      })) as Channel[];
+      // Dynamic imports of channels.js and api/channel.js avoid a static
+      // circular import: channels.ts statically imports
+      // registerChannelsListenCommand from this file. Static `import { … }
+      // from '../channels.js'` here would close the loop. The dynamic
+      // `await import(...)` defers evaluation until the action fires (well
+      // after both modules are constructed), breaking the cycle without
+      // sacrificing the type-aware error message or shape-detected
+      // positional resolution.
+      let chosen: Channel;
+      if (channelRef !== undefined) {
+        // Positional: shape-detected resolveChannel handles +phone, @handle,
+        // and ch_X. Surfaces a clearer message than the picker's bare
+        // CHANNEL_MISMATCH when forwarding is off.
+        const { resolveChannel, channelLabel } = await import('../channels.js');
+        chosen = await resolveChannel(channelRef);
+        if (!chosen.forwardingEnabled) {
+          throw new CliError(
+            `Channel ${channelLabel(chosen)} has forwarding disabled. ` +
+              `Run: ${cliCommandPrefix()} channels enable ${channelRef}`,
+            'CHANNEL_FORWARDING_DISABLED',
+          );
+        }
+      } else {
+        // No positional: parse the whole list and run the interactive picker.
+        const workspaceId = await getDefaultWorkspaceId();
+        const { parseChannelListItem } = await import('../../api/channel.js');
+        const dtos = (await apiClient('/meta/channels', {
+          method: 'GET',
+          workspaceId,
+        })) as unknown[];
+        const allChannels = dtos.map(parseChannelListItem);
+        chosen = await pickChannel(allChannels);
+      }
 
-      const chosen = await pickChannel(allChannels, {
-        channelFlag: channelRef,
-      });
-
-      // Ensure workspaceId is populated — list endpoint returns it but the
-      // type is technically nullable on some shapes; fall back to the caller's
-      // active workspace.
-      const channelWithWorkspace: Channel = {
-        ...chosen,
-        workspaceId: chosen.workspaceId ?? workspaceId,
-      };
-
+      // parseChannelListItem makes workspaceId required on the parsed
+      // shape, and resolveChannel returns that same parsed Channel — the
+      // legacy `chosen.workspaceId ?? workspaceId` fallback is now dead.
       // Silence unused-var lint without compromising the human/json banner
       // intent (the banner uses `human` indirectly through json flag).
       void human;
 
-      await runChannelListenFlow(channelWithWorkspace, opts);
+      await runChannelListenFlow(chosen, opts);
     });
 
   addExamples(
@@ -335,8 +351,12 @@ export function printBanner(args: {
   json: boolean;
 }): void {
   if (args.json) return;
-  const label =
-    args.channel.displayPhoneNumber ?? args.channel.wabaName ?? args.channel.id;
+  const subjectLabel =
+    args.channel.type === 'whatsapp'
+      ? `WhatsApp ${args.channel.displayPhoneNumber ?? args.channel.wabaName ?? args.channel.id}`
+      : args.channel.type === 'instagram'
+        ? `Instagram @${args.channel.instagramUsername ?? '(no handle)'}`
+        : `Messenger ${args.channel.id}`;
   process.stdout.write(`\n✓ Tunnel active:    https://${args.hostname}\n`);
   process.stdout.write(
     `✓ Forwarding to:    http://localhost:${args.localPort}${args.path}\n`,
@@ -344,6 +364,6 @@ export function printBanner(args: {
   process.stdout.write(
     `📋 Logs UI:         http://localhost:${args.localPort}/logs\n`,
   );
-  process.stdout.write(`  Channel: ${label}\n`);
+  process.stdout.write(`  Channel: ${subjectLabel}\n`);
   process.stdout.write(`  Press Ctrl-C to stop.\n\n`);
 }

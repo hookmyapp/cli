@@ -13,15 +13,12 @@
 
 import { select } from '@inquirer/prompts';
 import { CliError } from '../../output/error.js';
+import type { Channel } from '../../api/channel.js';
 
-export interface Channel {
-  id: string;
-  workspaceId: string;
-  metaWabaId?: string | null;
-  wabaName?: string | null;
-  displayPhoneNumber?: string | null;
-  forwardingEnabled: boolean;
-}
+// Re-export so existing callers that imported `Channel` from this module
+// (e.g. tests, the action handler) keep their import paths stable now that
+// the parsed discriminated-union type is the canonical shape.
+export type { Channel };
 
 export interface PickChannelOpts {
   channelFlag?: string;
@@ -67,17 +64,15 @@ export async function pickChannel(
  * filter (e.g. `channels listen`, post-login wizard) should use `pickChannel`
  * which delegates here after filtering.
  *
- * Generic over the channel shape so callers in `channels.ts` can pass a
- * `Channel` (where `forwardingEnabled` is required) or any other structurally
- * compatible shape — only the display fields are required.
+ * Generic over the discriminated `Channel` union so the row renderer can
+ * narrow on `type` (WA → +phone, IG → @handle, Messenger → id). Tightened
+ * from a structural shape constraint in B10 once the parsed Channel became
+ * the canonical type at this seam.
  */
-export async function selectChannel<
-  T extends {
-    id: string;
-    displayPhoneNumber?: string | null;
-    wabaName?: string | null;
-  },
->(channels: T[], message = 'Choose a channel'): Promise<T> {
+export async function selectChannel<T extends Channel>(
+  channels: T[],
+  message = 'Choose a channel',
+): Promise<T> {
   return select<T>({
     message,
     choices: channels.map((c) => ({
@@ -87,12 +82,16 @@ export async function selectChannel<
   });
 }
 
-function renderRow(c: {
-  id: string;
-  displayPhoneNumber?: string | null;
-  wabaName?: string | null;
-}): string {
-  const name = c.wabaName ?? '(no name)';
-  const phone = c.displayPhoneNumber ?? 'no phone';
-  return `${c.id} (${name} — ${phone})`;
+function renderRow(c: Channel): string {
+  if (c.type === 'whatsapp') {
+    const name = c.wabaName ?? '(no name)';
+    const phone = c.displayPhoneNumber ?? 'no phone';
+    return `${c.id} (${name} — ${phone})`;
+  }
+  if (c.type === 'instagram') {
+    const handle = c.instagramUsername ? `@${c.instagramUsername}` : '(no handle)';
+    const name = c.instagramName ?? '';
+    return `${c.id} (${handle}${name ? ` — ${name}` : ''})`;
+  }
+  return `${c.id} (Messenger)`;
 }
