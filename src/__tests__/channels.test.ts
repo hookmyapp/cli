@@ -17,6 +17,14 @@ vi.mock('open', () => ({
   default: vi.fn(),
 }));
 
+// Mock the polling helper used by runChannelsConnect (Task B6). Routes
+// integration tests around the real 2s poll loop. Empty array means
+// runChannelsConnect's "✓ Connected:" loop simply produces no per-channel
+// rows — tests don't assert on that here (channels-connect.test.ts does).
+vi.mock('../commands/channels-connect-poll.js', () => ({
+  pollForNewChannels: vi.fn().mockResolvedValue([]),
+}));
+
 // Mock workspace config
 vi.mock('../commands/workspace.js', () => ({
   readWorkspaceConfig: vi.fn().mockReturnValue({ activeWorkspaceId: 'ws_TEST0010' }),
@@ -208,43 +216,45 @@ describe('channels commands', () => {
   });
 
   it('connectChannel calls forceTokenRefresh and opens server-minted Embedded Signup URL', async () => {
-    // Phase plan 12 — `runChannelsConnect` now POSTs `/meta/oauth/start`
-    // (server mints state + PKCE) instead of building the Facebook URL inline
-    // with `state=cli:<jwt>`. The first apiClient call is the OAuth-start POST;
-    // the second is the channel snapshot.
+    // Task B6 — `runChannelsConnect({ type })` now snapshots existing channels
+    // FIRST (before opening the browser, race-safe), THEN POSTs to
+    // /meta/oauth/start. Explicit `whatsapp` positional bypasses the new
+    // interactive type prompt. The polling helper is mocked at the top of
+    // this file so the post-OAuth `pollForNewChannels` resolves immediately
+    // with [] — no 5min poll wait.
+    process.stdout.isTTY = true;
     const startResponse = {
       state: 'srv-state-abc',
       redirectUrl: 'https://www.facebook.com/v21.0/dialog/oauth?client_id=123&state=srv-state-abc',
       codeChallenge: 'pkce-challenge',
     };
     mockedApiClient
-      .mockResolvedValueOnce(startResponse) // POST /meta/oauth/start
-      .mockResolvedValueOnce([]); // initial snapshot /meta/channels
+      .mockResolvedValueOnce([]) // 1. snapshot /meta/channels (BEFORE oauth start)
+      .mockResolvedValueOnce(startResponse); // 2. POST /meta/oauth/start
     // Suppress console.log
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const program = new Command();
     registerChannelsCommand(program);
-    // Don't await -- it will poll for 15 min. Just verify the initial flow.
-    const p = program.parseAsync(['channels', 'connect'], { from: 'user' });
-
-    // Wait a tick for the async calls to resolve
-    await new Promise((r) => setTimeout(r, 50));
+    await program.parseAsync(['channels', 'connect', 'whatsapp'], { from: 'user' });
 
     const { forceTokenRefresh } = await import('../api/client.js');
     expect(forceTokenRefresh).toHaveBeenCalled();
-    // Asserts the new server-side flow: POST /meta/oauth/start with workspace
-    // header + redirectPath body, and opens the server-returned redirectUrl
-    // verbatim (no client-side URL construction, no JWT in the URL).
-    expect(mockedApiClient).toHaveBeenCalledWith('/meta/oauth/start', {
+    // Asserts the new server-side flow: snapshot first, then POST
+    // /meta/oauth/start with workspace header + redirectPath body, and
+    // opens the server-returned redirectUrl verbatim (no client-side URL
+    // construction, no JWT in the URL).
+    const calls = mockedApiClient.mock.calls;
+    expect(calls[0][0]).toBe('/meta/channels');
+    expect(calls[1][0]).toBe('/meta/oauth/start');
+    expect(calls[1][1]).toMatchObject({
       method: 'POST',
       workspaceId: 'ws_TEST0010',
       body: JSON.stringify({ redirectPath: '/cli/callback' }),
     });
     expect(mockedOpen).toHaveBeenCalledWith(startResponse.redirectUrl);
 
-    // Clean up: restore console.log to stop polling side effects
-    vi.mocked(console.log).mockRestore();
+    logSpy.mockRestore();
   });
 
   it('enableChannel calls apiClient with POST and workspaceId', async () => {
@@ -461,122 +471,11 @@ describe('health command', () => {
   });
 });
 
-describe('channels connect — npx prefix roll-out (cliCommandPrefix)', () => {
-  let Command: typeof import('commander').Command;
-  let runChannelsConnect: typeof import('../commands/channels.js').runChannelsConnect;
-  let mockConsoleLog: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    mockedApiClient.mockReset();
-    mockedOpen.mockReset();
-    mockConsoleError.mockClear();
-    vi.stubEnv('npm_command', 'exec');
-    mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    const commander = await import('commander');
-    Command = commander.Command;
-    const mod = await import('../commands/channels.js');
-    runChannelsConnect = mod.runChannelsConnect;
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.useRealTimers();
-    mockConsoleLog.mockRestore();
-  });
-
-  it('connect flow after channel detected without webhook prints canonical "npx hookmyapp channels webhook set" + "npx hookmyapp channels env" hints', async () => {
-    // Speed up the 5s poll interval by stubbing setTimeout.
-    vi.useFakeTimers();
-
-    const newChannel = {
-      id: 'new-ch',
-      metaWabaId: 'waba-new',
-      displayPhoneNumber: '+1 555 0000',
-      phoneVerifiedName: 'New Co',
-      webhookUrl: null,
-    };
-
-    // apiClient call order: POST /meta/oauth/start, snapshot /meta/channels (empty),
-    // then inside poll — nothing (uses fetch directly).
-    mockedApiClient
-      .mockResolvedValueOnce({
-        state: 'srv-state-1',
-        redirectUrl: 'https://www.facebook.com/v21.0/dialog/oauth?state=srv-state-1',
-        codeChallenge: 'pkce-1',
-      }) // POST /meta/oauth/start
-      .mockResolvedValueOnce([]); // initial snapshot
-
-    // Stub global fetch: first polled /meta/channels returns [newChannel].
-    const origFetch = globalThis.fetch;
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => [newChannel],
-    } as any));
-    globalThis.fetch = fetchMock as any;
-
-    try {
-      const p = runChannelsConnect();
-      // Advance fake timers past the 5s poll interval
-      await vi.advanceTimersByTimeAsync(5000);
-      // Let any microtasks run
-      await vi.runAllTimersAsync();
-      await p;
-
-      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
-      // Canonical D9 nested form, channel.id (NOT metaWabaId) in copy-paste hints.
-      expect(logged).toContain('npx hookmyapp channels webhook set new-ch');
-      expect(logged).toContain('npx hookmyapp channels env new-ch');
-      // No bare-hookmyapp hint at line-start
-      expect(logged).not.toMatch(/^\s{2}hookmyapp (webhook|env|channels) /m);
-      // The deprecated top-level forms must NOT appear post-D9.
-      expect(logged).not.toMatch(/hookmyapp webhook set \S/);
-      expect(logged).not.toMatch(/hookmyapp env \S/);
-    } finally {
-      globalThis.fetch = origFetch;
-    }
-  }, 10000);
-
-  it('connect flow after channel detected WITH webhook prints canonical "npx hookmyapp channels env" hint', async () => {
-    vi.useFakeTimers();
-
-    const newChannel = {
-      id: 'new-ch-2',
-      metaWabaId: 'waba-hook',
-      displayPhoneNumber: '+1 555 1111',
-      phoneVerifiedName: 'HookCo',
-      webhookUrl: 'https://example.com/hook',
-    };
-
-    mockedApiClient
-      .mockResolvedValueOnce({
-        state: 'srv-state-2',
-        redirectUrl: 'https://www.facebook.com/v21.0/dialog/oauth?state=srv-state-2',
-        codeChallenge: 'pkce-2',
-      }) // POST /meta/oauth/start
-      .mockResolvedValueOnce([]); // initial snapshot
-
-    const origFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => [newChannel],
-    } as any)) as any;
-
-    try {
-      const p = runChannelsConnect();
-      await vi.advanceTimersByTimeAsync(5000);
-      await vi.runAllTimersAsync();
-      await p;
-
-      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
-      // Canonical D9 nested form, channel.id (NOT metaWabaId) in copy-paste hints.
-      expect(logged).toContain('npx hookmyapp channels env new-ch-2');
-      expect(logged).not.toContain('hookmyapp webhook set'); // webhook already set
-      // The deprecated top-level `hookmyapp env` form must NOT appear post-D9.
-      expect(logged).not.toMatch(/hookmyapp env \S/);
-    } finally {
-      globalThis.fetch = origFetch;
-    }
-  }, 10000);
-});
+// Task B6: the legacy `describe('channels connect — npx prefix roll-out
+// (cliCommandPrefix)')` block was DELETED here. Its two tests asserted the
+// old WA-specific "npx hookmyapp channels webhook set ..." + "channels env"
+// copy-paste hints in the post-connect output. The new runChannelsConnect
+// (Task B6) replaces those hints with a "✓ Connected:" per-channel summary
+// (D7 coexistence) — the legacy hints no longer exist, so the assertions
+// would target gone code. The new contract is covered in
+// channels-connect.test.ts (D7 coexistence reporting test).

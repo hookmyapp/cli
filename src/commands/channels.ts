@@ -6,9 +6,9 @@ import { renderTable } from '../output/table.js';
 import { CliError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
-import { readCredentials } from '../auth/store.js';
-import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import open from 'open';
+import { select } from '@inquirer/prompts';
+import { pollForNewChannels } from './channels-connect-poll.js';
 import { registerChannelsListenCommand } from './channels-listen/index.js';
 import { registerChannelsLogsCommand } from './channels-logs/index.js';
 import { runChannelEnv } from './env.js';
@@ -96,89 +96,105 @@ function throwNoMatch(needle: string, channels: Channel[]): never {
   throw err;
 }
 
+interface ChannelsConnectOpts {
+  type?: 'whatsapp' | 'instagram';
+}
+
 /**
- * Exported helper: drive the Embedded Signup flow end-to-end.
+ * Pure helper: maps a channel type to the per-endpoint OAuth start
+ * request shape. The two endpoints have different body requirements
+ * (WA needs an allowlisted redirectPath; IG accepts an empty body).
+ * Extracted so routing can be unit-tested without invoking the full
+ * runChannelsConnect flow (which would also need the browser + polling
+ * mocked).
+ */
+export function buildConnectStartRequest(
+  type: 'whatsapp' | 'instagram',
+): { path: string; body: string } {
+  if (type === 'whatsapp') {
+    return {
+      path: '/meta/oauth/start',
+      body: JSON.stringify({ redirectPath: '/cli/callback' }),
+    };
+  }
+  return {
+    path: '/instagram/oauth/start',
+    body: JSON.stringify({}),
+  };
+}
+
+/**
+ * Exported helper: drive the Meta OAuth connect flow end-to-end for either
+ * WhatsApp or Instagram (Task B6 — type-aware refactor of the legacy
+ * WA-only Embedded Signup flow).
  *
  * Called directly by the post-login wizard (src/auth/login.ts) and by the
- * `channels connect` subcommand action below. Never subprocess-spawned.
+ * `channels connect [type]` subcommand action below. Never subprocess-spawned.
  */
-export async function runChannelsConnect(): Promise<void> {
-  // Force a fresh 15-min token right before opening signup
+export async function runChannelsConnect(
+  opts: ChannelsConnectOpts = {},
+): Promise<void> {
+  const isTty = Boolean(process.stdout.isTTY);
+  if (!isTty) {
+    throw new ValidationError(
+      'channels connect requires a TTY (browser launch + OAuth). ' +
+        'In CI, call the backend API directly.',
+      'CONNECT_REQUIRES_TTY',
+    );
+  }
+
+  let type = opts.type;
+  if (type === undefined) {
+    type = await select<'whatsapp' | 'instagram'>({
+      message: 'Which channel type?',
+      choices: [
+        { name: 'WhatsApp', value: 'whatsapp' },
+        { name: 'Instagram', value: 'instagram' },
+      ],
+    });
+  }
+
+  // Force a fresh 15-min token right before opening OAuth. Functionally
+  // necessary — a stale access token mid-flow surfaces as a confusing
+  // "OAuth state mismatch" error after the user completes the browser
+  // step. Preserved from the pre-refactor WA-only implementation.
   await forceTokenRefresh();
 
-  // Discover the workspace publicId so we can pass X-Workspace-Id to /meta/oauth/start.
   const { getDefaultWorkspaceId } = await import('./_helpers.js');
   const workspaceId = await getDefaultWorkspaceId();
 
-  // Server mints OAuth state + PKCE (replaces the previous `state=cli:<jwt>`
-  // URL-construction; JWTs no longer ride in the URL — RFC 6750 fix).
-  const oauthStart = (await apiClient('/meta/oauth/start', {
+  // 1. SNAPSHOT EXISTING CHANNEL IDS BEFORE OPENING THE BROWSER (D2).
+  //    Doing this AFTER open() races a fast backend write — the "new"
+  //    channel could be included in the snapshot and never reported.
+  const initialDtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
+  const existingIds = new Set(initialDtos.map(parseChannelListItem).map((c) => c.id));
+
+  // 2. Route to the per-type OAuth start endpoint via the pure helper.
+  const { path, body } = buildConnectStartRequest(type);
+  const { redirectUrl } = (await apiClient(path, {
     method: 'POST',
+    body,
     workspaceId,
-    body: JSON.stringify({ redirectPath: '/cli/callback' }),
-  })) as { state: string; redirectUrl: string; codeChallenge: string };
+  })) as { redirectUrl: string };
 
-  // Snapshot existing channels before signup
-  const existingChannels = await apiClient('/meta/channels', { workspaceId });
-  console.log('\nOpening Embedded Signup in browser...\nComplete the signup, then return here.\n');
-  await open(oauthStart.redirectUrl);
-  console.log('Waiting for channel...');
+  // 3. Open in browser.
+  console.log('\nOpening sign-in in browser...\nComplete the flow, then return here.\n');
+  await open(redirectUrl);
+  console.log('Waiting for channel(s)...');
 
-  // Poll for new channel (check every 5s, timeout after 15 min)
-  const maxWait = 15 * 60 * 1000;
-  const pollInterval = 5000;
-  const start = Date.now();
-  let newChannel: any = null;
-  const baseUrl = getEffectiveApiUrl();
+  // 4. Poll for new channels per D2 acceptance criteria.
+  const newChannels = await pollForNewChannels(workspaceId, existingIds);
 
-  while (Date.now() - start < maxWait) {
-    await new Promise((r) => setTimeout(r, pollInterval));
-    try {
-      await forceTokenRefresh();
-      const freshCreds = await readCredentials();
-      if (!freshCreds) continue;
-
-      const res = await fetch(`${baseUrl}/meta/channels`, {
-        headers: { Authorization: `Bearer ${freshCreds.accessToken}`, 'Content-Type': 'application/json' },
-      });
-      if (!res.ok) continue;
-
-      const current = await res.json();
-      newChannel = current.find((c: any) =>
-        !existingChannels.some((e: any) => e.id === c.id)
-      );
-      if (newChannel) break;
-    } catch {
-      // Network error — keep trying
-    }
-  }
-
-  if (!newChannel) {
-    console.log(`\nTimed out waiting for channel.\nRun "${cliCommandPrefix()} channels list" to check.\n`);
-    return;
-  }
-
-  const name = newChannel.phoneVerifiedName ?? newChannel.wabaName ?? '';
-  console.log(`\n✓ Channel connected`);
-  console.log(`  channel: ${newChannel.id}`);
-  console.log(`  phone:   ${newChannel.displayPhoneNumber}`);
-  if (name) console.log(`  name:    ${name}`);
-
-  // Canonical post-signup hints use the nested `channels ...` form (spec D9).
-  // The copy-paste commands reference channel.id (ch_xxxxxxxx), NOT
-  // metaWabaId, because the resolver's first-match step is the publicId
-  // pattern.
-  if (!newChannel.webhookUrl) {
-    console.log(`\n→ Next, configure your webhook to receive WhatsApp messages.`);
-    console.log(`  The webhook URL should be a publicly accessible HTTPS`);
-    console.log(`  endpoint that returns 200 OK.\n`);
-    console.log(`  ${cliCommandPrefix()} channels webhook set ${newChannel.id} --url <your-webhook-url>\n`);
-    console.log(`→ Then get your credentials:`);
-    console.log(`  ${cliCommandPrefix()} channels env ${newChannel.id}\n`);
-  } else {
-    console.log(`\n✓ Webhook configured: ${newChannel.webhookUrl}`);
-    console.log(`\n→ Get your credentials:`);
-    console.log(`  ${cliCommandPrefix()} channels env ${newChannel.id}\n`);
+  // 5. Report all new channels by type (D7 coexistence shape).
+  console.log('\n✓ Connected:');
+  for (const ch of newChannels) {
+    const label =
+      ch.type === 'whatsapp'
+        ? `  WhatsApp  ${ch.displayPhoneNumber ?? '(no phone)'}  (${ch.id})`
+        : ch.type === 'instagram'
+          ? `  Instagram @${ch.instagramUsername ?? '(no handle)'}  (${ch.id})`
+          : `  Messenger (${ch.id})`;
+    console.log(label);
   }
 }
 
@@ -295,9 +311,16 @@ export function registerChannelsCommand(program: Command): void {
 
   const channelsConnect = channels
     .command('connect')
-    .description('Connect a WhatsApp channel via Embedded Signup')
-    .action(async () => {
-      await runChannelsConnect();
+    .description('Connect a channel via Meta OAuth (WhatsApp or Instagram)')
+    .argument('[type]', 'Channel type: "whatsapp" or "instagram" (interactive if omitted)')
+    .action(async (type: string | undefined) => {
+      if (type !== undefined && type !== 'whatsapp' && type !== 'instagram') {
+        throw new ValidationError(
+          `Invalid type "${type}". Must be "whatsapp" or "instagram".`,
+          'INVALID_CONNECT_TYPE',
+        );
+      }
+      await runChannelsConnect({ type });
     });
 
   const channelsDisconnect = channels
