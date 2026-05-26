@@ -8,7 +8,7 @@
 
 The HookMyApp dashboard ships full Instagram channel support today (`frontend/src/types/channel.ts` defines `Channel = WhatsAppChannel | InstagramChannel | MessengerChannel`; the backend `channels` STI table accepts `type = 'instagram'` per CLAUDE.md). A customer who connects an Instagram channel through the dashboard can list it, see its delivery history, and configure its webhook — all in the browser.
 
-The CLI is WhatsApp-only. Every `channels` subcommand (`list`, `show`, `connect`, `disconnect`, `enable`, `disable`, `env`, `token`, `health`, `webhook show/set/clear`, `channels listen`, `channels logs`) keys on WhatsApp fields (`phoneNumberId`, `displayPhoneNumber`, `wabaName`), and the picker (`resolveChannel`) only knows how to fuzzy-match against those WA shapes. An Instagram channel is reachable from the CLI by `ch_X` publicId only — and even then most subcommands either crash on missing WA fields or print misleading WA-flavored output.
+The CLI is WhatsApp-only. Every `channels` subcommand (`list`, `show`, `connect`, `disconnect`, `enable`, `disable`, `env`, `token`, `health`, `webhook show/set`, `channels listen`, `channels logs`) keys on WhatsApp fields (`phoneNumberId`, `displayPhoneNumber`, `wabaName`), and the picker (`resolveChannel`) only knows how to fuzzy-match against those WA shapes. An Instagram channel is reachable from the CLI by `ch_X` publicId only — and even then most subcommands either crash on missing WA fields or print misleading WA-flavored output.
 
 The sandbox-IG milestone (`2026-05-25-instagram-sandbox-cli-design.md`) shipped the parser, helpers, and unified picker for sandbox sessions, and proved the discriminated-union pattern works for the CLI. That pattern now needs to extend to real channels — with the same product-grade UX the dashboard already gives Instagram users.
 
@@ -19,7 +19,7 @@ Separately, the sandbox subcommand picker convention (`--phone` / `--username` /
 - An Instagram channel is selectable, configurable, and operable from every `channels` subcommand with the same UX shape as a WhatsApp channel: pick it, show it, get its env vars, enable/disable forwarding, tunnel webhooks, browse logs, configure its webhook URL.
 - `hookmyapp channels connect whatsapp` and `hookmyapp channels connect instagram` are both first-class — symmetric copy-paste-able commands, each opening the OAuth flow Meta hosts for that channel type.
 - The CLI picker is unified around **shape-detected positional**: a bare `+E164` is a phone (WA only), `@handle` is an IG username, `ch_X` is a channel publicId, `ssn_X` is a sandbox session publicId. Same convention across `channels` and `sandbox` subcommands; same shared resolver. Sharp validator errors when the shape is malformed (e.g., bare digits without `+`).
-- Wire data from `GET /meta/channels` and `GET /meta/channels/:id` is **parsed** at the boundary into a discriminated union mirroring `frontend/src/types/channel.ts`. The current `ApiChannel` type with its `[key: string]: unknown` escape hatch and untyped narrowing is deleted. Same discipline the sandbox spec applied to `SandboxSession`.
+- Wire data from `GET /meta/channels` and `GET /meta/channels/:id` is **parsed** at the boundary into discriminated unions. Two parsers (see D4): `parseChannelListItem` validates the frozen public-wire shape (matching `frontend/src/types/channel.ts`); `parseChannelDetail` extends it with backend detail-only fields. Both tolerate unknown extras for forward-compat with backend additions. The current `ApiChannel` type with its `[key: string]: unknown` escape hatch and untyped narrowing is deleted. Same boundary-parser discipline the sandbox spec applied to `SandboxSession`.
 - The `channels env` command, already channel-type-agnostic by design (it delegates the env-shape decision to backend `GET /meta/channels/:id/env`), keeps that boundary intact — the CLI plan only adds an acceptance test that an IG channel returns `INSTAGRAM_*` keys.
 
 ## Non-goals
@@ -36,7 +36,7 @@ Separately, the sandbox subcommand picker convention (`--phone` / `--username` /
 
 ### D1. Full parity — every WA `channels` subcommand gets an IG counterpart.
 
-All ~12 subcommands (`list`, `show`, `connect`, `disconnect`, `enable`, `disable`, `env`, `token`, `health`, `webhook show/set/clear`, `channels listen`, `channels logs`) work with Instagram channels in v1. Same flag surface, same exit codes, same JSON shape per type.
+All existing ~11 subcommands (`list`, `show`, `connect`, `disconnect`, `enable`, `disable`, `env`, `token`, `health`, `webhook show/set`, `channels listen`, `channels logs`) work with Instagram channels in v1. Same flag surface, same exit codes, same JSON shape per type. No new subcommands; in particular, **no `channels webhook clear`** — that's a sandbox-only concept (sandbox `clear` reverts the session to the CLI tunnel default; real channels have no such default to revert to). Customers who want to remove a custom webhook URL on a real channel use `channels webhook set --url ""` or `channels disable` to halt forwarding entirely.
 
 **Rejected alternative — debug-mode subset** (skip `connect/disconnect/enable/disable/token` for IG, defer to GUI). Smaller plan, but it ships a partial CLI surface that customers will instantly trip over the first time they try `channels disconnect @ordvir`. "The dashboard supports it but the CLI doesn't" is a product anti-pattern — it makes the CLI feel half-finished and forces channel-type-aware muscle memory ("for IG I have to use the dashboard for that one"). The connect flow being painful to port is a real cost, but it's a one-time engineering cost; the half-finished-CLI cost is recurring forever.
 
@@ -73,7 +73,7 @@ Non-TTY behavior: `channels connect` (any type) throws `ValidationError` with ex
 
 The picker for every channels/sandbox subcommand that operates on a specific entity (so: everything except `list`, `status`, `start`, `connect`) accepts a single positional whose shape determines the identifier type. **The shape vocabulary is scoped per command family — there is NO cross-family resolution** (no channel publicId → sandbox session lookup, no `ssn_X` accepted by `channels disconnect`, etc.) because the backend's deliveries scoping (`channel:<id>` vs `sandbox-session:<id>`) treats them as distinct entity spaces with no mapping contract.
 
-**Channels subcommands** (`channels disconnect`, `channels enable`, `channels disable`, `channels env`, `channels token`, `channels health`, `channels webhook show/set/clear`, `channels listen`, `channels logs`) accept:
+**Channels subcommands** (`channels disconnect`, `channels enable`, `channels disable`, `channels env`, `channels token`, `channels health`, `channels webhook show/set`, `channels listen`, `channels logs`) accept:
 
 - `+E164` → WhatsApp phone (e.g., `+972545434384`) — narrows to WA channels
 - `@handle` → Instagram username (e.g., `@ordvir`) — narrows to IG channels
