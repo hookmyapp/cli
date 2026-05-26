@@ -143,20 +143,56 @@ When `channels connect whatsapp` returns both a WA and an IG channel from a coex
 
 No separate `channels link` / `channels unlink` command. The two channels are independent rows in the `channels` table per the STI design; their pairing relationship is a backend concern, not surfaced in the CLI today.
 
-### D8. `channels listen` and `channels logs` extend symmetrically.
+### D8. `channels listen` and `channels logs` extend symmetrically + adopt the unified logs UX.
 
-Both commands already use the channel picker — they inherit D3's shape-detected positional change for free. The render logic narrows on `channel.type`:
+Both commands inherit D3's shape-detected positional change for free. The render logic narrows on `channel.type`:
 
 - `channels listen` IG branch: stream the same `webhook_events` rows as WA; the per-event "sender" column shows the `senderDisplay` field from the deliveries DTO. For WA this is the formatted phone; for IG **today** this is `fromId` (the raw IGSID) because `backend/src/deliveries/deliveries.service.ts:142` maps `senderDisplay` directly to `fromId` with no username enrichment.
 - `channels logs` IG branch: same. WA-shaped delivery row gets a sibling IG-shape branch; both narrow at render time and render `senderDisplay` verbatim.
 
 **Username enrichment is a backend follow-up, not a CLI dependency.** The CLI ships passthrough today (IG rows show IGSID in the sender column). When the backend later enriches `senderDisplay` to include `@username` for IG deliveries (probably via a `users` join on `webhook_events.from_id` against the IG profile lookup the sandbox path already does), the CLI picks up the enrichment automatically with zero release coordination. The spec calls this out so the IG render's IGSID-instead-of-handle behavior is documented behavior, not a bug to chase.
 
-No new flags. No new env vars. Same tunnel mechanism, same SSE stream, same deliveries-list endpoint.
+**`channels logs list` gains two flags from the sandbox-logs work:**
 
-### D9. Sandbox retrofit lands first in the plan.
+- `--follow` / `-f` — SSE live tail. Stream new deliveries as they arrive, same mechanism as `sandbox logs --follow`. Useful for production debugging ("my prod webhook is failing right now, stream the next 5 minutes"). Ctrl+C to exit.
+- `--json` — JSONL output (one delivery DTO per line). Same shape sandbox-logs emits. For AI agents (Claude Code, Codex) consuming the stream programmatically.
 
-The plan's first phase is the picker convention retrofit on sandbox (positional shape-detected on all 8 sandbox subcommands that take a session selector + the shared `parseIdentifier()` helper). Reasons:
+The existing flags stay: `--limit`, `--since`, `--until`, `--cursor`, `--all`. Both new flags compose with them (`channels logs list --follow --limit 100` starts by emitting the last 100 then streams new ones; `channels logs list --since 1h --json` emits the last hour as JSONL).
+
+No new env vars. Same tunnel mechanism for `channels listen`, same SSE stream + deliveries-list endpoint for `channels logs`.
+
+### D9. Unify the logs UX across sandbox + channels: table-by-default, `--verbose` for the dump.
+
+`sandbox logs` shipped 4 days ago as **verbose-by-default** (full inbound body + forward attempt block per delivery). The user feedback says that's the wrong default — verbose dumps of 50 deliveries are a wall of text; the dominant question a customer asks is "did the message reach my server, and what did my server say back?". That answer is a one-line summary per row.
+
+Flip the default. Both `sandbox logs` and `channels logs list` render the same compact summary format by default; `--verbose` (or `-v`) returns the full inbound+forward dump:
+
+```
+2026-05-26 14:30:01  +972545434384  →  https://n8n.../webhook  200 OK     (150ms)  "Hello from cli"
+2026-05-26 14:32:15  @ordvir         →  https://n8n.../webhook  timeout              "test image"
+2026-05-26 14:35:42  +972545434384  →  (no forward URL set)    —                    "another test"
+```
+
+Per-row columns:
+
+- **Timestamp** — local ISO format; relative time (`2m ago`) if `--relative` is set
+- **Sender** — `senderDisplay` from backend (phone for WA, IGSID for IG until backend enrichment lands per D8)
+- **Forward target** — destination URL truncated to its host, or `(no forward URL set)` if the channel/session has no `webhookUrl`
+- **Response status** — `200 OK` / `4xx`/`5xx` from the customer's server, or `timeout` / `network error` / `—` if no response was attempted
+- **Latency** — round-trip ms for the forward attempt, omitted if no response
+- **Preview** — first ~40 chars of the inbound body, quoted, truncated with `…`
+
+`--verbose` / `-v` switches to the pre-flip format (header line + indented inbound body JSON + indented forward attempt block).
+
+`--follow` and `--json` modes inherit from D8 (channels) and existing sandbox logs (which already has both). `--json` mode is unchanged by the default flip — JSONL output is the full DTO regardless of `--verbose`.
+
+Reasoning: verbose-by-default optimizes for "I want to see EVERYTHING about ONE delivery" — but customers reading `sandbox logs --limit 50` are scanning, not inspecting. They're answering "is anything failing?" or "did my last test message land?". One-line summaries let them scan; `--verbose` is there when they find the row they care about. Matches `kubectl get pods` (table by default, `kubectl describe pod X` for detail) — the canonical Unix CLI pattern.
+
+This retrofit applies to `sandbox logs` in the sandbox-retrofit phase (per D10) so both surfaces ship the unified UX together.
+
+### D10. Sandbox retrofit lands first in the plan.
+
+The plan's first phase is the picker convention retrofit on sandbox (positional shape-detected on all 8 sandbox subcommands that take a session selector + the shared `parseIdentifier()` helper) PLUS the logs UX flip from D9. Reasons:
 
 1. Establishes the shared helper that channels then reuses, so both surfaces consume the same parser from day one.
 2. Lets us ship the sandbox UX fix immediately even if the channels-IG backend work slips — the sandbox retrofit is unblocked by anything.
