@@ -1,9 +1,9 @@
 // `hookmyapp sandbox webhook show/set/clear` — manage the destination webhook
 // URL for a sandbox session.
 //
-// D3/D12 migration: positional [phone] is deprecated for 0.12.2 (emits stderr
-// warning, still works). Removed in 0.13.0. Positional + flag → exit 2
-// (CONFLICTING_SELECTORS, per E5).
+// D3 contract: positional [identifier] is first-class. Shape-detected
+// via parseIdentifier in the unified picker (src/commands/sandbox/picker.ts).
+// Accepts +phone, @username, or ssn_XXXXXXXX.
 
 import { input } from '@inquirer/prompts';
 import { apiClient } from '../../api/client.js';
@@ -17,7 +17,7 @@ import { sessionIdentifier, sessionLabel } from './helpers.js';
 import { pickSession } from './picker.js';
 
 interface BaseOpts {
-  positionalPhone?: string;
+  identifierArg?: string;
   phone?: string;
   username?: string;
   session?: string;
@@ -28,34 +28,16 @@ interface SetOpts extends BaseOpts {
   url?: string;
 }
 
-function resolvePhoneFromPositional(opts: BaseOpts): string | undefined {
-  if (!opts.positionalPhone) return opts.phone;
-  // Positional [phone] is deprecated — see D12.
-  if (opts.phone !== undefined || opts.username !== undefined || opts.session !== undefined) {
-    throw new ValidationError(
-      `Conflicting selectors: positional <phone> and --${
-        opts.phone !== undefined ? 'phone' : opts.username !== undefined ? 'username' : 'session'
-      } cannot both be provided. Use one selector.`,
-      'CONFLICTING_SELECTORS',
-    );
-  }
-  process.stderr.write(
-    '[deprecated] positional <phone> on `sandbox webhook` will be removed in 0.13.0. ' +
-      'Use --phone, --username, or --session.\n',
-  );
-  return opts.positionalPhone;
-}
-
 async function pickForWebhook(opts: BaseOpts, alwaysShowPicker: boolean) {
   const workspaceId = await getDefaultWorkspaceId();
   const dto = await apiClient('/sandbox/sessions?active=true', { workspaceId });
   const sessions = parseSandboxSessions(dto);
 
-  const phoneFlag = resolvePhoneFromPositional(opts);
   const isHuman = !opts.json && Boolean(process.stdout.isTTY);
   const session = await pickSession({
     sessions,
-    phoneFlag,
+    identifierArg: opts.identifierArg,
+    phoneFlag: opts.phone,
     usernameFlag: opts.username,
     sessionFlag: opts.session,
     isHuman,
