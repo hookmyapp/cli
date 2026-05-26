@@ -31,7 +31,7 @@ export function registerHealthCommand(program: Command): void {
   const health = program
     .command('health')
     .description('[deprecated] Use `hookmyapp channels health <channel>` instead.')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       console.warn(
         '[deprecated] `hookmyapp health` will be removed in a future release. ' +
