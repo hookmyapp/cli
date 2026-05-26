@@ -55,6 +55,7 @@ const fakeChannels = [
     type: 'whatsapp',
     workspaceId: 'ws_TEST0010',
     metaWabaId: 'waba-1',
+    metaResourceId: 'phone-1',
     wabaName: 'Test WABA',
     displayPhoneNumber: '+1 234 567 890',
     phoneNumberId: 'phone-1',
@@ -63,6 +64,7 @@ const fakeChannels = [
     metaConnected: true,
     forwardingEnabled: true,
     qualityRating: 'GREEN',
+    qualityRatingCheckedAt: null,
     webhookUrl: 'https://example.com/webhook',
     verifyToken: 'tok-123',
   },
@@ -71,6 +73,7 @@ const fakeChannels = [
     type: 'whatsapp',
     workspaceId: 'ws_TEST0020',
     metaWabaId: 'waba-2',
+    metaResourceId: 'phone-2',
     wabaName: 'Another WABA',
     displayPhoneNumber: '+1 987 654 321',
     phoneNumberId: 'phone-2',
@@ -79,6 +82,7 @@ const fakeChannels = [
     metaConnected: true,
     forwardingEnabled: true,
     qualityRating: null,
+    qualityRatingCheckedAt: null,
     webhookUrl: null,
     verifyToken: null,
   },
@@ -86,8 +90,10 @@ const fakeChannels = [
 
 const fakeDetailResponse = {
   id: 'ch_TEST0002',
+  type: 'whatsapp',
   workspaceId: 'ws_TEST0020',
   metaWabaId: 'waba-2',
+  metaResourceId: 'phone-2',
   wabaName: 'Another WABA',
   displayPhoneNumber: '+1 987 654 321',
   phoneVerifiedName: null,
@@ -95,6 +101,7 @@ const fakeDetailResponse = {
   metaConnected: true,
   forwardingEnabled: true,
   qualityRating: null,
+  qualityRatingCheckedAt: null,
   accessToken: 'real-token-value',
   businessName: 'Acme Corp',
   metaBusinessId: 'biz-123',
@@ -167,7 +174,7 @@ describe('channels commands', () => {
     expect(outputArgs).toHaveProperty('accessToken', 'real-token-value');
   });
 
-  it('throws CliError when channel not found', async () => {
+  it('throws when channel reference is not a recognized identifier shape', async () => {
     mockedApiClient.mockResolvedValue(fakeChannels);
 
     const program = new Command();
@@ -175,7 +182,7 @@ describe('channels commands', () => {
 
     await expect(
       program.parseAsync(['channels', 'show', 'nonsense-xyz'], { from: 'user' }),
-    ).rejects.toThrow('channel not found');
+    ).rejects.toThrow(/not a recognized identifier shape/);
   });
 
   it('disconnectChannel calls apiClient with POST and workspaceId from channel lookup', async () => {
@@ -346,25 +353,46 @@ describe('channels list — rendered table contents (Task 8)', () => {
 describe('resolveChannel — strict resolver order (Task 5)', () => {
   let resolveChannel: typeof import('../commands/channels.js').resolveChannel;
 
-  // Fixtures match the actual /meta/channels wire shape:
+  // Fixtures match the actual /meta/channels wire shape (and satisfy the
+  // strict parseChannelListItem boundary parser — see src/api/channel.ts):
   //   `id` carries the publicId value (ch_xxxxxxxx)
   //   `wabaName` (NOT displayName)
   const fixtures = [
     {
       id: 'ch_abc12345',
       type: 'whatsapp',
+      workspaceId: 'ws_TEST0010',
       metaWabaId: '1248091060795230',
+      metaResourceId: '979105081963262',
       phoneNumberId: '979105081963262',
       displayPhoneNumber: '+972 55-727-7945',
       wabaName: 'tomer office',
+      phoneVerifiedName: null,
+      qualityRating: null,
+      qualityRatingCheckedAt: null,
+      connectionType: 'cloud_api',
+      metaConnected: true,
+      forwardingEnabled: true,
+      webhookUrl: null,
+      verifyToken: null,
     },
     {
       id: 'ch_def67890',
       type: 'whatsapp',
+      workspaceId: 'ws_TEST0010',
       metaWabaId: '9999999999999999',
+      metaResourceId: '888888888888888',
       phoneNumberId: '888888888888888',
       displayPhoneNumber: '+1 555-000-0000',
       wabaName: 'tomer second office',
+      phoneVerifiedName: null,
+      qualityRating: null,
+      qualityRatingCheckedAt: null,
+      connectionType: 'cloud_api',
+      metaConnected: true,
+      forwardingEnabled: true,
+      webhookUrl: null,
+      verifyToken: null,
     },
   ];
 
@@ -386,100 +414,15 @@ describe('resolveChannel — strict resolver order (Task 5)', () => {
     expect(c.id).toBe('ch_abc12345');
   });
 
-  it('resolves by exact phoneNumberId', async () => {
-    const c = await resolveChannel('979105081963262');
-    expect(c.id).toBe('ch_abc12345');
-  });
-
   it('resolves by exact display phone (E.164 with plus)', async () => {
     const c = await resolveChannel('+972557277945');
     expect(c.id).toBe('ch_abc12345');
   });
 
-  it('resolves by exact display phone (stripped)', async () => {
-    const c = await resolveChannel('972557277945');
-    expect(c.id).toBe('ch_abc12345');
-  });
-
-  it('resolves by exact wabaName', async () => {
-    const c = await resolveChannel('tomer office');
-    expect(c.id).toBe('ch_abc12345');
-  });
-
-  it('throws helpful WABA error when input looks like wabaId', async () => {
-    await expect(resolveChannel('1248091060795230')).rejects.toThrow(
-      /looks like a Meta WABA ID.*ch_xxxxxxxx.*channels list/s,
+  it('throws not-found for unmatched ch_X publicId', async () => {
+    await expect(resolveChannel('ch_zzzzzzzz')).rejects.toThrow(
+      /No channel matches ch_zzzzzzzz.*channels list/s,
     );
-  });
-
-  it('throws generic not-found for unmatched input', async () => {
-    await expect(resolveChannel('nonsense-xyz')).rejects.toThrow(
-      /channel not found.*channels list/s,
-    );
-  });
-
-  it('returns CHANNEL_AMBIGUOUS in non-interactive context for fuzzy match', async () => {
-    const prevTTY = process.stdout.isTTY;
-    (process.stdout as any).isTTY = false;
-    try {
-      await expect(resolveChannel('tomer')).rejects.toMatchObject({
-        code: 'CHANNEL_AMBIGUOUS',
-      });
-    } finally {
-      (process.stdout as any).isTTY = prevTTY;
-    }
-  });
-
-  // Regression for the Task 5 bug — TTY fuzzy-match used to call
-  // `pickChannel`, which silently filters out `forwardingEnabled !== true`
-  // candidates. That's wrong for `channels enable/disable/show/disconnect`
-  // because the entire point of those commands is to operate on a channel
-  // regardless of (or to flip) the forwarding flag. The resolver must hand
-  // every fuzzy match to the user-facing picker; the picker must not silently
-  // shrink the list.
-  it('TTY fuzzy match delegates to selectChannel without forwardingEnabled filter', async () => {
-    const prevTTY = process.stdout.isTTY;
-    (process.stdout as any).isTTY = true;
-    // Mix forwarding-enabled and disabled channels — BOTH must reach the
-    // picker. Pre-fix, the disabled one would be silently dropped and the
-    // enabled one auto-selected (`pickChannel` short-circuits at length===1
-    // after its filter).
-    const mixedFixtures = [
-      { ...fixtures[0], forwardingEnabled: true, wabaName: 'tomer office' },
-      { ...fixtures[1], forwardingEnabled: false, wabaName: 'tomer second office' },
-    ];
-    mockedApiClient.mockReset();
-    mockedApiClient.mockResolvedValue(mixedFixtures);
-
-    const selectChannelMock = vi.fn().mockResolvedValue(mixedFixtures[1]);
-    vi.doMock('../commands/channels-listen/picker.js', () => ({
-      selectChannel: selectChannelMock,
-      // Keep `pickChannel` exported so other code paths importing the module
-      // (e.g. via vi.resetModules state) don't blow up at load time.
-      pickChannel: vi.fn(),
-    }));
-
-    try {
-      // Re-import resolveChannel AFTER doMock so the dynamic-imported picker
-      // module resolves to our mock.
-      vi.resetModules();
-      const mod = await import('../commands/channels.js');
-      const c = await mod.resolveChannel('tomer');
-
-      // The disabled channel was returned — proving the picker didn't filter.
-      expect(c.id).toBe(mixedFixtures[1].id);
-      // BOTH candidates were passed in, not just the enabled one.
-      expect(selectChannelMock).toHaveBeenCalledTimes(1);
-      const passedChannels = selectChannelMock.mock.calls[0][0];
-      expect(passedChannels).toHaveLength(2);
-      expect(passedChannels.map((x: { id: string }) => x.id)).toEqual([
-        mixedFixtures[0].id,
-        mixedFixtures[1].id,
-      ]);
-    } finally {
-      (process.stdout as any).isTTY = prevTTY;
-      vi.doUnmock('../commands/channels-listen/picker.js');
-    }
   });
 });
 

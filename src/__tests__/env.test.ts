@@ -29,8 +29,18 @@ const fakeChannels = [
     type: 'whatsapp',
     workspaceId: 'ws_TEST0010',
     metaWabaId: '1248091060795230',
+    metaResourceId: '979105081963262',
     phoneNumberId: '979105081963262',
+    displayPhoneNumber: '+972 55-727-7945',
     wabaName: 'tomer office',
+    phoneVerifiedName: null,
+    qualityRating: null,
+    qualityRatingCheckedAt: null,
+    connectionType: 'cloud_api',
+    metaConnected: true,
+    forwardingEnabled: true,
+    webhookUrl: null,
+    verifyToken: null,
   },
 ];
 
@@ -110,8 +120,8 @@ describe('env command', () => {
 
     // Act + Assert
     await expect(
-      program.parseAsync(['env', 'ch_NOTFND9'], { from: 'user' }),
-    ).rejects.toThrow('channel not found');
+      program.parseAsync(['env', 'ch_zzzzzzzz'], { from: 'user' }),
+    ).rejects.toThrow(/No channel matches ch_zzzzzzzz/);
   });
 
   it('writes all `values` keys overwriting existing entries', async () => {

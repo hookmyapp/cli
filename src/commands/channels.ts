@@ -17,138 +17,94 @@ import {
   runChannelWebhookSet,
   type WebhookSetOptions,
 } from './webhook.js';
+import {
+  parseChannelListItem,
+  parseChannelDetail,
+  type Channel,
+  type ChannelDetail,
+} from '../api/channel.js';
+import { parseIdentifier } from '../lib/parseIdentifier.js';
 
-/**
- * Minimal wire-shape mirror of the `/meta/channels` response used by the
- * resolver. Only the fields the resolver actually reads are typed; the
- * permissive index signature keeps it forward-compatible with API additions
- * (resolver doesn't need them, but downstream callers that receive the
- * resolved channel do).
- */
-export interface ApiChannel {
-  id: string;
-  type?: 'whatsapp' | 'instagram' | 'messenger';
-  workspaceId: string;
-  metaWabaId: string;
-  phoneNumberId?: string | null;
-  displayPhoneNumber?: string | null;
-  wabaName?: string | null;
-  forwardingEnabled?: boolean;
-  // additional fields exist on the wire but the resolver doesn't need them
-  [key: string]: unknown;
-}
+export type { Channel, ChannelDetail };
 
 /** Pick only customer-facing fields for CLI display output */
-function pickDisplayFields(channel: any): any {
-  const { id, workspaceId, qualityRating, ...display } = channel;
-  if (channel.connectionType !== 'coexistence' && qualityRating) {
-    display.qualityRating = qualityRating;
+function pickDisplayFields(channel: ChannelDetail | Record<string, unknown>): unknown {
+  const { id, workspaceId, qualityRating, ...display } =
+    channel as Record<string, unknown> & { qualityRating?: unknown };
+  void id;
+  void workspaceId;
+  const connectionType = (channel as Record<string, unknown>).connectionType;
+  if (connectionType !== 'coexistence' && qualityRating) {
+    (display as Record<string, unknown>).qualityRating = qualityRating;
   }
   return display;
 }
 
-const PUBLIC_ID_PATTERN = /^ch_[a-z0-9]{8}$/i;
-const NUMERIC_WABA_PATTERN = /^\d{15,16}$/;
-
-function stripPhone(s: string): string {
-  return s.replace(/[\s\-+()]/g, '');
-}
-
 /**
- * Thrown when a fuzzy wabaName match returns 2+ candidates in a non-TTY
- * (non-interactive) context. The CLI cannot prompt, so callers must re-run
- * with a more specific reference. The `matches` array lets structured callers
- * (e.g. JSON output, tests) render the alternatives without parsing the
- * message string.
- */
-export class AmbiguousChannelError extends CliError {
-  public matches: Array<{ id: string; wabaName: string | null | undefined }>;
-  constructor(matches: Array<{ id: string; wabaName: string | null | undefined }>) {
-    super(
-      `Multiple channels match. Use one of:\n` +
-        matches.map((m) => `  ${m.id}\t${m.wabaName ?? '(no name)'}`).join('\n'),
-      'CHANNEL_AMBIGUOUS',
-    );
-    this.matches = matches;
-    this.exitCode = 2;
-  }
-}
-
-/**
- * Resolve a user-supplied channel reference to the full channel object.
+ * Resolve a CLI channel reference (D3 — shape-detected positional) to a parsed
+ * Channel. Accepted shapes:
+ *   +E164          → WA channel by displayPhoneNumber
+ *   @handle        → IG channel by instagramUsername
+ *   ch_XXXXXXXX    → exact publicId match
  *
- * Resolver order (first match wins):
- *   1. publicId pattern (ch_xxxxxxxx) → channel.id
- *   2. exact phoneNumberId
- *   3. exact display phone (raw or stripped E.164)
- *   4. exact wabaName
- *   5. fuzzy wabaName (case-insensitive substring) — single match auto-selects;
- *      2+ matches throw AmbiguousChannelError in non-TTY, else interactive picker
- *   6. /^\d{15,16}$/ → friendly "looks like a Meta WABA ID" hard-break error
- *   7. generic not-found
+ * Mismatched-family shapes (ssn_X) throw ValidationError with a wrong-family
+ * suggestion; unrecognized shapes propagate parseIdentifier's error.
  */
-export async function resolveChannel(ref: string): Promise<ApiChannel> {
+export async function resolveChannel(ref: string): Promise<Channel> {
   const { getDefaultWorkspaceId } = await import('./_helpers.js');
   const workspaceId = await getDefaultWorkspaceId();
-  const channels: ApiChannel[] = await apiClient('/meta/channels', { workspaceId });
-
-  // 1. publicId pattern → wire field is `id`
-  if (PUBLIC_ID_PATTERN.test(ref)) {
-    const match = channels.find((c: ApiChannel) => c.id === ref);
-    if (match) return match;
-  }
-
-  // 2. exact phone_number_id
-  const byPhoneId = channels.find((c: ApiChannel) => c.phoneNumberId === ref);
-  if (byPhoneId) return byPhoneId;
-
-  // 3. exact display phone (stripped match)
-  const stripped = stripPhone(ref);
-  const byPhone = channels.find(
-    (c: ApiChannel) => !!c.displayPhoneNumber && stripPhone(c.displayPhoneNumber) === stripped,
-  );
-  if (byPhone) return byPhone;
-
-  // 4. exact wabaName (the API field; rendered as "channel name" in UI)
-  const byNameExact = channels.find((c: ApiChannel) => c.wabaName === ref);
-  if (byNameExact) return byNameExact;
-
-  // 5. fuzzy wabaName (case-insensitive substring)
-  const fuzzyMatches = channels.filter(
-    (c: ApiChannel) =>
-      typeof c.wabaName === 'string' &&
-      c.wabaName.toLowerCase().includes(ref.toLowerCase()),
-  );
-  if (fuzzyMatches.length === 1) return fuzzyMatches[0];
-  if (fuzzyMatches.length > 1) {
-    if (!process.stdout.isTTY) {
-      throw new AmbiguousChannelError(
-        fuzzyMatches.map((c: ApiChannel) => ({ id: c.id, wabaName: c.wabaName })),
+  const dtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
+  const channels = dtos.map(parseChannelListItem);
+  const parsed = parseIdentifier(ref);
+  switch (parsed.kind) {
+    case 'phone': {
+      const needle = parsed.value;
+      const match = channels.find(
+        (c): c is Channel & { type: 'whatsapp' } =>
+          c.type === 'whatsapp' &&
+          c.displayPhoneNumber !== null &&
+          c.displayPhoneNumber.replace(/[^\d]/g, '') === needle,
+      );
+      if (match) return match;
+      return throwNoMatch(`+${needle}`, channels);
+    }
+    case 'username': {
+      const match = channels.find(
+        (c): c is Channel & { type: 'instagram' } =>
+          c.type === 'instagram' && c.instagramUsername === parsed.value,
+      );
+      if (match) return match;
+      return throwNoMatch(`@${parsed.value}`, channels);
+    }
+    case 'channelId': {
+      const match = channels.find((c) => c.id === parsed.value);
+      if (match) return match;
+      return throwNoMatch(parsed.value, channels);
+    }
+    case 'sessionId': {
+      throw new ValidationError(
+        `"${ref}" is a sandbox session publicId; channels commands take ch_X. Did you mean a channel?`,
+        'WRONG_IDENTIFIER_FAMILY',
       );
     }
-    // Interactive picker — use `selectChannel` (forwarding-agnostic). We MUST
-    // NOT use `pickChannel` here because resolveChannel is shared by
-    // enable/disable/show/disconnect/env/token/health/webhook — those commands
-    // legitimately operate on channels with forwardingEnabled=false (e.g.
-    // `channels enable` exists precisely to flip that flag). `pickChannel`'s
-    // forwarding-enabled filter is correct for `channels listen` only.
-    const { selectChannel } = await import('./channels-listen/picker.js');
-    return await selectChannel<ApiChannel>(fuzzyMatches);
   }
+}
 
-  // 6. Looks-like-wabaId hard-break
-  if (NUMERIC_WABA_PATTERN.test(ref)) {
-    throw new ValidationError(
-      `"${ref}" looks like a Meta WABA ID. The CLI now uses channel IDs (ch_xxxxxxxx).\n` +
-        `  Run: ${cliCommandPrefix()} channels list\n` +
-        `  Then re-run with the channel ID from the output.`,
-    );
-  }
-
-  // 7. Generic fallback
-  throw new ValidationError(
-    `channel not found: ${ref}. Run: ${cliCommandPrefix()} channels list`,
+function throwNoMatch(needle: string, channels: Channel[]): never {
+  const available = channels
+    .map((c) => {
+      if (c.type === 'whatsapp') return c.displayPhoneNumber ?? c.id;
+      if (c.type === 'instagram') return c.instagramUsername ? `@${c.instagramUsername}` : c.id;
+      return c.id;
+    })
+    .join(', ');
+  const err = new CliError(
+    `No channel matches ${needle}. Available: ${available || '(none)'}. ` +
+      `Run: ${cliCommandPrefix()} channels list`,
+    'CHANNEL_NOT_FOUND',
   );
+  err.exitCode = 2;
+  throw err;
 }
 
 /**
@@ -254,25 +210,29 @@ export function registerChannelsCommand(program: Command): void {
     .action(async () => {
       const { getDefaultWorkspaceId } = await import('./_helpers.js');
       const workspaceId = await getDefaultWorkspaceId();
-      const data = await apiClient('/meta/channels', { workspaceId });
-      const connectedChannels = data.filter((c: any) => c.metaConnected !== false);
+      const dtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
+      const allChannels = dtos.map(parseChannelListItem);
+      const connectedChannels = allChannels.filter((c) => c.metaConnected !== false);
       const json = !!program.opts().json;
       if (json) {
-        // JSON mode: pass through the raw API response (incl. `id`, `type`,
-        // `metaWabaId`, `phoneNumberId`, …) — scripts depend on the wire shape.
+        // JSON mode: pass through the parsed channel list (preserves
+        // wire field names like `id`, `type`, `metaWabaId`) — scripts
+        // depend on the wire shape.
         output(connectedChannels, { json: true });
         return;
       }
       // Default human-readable mode (Task 8): explicit column projection with
       // friendly headers. `Channel ID` (publicId, ch_xxxxxxxx) + `type` are the
       // primary columns; `metaWabaId` is intentionally dropped from the table.
-      const rows = connectedChannels.map((c: any) => ({
+      // IG-aware rendering (Task B3) replaces WA-only name/phone with
+      // type-appropriate values.
+      const rows = connectedChannels.map((c) => ({
         'Channel ID': c.id,
-        type: c.type ?? '',
-        name: c.wabaName ?? '',
-        phone: c.displayPhoneNumber ?? '',
-        forwarding: c.forwardingEnabled ?? '',
-        connected: c.metaConnected ?? '',
+        type: c.type,
+        name: c.type === 'whatsapp' ? (c.wabaName ?? '') : '',
+        phone: c.type === 'whatsapp' ? (c.displayPhoneNumber ?? '') : '',
+        forwarding: c.forwardingEnabled,
+        connected: c.metaConnected,
       }));
       output(rows, { human: true });
     });
@@ -280,10 +240,10 @@ export function registerChannelsCommand(program: Command): void {
   const channelsShow = channels
     .command('show')
     .description('Show channel details')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       const channel = await resolveChannel(channelRef);
-      const detail = await apiClient(`/meta/channels/${channel.id}`);
+      const detail = (await apiClient(`/meta/channels/${channel.id}`)) as ChannelDetail;
       output(pickDisplayFields(detail), { human: !program.opts().json });
     });
 
@@ -297,7 +257,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsDisconnect = channels
     .command('disconnect')
     .description('Disconnect a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       const channel = await resolveChannel(channelRef);
       const result = await apiClient(`/meta/channels/${channel.id}/disconnect`, {
@@ -310,7 +270,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsEnable = channels
     .command('enable')
     .description('Enable forwarding for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       const channel = await resolveChannel(channelRef);
       const result = await apiClient(`/meta/channels/${channel.id}/enable`, {
@@ -323,7 +283,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsDisable = channels
     .command('disable')
     .description('Disable forwarding for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       const channel = await resolveChannel(channelRef);
       const result = await apiClient(`/meta/channels/${channel.id}/disable`, {
@@ -341,7 +301,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsEnv = channels
     .command('env')
     .description('Pull env values for a channel and optionally write to .env')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .option(
       '--write [path]',
       'Upsert credentials into a .env file (default ./.env). Replaces existing WHATSAPP_* keys, preserves everything else.',
@@ -353,7 +313,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsToken = channels
     .command('token')
     .description('Reveal access token for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       await runChannelToken(channelRef);
     });
@@ -361,7 +321,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsHealth = channels
     .command('health')
     .description('Health check for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       await runChannelHealth(channelRef, { human: !program.opts().json });
     });
@@ -373,7 +333,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsWebhookShow = channelsWebhook
     .command('show')
     .description('Show the configured webhook URL for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       await runChannelWebhookShow(channelRef, { json: !!program.opts().json });
     });
@@ -381,7 +341,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsWebhookSet = channelsWebhook
     .command('set')
     .description('Set the configured webhook URL for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .option('--url <url>', 'Webhook URL')
     .option('--verify-token <token>', 'Verify token (auto-generated if omitted)')
     .action(async (channelRef: string, opts: WebhookSetOptions) => {
