@@ -19,6 +19,7 @@ export type Session = SandboxSession;
 
 export interface PickSessionArgs {
   sessions: Session[];
+  identifierArg?: string;
   phoneFlag?: string;
   usernameFlag?: string;
   sessionFlag?: string;
@@ -28,6 +29,7 @@ export interface PickSessionArgs {
 export async function pickSession(args: PickSessionArgs): Promise<Session> {
   return unifiedPick({
     sessions: args.sessions,
+    identifierArg: args.identifierArg,
     phoneFlag: args.phoneFlag,
     usernameFlag: args.usernameFlag,
     sessionFlag: args.sessionFlag,

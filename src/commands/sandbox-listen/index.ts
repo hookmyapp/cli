@@ -285,6 +285,10 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
     .description(
       'Start a sandbox tunnel and stream incoming webhooks to your local app',
     )
+    .argument(
+      '[identifier]',
+      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+    )
     .option(
       '--port <n>',
       'Local port your app listens on',
@@ -302,7 +306,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       'Force re-download of cloudflared',
       false,
     )
-    .action(async (opts: ListenOpts) => {
+    .action(async (identifier: string | undefined, opts: ListenOpts) => {
       const human = !program.opts().json && !opts.json;
 
       // Step 0 — validate --session flag shape. Phase 117: must be a
@@ -339,6 +343,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       // NO_ACTIVE_SESSIONS / SESSION_MISMATCH — let main() format + exit.
       const chosen = await pickSession({
         sessions,
+        identifierArg: identifier,
         phoneFlag: opts.phone,
         usernameFlag: opts.username,
         sessionFlag: opts.session,
