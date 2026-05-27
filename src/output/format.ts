@@ -1,3 +1,4 @@
+import type { Command } from 'commander';
 import { renderTable } from './table.js';
 import { c, icon } from './color.js';
 
@@ -12,14 +13,24 @@ export interface OutputOpts {
   kind?: 'read' | 'mutation';
 }
 
-function isJsonMode(opts: OutputOpts): boolean {
+function isJsonModeFromOpts(opts: OutputOpts): boolean {
   if (opts.json !== undefined) return !!opts.json;
   if (opts.human !== undefined) return !opts.human;
   return false;
 }
 
+/**
+ * Returns true when the user passed `--json` (global or local) on the given
+ * Commander Command. Used by action handlers that take `this: Command` so
+ * they can branch on machine-readable output without re-implementing
+ * `optsWithGlobals().json` at every call site.
+ */
+export function isJsonMode(cmd: Command): boolean {
+  return !!cmd.optsWithGlobals().json;
+}
+
 export function output(data: unknown, opts: OutputOpts = {}): void {
-  const json = isJsonMode(opts);
+  const json = isJsonModeFromOpts(opts);
   const kind = opts.kind ?? 'read';
 
   if (json) {

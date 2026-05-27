@@ -9,6 +9,7 @@ vi.mock('../api/client.js', () => ({
 // Mock output
 vi.mock('../output/format.js', () => ({
   output: vi.fn(),
+  isJsonMode: vi.fn(() => false),
 }));
 
 // Mock workspace config
