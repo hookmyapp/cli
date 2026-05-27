@@ -111,9 +111,9 @@ EXAMPLES:
         const persisted = getPersistedEnv();
         const active = resolveEnv();
         if (isJsonMode(this)) {
-          console.log(
-            JSON.stringify({ key, value: persisted ?? null, active, default: DEFAULT_ENV }),
-          );
+          const out: Record<string, unknown> = { active, default: DEFAULT_ENV };
+          if (persisted) out.value = persisted;
+          console.log(JSON.stringify(out));
         } else if (persisted) {
           console.log(persisted);
         } else {
@@ -125,14 +125,9 @@ EXAMPLES:
       const persisted = getPersistedTelemetry();
       const active = isTelemetryEnabled() ? 'on' : 'off';
       if (isJsonMode(this)) {
-        console.log(
-          JSON.stringify({
-            key,
-            value: persisted ?? null,
-            active,
-            default: 'on',
-          }),
-        );
+        const out: Record<string, unknown> = { active, default: 'on' };
+        if (persisted) out.value = persisted;
+        console.log(JSON.stringify(out));
       } else if (persisted) {
         console.log(persisted);
       } else {
