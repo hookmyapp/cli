@@ -286,6 +286,23 @@ function stripCommanderPrefix(msg: string): string {
   return msg.startsWith('error: ') ? msg.slice('error: '.length) : msg;
 }
 
+// Cleanup spec D1: commander.js error types map to specific machine codes so
+// agents can act differently per failure mode. Unrecognized commander codes
+// fall back to CLI_ERROR (the historical catch-all).
+const COMMANDER_CODE_MAP: Record<string, string> = {
+  'commander.missingArgument': 'MISSING_ARGUMENT',
+  'commander.missingMandatoryOptionValue': 'MISSING_ARGUMENT',
+  'commander.unknownCommand': 'UNKNOWN_SUBCOMMAND',
+  'commander.unknownOption': 'INVALID_FLAG',
+  'commander.invalidArgument': 'INVALID_ARGUMENT',
+  'commander.excessArguments': 'INVALID_ARGUMENT',
+};
+
+export function wrapCommanderError(err: Error & { code?: string }): CliError {
+  const code = COMMANDER_CODE_MAP[err.code ?? ''] ?? 'CLI_ERROR';
+  return new ValidationError(err.message, code);
+}
+
 export function outputError(error: CliError, opts: { human?: boolean }): void {
   if (opts.human) {
     process.stderr.write(`Error: ${error.userMessage}\n`);

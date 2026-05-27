@@ -8,6 +8,7 @@ import {
   ValidationError,
   ConflictError,
   outputError,
+  wrapCommanderError,
 } from '../error.js';
 
 describe('error hierarchy — Wave 0 RED (ValidationError + ConflictError)', () => {
@@ -107,5 +108,39 @@ describe('outputError JSON envelope (D1)', () => {
     const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
     expect(parsed.error.message).toBe("missing required argument 'channel'");
     expect(parsed.error.message).not.toMatch(/^error: /);
+  });
+});
+
+describe('wrapCommanderError (D1)', () => {
+  test('When commander throws missing-argument, then code is MISSING_ARGUMENT', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cmdErr: any = new Error("missing required argument 'channel'");
+    cmdErr.code = 'commander.missingArgument';
+    const wrapped = wrapCommanderError(cmdErr);
+    expect(wrapped.code).toBe('MISSING_ARGUMENT');
+  });
+
+  test('When commander throws unknown-command, then code is UNKNOWN_SUBCOMMAND', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cmdErr: any = new Error("unknown command 'foo'");
+    cmdErr.code = 'commander.unknownCommand';
+    const wrapped = wrapCommanderError(cmdErr);
+    expect(wrapped.code).toBe('UNKNOWN_SUBCOMMAND');
+  });
+
+  test('When commander throws an unknown class, then code falls back to CLI_ERROR', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cmdErr: any = new Error('weird');
+    cmdErr.code = 'commander.somethingNew';
+    const wrapped = wrapCommanderError(cmdErr);
+    expect(wrapped.code).toBe('CLI_ERROR');
+  });
+
+  test('When commander throws unknown-option, then code is INVALID_FLAG', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cmdErr: any = new Error("unknown option '--bogus'");
+    cmdErr.code = 'commander.unknownOption';
+    const wrapped = wrapCommanderError(cmdErr);
+    expect(wrapped.code).toBe('INVALID_FLAG');
   });
 });
