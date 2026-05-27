@@ -56,4 +56,16 @@ describe('CLI commander parse errors emit canonical envelope (integration)', () 
     const parsed = JSON.parse(lines[0]);
     expect(parsed.error.code).toBe('UNKNOWN_SUBCOMMAND');
   });
+
+  test('When parent command has no subcommand in JSON mode, then envelope has a useful message (not "(outputHelp)")', () => {
+    const { exitCode, stderr } = runCli(['--json', 'channels']);
+    expect(exitCode).not.toBe(0);
+    const lines = stderr.split('\n').filter((l) => l.trim().startsWith('{'));
+    expect(lines).toHaveLength(1);
+    const parsed = JSON.parse(lines[0]);
+    expect(parsed.error.message).not.toMatch(/outputHelp/);
+    expect(parsed.error.message.length).toBeGreaterThan(10);
+    expect(parsed.error.code).toBe('MISSING_SUBCOMMAND');
+    expect(parsed.error.status).toBe(400);
+  });
 });
