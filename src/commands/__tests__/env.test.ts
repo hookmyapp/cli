@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, test, expect, vi, beforeEach } from 'vitest';
 import { Command } from 'commander';
 
 const mocks = vi.hoisted(() => ({
@@ -12,6 +12,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../api/client.js', () => ({ apiClient: mocks.apiClientMock, setWorkspaceContext: vi.fn() }));
 vi.mock('../channels.js', () => ({ resolveChannel: mocks.resolveChannelMock }));
+// Mock isJsonMode so we can toggle per-test without commander gymnastics.
+// Mirrors the pattern in token.test.ts (Task 4). Existing human-mode tests
+// fall through to `() => false`.
+vi.mock('../../output/format.js', async (orig) => ({
+  ...(await orig<object>()),
+  isJsonMode: vi.fn(() => false),
+}));
 vi.mock('node:fs', async () => {
   const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
   return {
@@ -136,5 +143,64 @@ describe('env <channel> --write — upsert-merge', () => {
     const writeOrder = mocks.writeFileSyncMock.mock.invocationCallOrder[0];
     const renameOrder = mocks.renameSyncMock.mock.invocationCallOrder[0];
     expect(writeOrder).toBeLessThan(renameOrder);
+  });
+});
+
+describe('runChannelEnv --json (D6)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let stdoutSpy: any;
+  // IG-style payload — matches the cleanup spec's example shape. PORT was
+  // dropped from defaults server-side in Phase A; the test asserts it does
+  // NOT appear in the merged output.
+  const IG_PAYLOAD = {
+    channelType: 'instagram',
+    values: {
+      INSTAGRAM_GRAPH_API_URL: 'https://graph.instagram.com/v25.0',
+      INSTAGRAM_ACCESS_TOKEN: 'IGAAi_test_token',
+      INSTAGRAM_USER_ID: '17841999999999999',
+      HOOKMYAPP_CHANNEL_ID: 'ch_TEST0001',
+      VERIFY_TOKEN: 'test123',
+    },
+    defaults: {},
+  };
+
+  beforeEach(async () => {
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    mocks.resolveChannelMock.mockResolvedValue({
+      id: 'ch_TEST0001',
+      type: 'instagram',
+      workspaceId: 'ws_TEST0001',
+    });
+    mocks.apiClientMock.mockResolvedValue(IG_PAYLOAD);
+    const { isJsonMode } = await import('../../output/format.js');
+    vi.mocked(isJsonMode).mockReset();
+  });
+
+  test('When --json, then output is a flat {KEY: VALUE} object', async () => {
+    const { isJsonMode } = await import('../../output/format.js');
+    vi.mocked(isJsonMode).mockReturnValue(true);
+    const { runChannelEnv } = await import('../env.js');
+    // Pass an opaque Command stub — runChannelEnv only forwards it to isJsonMode.
+    await runChannelEnv('ch_TEST0001', {}, {} as Command);
+    const output = (stdoutSpy.mock.calls[0][0] as string).trim();
+    const parsed = JSON.parse(output);
+    expect(parsed).toEqual({
+      INSTAGRAM_GRAPH_API_URL: 'https://graph.instagram.com/v25.0',
+      INSTAGRAM_ACCESS_TOKEN: 'IGAAi_test_token',
+      INSTAGRAM_USER_ID: '17841999999999999',
+      HOOKMYAPP_CHANNEL_ID: 'ch_TEST0001',
+      VERIFY_TOKEN: 'test123',
+    });
+    expect(parsed).not.toHaveProperty('PORT');
+  });
+
+  test('When human mode, then output is dotenv text (unchanged)', async () => {
+    const { isJsonMode } = await import('../../output/format.js');
+    vi.mocked(isJsonMode).mockReturnValue(false);
+    const { runChannelEnv } = await import('../env.js');
+    await runChannelEnv('ch_TEST0001', {}, {} as Command);
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
+    expect(output).toContain('INSTAGRAM_ACCESS_TOKEN=IGAAi_test_token');
+    expect(() => JSON.parse(output)).toThrow();  // not JSON
   });
 });

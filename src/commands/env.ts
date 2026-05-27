@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { apiClient } from '../api/client.js';
 import { addExamples } from '../output/help.js';
+import { isJsonMode } from '../output/format.js';
 import { resolveChannel } from './channels.js';
 
 export interface EnvOptions {
@@ -74,12 +75,28 @@ function upsertEnvFile(targetPath: string, updates: Map<string, string>): void {
 export async function runChannelEnv(
   channelRef: string,
   options: EnvOptions,
+  cmd?: Command,
 ): Promise<void> {
   const channel = await resolveChannel(channelRef);
   const payload: ChannelEnvPayload = await apiClient(
     `/meta/channels/${channel.id}/env`,
     { workspaceId: channel.workspaceId },
   );
+
+  // D6 (cli-cleanup): `--json` emits a flat {KEY: VALUE} object so agents can
+  // iterate keys programmatically. Merges defaults + values; values win on
+  // collision. Human mode keeps the dotenv text format suitable for piping
+  // into a `.env` file (and for the existing --write upsert flow).
+  if (cmd && isJsonMode(cmd)) {
+    const merged: Record<string, string> = {
+      ...(payload.defaults ?? {}),
+      ...payload.values,
+    };
+    // In JSON mode `--write` is ignored — write JSON to stdout. The agent
+    // pipeline that wants JSON-on-disk can `> file.json` from the shell.
+    process.stdout.write(JSON.stringify(merged) + '\n');
+    return;
+  }
 
   const envText =
     [
@@ -136,12 +153,16 @@ export function registerEnvCommand(program: Command): void {
       '--write [path]',
       'Upsert credentials into a .env file (default ./.env). Replaces existing WHATSAPP_* keys, preserves everything else.',
     )
-    .action(async (channelRef: string, options: EnvOptions) => {
+    .action(async function (
+      this: Command,
+      channelRef: string,
+      options: EnvOptions,
+    ) {
       console.warn(
         '[deprecated] `hookmyapp env` will be removed in a future release. ' +
           'Use: hookmyapp channels env <channel>',
       );
-      await runChannelEnv(channelRef, options);
+      await runChannelEnv(channelRef, options, this);
     });
 
   addExamples(
