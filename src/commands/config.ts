@@ -213,29 +213,7 @@ EXAMPLES:
           : 'default';
 
       if (isJsonMode(this)) {
-        console.log(
-          JSON.stringify(
-            {
-              env,
-              source,
-              apiUrl: apiOverride ?? profile.apiUrl,
-              appUrl: appOverride ?? profile.appUrl,
-              workosClientId: workosOverride ?? profile.workosClientId,
-              overrides: {
-                apiUrl: apiOverride ?? null,
-                appUrl: appOverride ?? null,
-                workosClientId: workosOverride ?? null,
-              },
-              telemetry: {
-                active: telemetryActive,
-                source: telemetrySource,
-                persisted: persistedTelemetry ?? null,
-              },
-            },
-            null,
-            2,
-          ),
-        );
+        console.log(JSON.stringify({ env, telemetry: telemetryActive }));
       } else {
         console.log(`env:               ${env}`);
         console.log(`  source:          ${source}`);
