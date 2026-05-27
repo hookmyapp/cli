@@ -71,28 +71,30 @@ describe('outputError', () => {
     expect(mockWrite).toHaveBeenCalledWith('Error: Bad request\n');
   });
 
-  it('in JSON mode writes JSON with error and code fields to stderr', () => {
+  it('in JSON mode writes nested envelope with code, message, and status', () => {
     const err = new CliError('Bad request', 'API_ERROR');
     outputError(err, { human: false });
     const written = (mockWrite.mock.calls[0][0] as string);
     const parsed = JSON.parse(written.trim());
-    expect(parsed).toEqual({ error: 'Bad request', code: 'API_ERROR' });
+    // CliError has no httpStatus and no statusCode → falls back to 500 sentinel per D1.
+    expect(parsed).toEqual({ error: { code: 'API_ERROR', message: 'Bad request', status: 500 } });
   });
 
-  it('in JSON mode includes status field when statusCode is present', () => {
+  it('in JSON mode includes status field resolved from statusCode', () => {
     const err = new ApiError('Not found', 404);
     outputError(err, { human: false });
     const written = (mockWrite.mock.calls[0][0] as string);
     const parsed = JSON.parse(written.trim());
-    expect(parsed).toEqual({ error: 'Not found', code: 'API_ERROR', status: 404 });
+    expect(parsed).toEqual({ error: { code: 'API_ERROR', message: 'Not found', status: 404 } });
   });
 
-  it('in JSON mode omits status field when statusCode is undefined', () => {
+  it('in JSON mode falls back to 500 sentinel when no status source is available', () => {
     const err = new CliError('Something broke', 'CUSTOM_CODE');
     outputError(err, { human: false });
     const written = (mockWrite.mock.calls[0][0] as string);
     const parsed = JSON.parse(written.trim());
-    expect(parsed).not.toHaveProperty('status');
-    expect(parsed).toEqual({ error: 'Something broke', code: 'CUSTOM_CODE' });
+    // D1 requires `status` on every JSON error — the 500 sentinel surfaces when
+    // none of statusCode/httpStatus/ERROR_CODE_STATUS resolve a value.
+    expect(parsed).toEqual({ error: { code: 'CUSTOM_CODE', message: 'Something broke', status: 500 } });
   });
 });
