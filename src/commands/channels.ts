@@ -308,6 +308,7 @@ export async function runChannelsShow(
     console.log(`WABA: ${detail.wabaName ?? '(unnamed)'}`);
     console.log(`Phone: ${detail.displayPhoneNumber ?? '(none)'}`);
     console.log(`Phone Number ID: ${detail.phoneNumberId ?? '(none)'}`);
+    console.log(`Phone-verified name: ${detail.phoneVerifiedName ?? '(none)'}`);
     console.log(`Quality rating: ${detail.qualityRating ?? '(unknown)'}`);
   } else if (detail.type === 'instagram') {
     console.log(`Instagram: @${detail.instagramUsername ?? '(no handle)'}`);
