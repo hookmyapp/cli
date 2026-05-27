@@ -182,9 +182,21 @@ export async function runChannelsConnect(
   //    channel could be included in the snapshot and never reported.
   //    updatedAt lets the poll also detect re-auth of an existing channel
   //    (token rotation bumps the row without creating a new id).
+  //
+  //    Phase A backend cleanup dropped `updatedAt` from the typed Channel
+  //    DTO; we read it off the raw wire payload here so re-auth detection
+  //    still works when the backend continues to emit it, and degrades to
+  //    id-diff-only when it does not.
   const initialDtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
   const snapshot = new Map<string, string | undefined>(
-    initialDtos.map(parseChannelListItem).map((c) => [c.id, c.updatedAt]),
+    initialDtos.map((dto) => {
+      const ch = parseChannelListItem(dto);
+      const rawUpdatedAt =
+        typeof dto === 'object' && dto !== null && typeof (dto as Record<string, unknown>).updatedAt === 'string'
+          ? ((dto as Record<string, unknown>).updatedAt as string)
+          : undefined;
+      return [ch.id, rawUpdatedAt] as const;
+    }),
   );
 
   // 2. Route to the per-type OAuth start endpoint via the pure helper.

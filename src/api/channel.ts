@@ -3,18 +3,18 @@ import { UnexpectedError } from '../output/error.js';
 interface ChannelBase {
   id: string;
   workspaceId: string;
-  metaWabaId: string;
+  /**
+   * Phase A backend cleanup: WhatsApp channels carry the WABA id; Instagram &
+   * Messenger emit `null`. Older backends emitted `''` for non-WA; consumers
+   * still treat empty-string as "no WABA".
+   */
+  metaWabaId: string | null;
   metaResourceId: string;
   connectionType: string | null;
   metaConnected: boolean;
   forwardingEnabled: boolean;
   webhookUrl: string | null;
   verifyToken: string | null;
-  hasActiveCliTunnel?: boolean;
-  hostname?: string | null;
-  lastHeartbeatAt?: string | null;
-  /** ISO timestamp; absent on older backends — poll falls back to id-diff only. */
-  updatedAt?: string;
 }
 
 export interface WhatsAppChannel extends ChannelBase {
@@ -22,9 +22,7 @@ export interface WhatsAppChannel extends ChannelBase {
   wabaName: string | null;
   displayPhoneNumber: string | null;
   phoneNumberId: string | null;
-  phoneVerifiedName: string | null;
   qualityRating: string | null;
-  qualityRatingCheckedAt: string | null;
 }
 
 export interface InstagramChannel extends ChannelBase {
@@ -68,7 +66,7 @@ function isNonEmptyString(v: unknown): v is string {
 function parseBase(d: Record<string, unknown>, id: string): ChannelBase {
   if (!isNonEmptyString(d.id)) malformed(id, 'id missing');
   if (!isNonEmptyString(d.workspaceId)) malformed(id, 'workspaceId missing');
-  if (typeof d.metaWabaId !== 'string') malformed(id, 'metaWabaId must be a string');
+  if (!isStringOrNull(d.metaWabaId)) malformed(id, 'metaWabaId must be string or null');
   if (!isNonEmptyString(d.metaResourceId)) malformed(id, 'metaResourceId missing');
   if (typeof d.connectionType !== 'string' && d.connectionType !== null)
     malformed(id, 'connectionType must be string or null');
@@ -87,10 +85,6 @@ function parseBase(d: Record<string, unknown>, id: string): ChannelBase {
     forwardingEnabled: d.forwardingEnabled,
     webhookUrl: d.webhookUrl,
     verifyToken: d.verifyToken,
-    hasActiveCliTunnel: typeof d.hasActiveCliTunnel === 'boolean' ? d.hasActiveCliTunnel : undefined,
-    hostname: isStringOrNull(d.hostname) ? d.hostname : undefined,
-    lastHeartbeatAt: isStringOrNull(d.lastHeartbeatAt) ? d.lastHeartbeatAt : undefined,
-    updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : undefined,
   };
 }
 
@@ -112,21 +106,15 @@ export function parseChannelListItem(dto: unknown): Channel {
         malformed(id, 'WA channel: displayPhoneNumber must be string or null');
       if (!isStringOrNull(d.phoneNumberId))
         malformed(id, 'WA channel: phoneNumberId must be string or null');
-      if (!isStringOrNull(d.phoneVerifiedName))
-        malformed(id, 'WA channel: phoneVerifiedName must be string or null');
       if (!isStringOrNull(d.qualityRating))
         malformed(id, 'WA channel: qualityRating must be string or null');
-      if (!isStringOrNull(d.qualityRatingCheckedAt))
-        malformed(id, 'WA channel: qualityRatingCheckedAt must be string or null');
       return {
         ...base,
         type: 'whatsapp',
         wabaName: d.wabaName,
         displayPhoneNumber: d.displayPhoneNumber,
         phoneNumberId: d.phoneNumberId,
-        phoneVerifiedName: d.phoneVerifiedName,
         qualityRating: d.qualityRating,
-        qualityRatingCheckedAt: d.qualityRatingCheckedAt,
       };
     }
     case 'instagram': {
