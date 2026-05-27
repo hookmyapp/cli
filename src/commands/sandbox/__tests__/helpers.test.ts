@@ -25,9 +25,9 @@ const wa: WhatsAppSandboxSession = {
 const igWithUsername: InstagramSandboxSession = {
   id: 'ssn_IG000001',
   type: 'instagram',
-  instagramSenderId: '8745912038476523',
-  instagramAccountId: '17841478719287768',
-  instagramSenderUsername: 'ordvir',
+  senderInstagramId: '8745912038476523',
+  accountInstagramId: '17841478719287768',
+  senderInstagramUsername: 'ordvir',
   accessToken: 'ACT_ig_xxx',
   hmacSecret: 'HMAC_ig',
   status: 'active',
@@ -37,7 +37,7 @@ const igWithUsername: InstagramSandboxSession = {
 const igWithoutUsername: InstagramSandboxSession = {
   ...igWithUsername,
   id: 'ssn_IG000002',
-  instagramSenderUsername: null,
+  senderInstagramUsername: null,
 };
 
 describe('sessionIdentifier', () => {
@@ -93,7 +93,7 @@ describe('buildSandboxSendRequest', () => {
     });
   });
 
-  it('builds the Instagram send URL using instagramAccountId and v25.0', () => {
+  it('builds the Instagram send URL using accountInstagramId and v25.0', () => {
     const { url } = buildSandboxSendRequest(igWithUsername, 'hi');
     expect(url).toBe('https://proxy.test/v25.0/17841478719287768/messages');
   });

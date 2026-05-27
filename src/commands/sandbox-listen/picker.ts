@@ -10,7 +10,6 @@
 import { pickSession as unifiedPick } from '../sandbox/picker.js';
 import { sessionIdentifier } from '../sandbox/helpers.js';
 import { renderTable } from '../../output/table.js';
-import { c } from '../../output/color.js';
 import { ValidationError } from '../../output/error.js';
 import { select } from '@inquirer/prompts';
 import type { SandboxSession } from '../../api/sandbox-session.js';
@@ -35,33 +34,6 @@ export async function pickSession(args: PickSessionArgs): Promise<Session> {
     sessionFlag: args.sessionFlag,
     isHuman: args.isHuman,
   });
-}
-
-/**
- * Derive the "state" column from lastHeartbeatAt:
- *   null              → "idle"
- *   within last 2min  → "listening elsewhere (Xs ago)"
- *   older             → "idle (last tunnel Xh ago)" or "Xm ago"
- */
-export function deriveState(lastHeartbeatAt: string | null | undefined): string {
-  if (!lastHeartbeatAt) return 'idle';
-  const parsed = Date.parse(lastHeartbeatAt);
-  if (Number.isNaN(parsed)) return 'idle';
-  const ageMs = Date.now() - parsed;
-  if (ageMs < 0) return 'idle';
-  if (ageMs < 120_000) {
-    const sec = Math.max(1, Math.floor(ageMs / 1000));
-    return `listening elsewhere (${sec}s ago)`;
-  }
-  return `idle (last tunnel ${formatAge(ageMs)} ago)`;
-}
-
-function formatAge(ms: number): string {
-  const sec = Math.floor(ms / 1000);
-  const min = Math.floor(sec / 60);
-  const hr = Math.floor(min / 60);
-  if (hr >= 1) return `${hr}h`;
-  return `${min}m`;
 }
 
 /**
@@ -115,27 +87,18 @@ export async function pickSessionByPhone<T extends MinimalSession>(
 
 /**
  * Render a cli-table3 table of sandbox sessions with Type | Identifier |
- * Status | Listener columns. Used as a preview header above the interactive
- * picker prompt.
+ * Status columns. Used as a preview header above the interactive picker
+ * prompt.
  *
- * Listener state derived from `lastHeartbeatAt`:
- *   live (green, <90s)  → currently being listened to
- *   idle (dim, ≥90s)    → heartbeat seen but stale
- *   (empty)             → never listened to
+ * The Listener column was dropped along with `lastHeartbeatAt` (Phase A —
+ * heartbeat is now internal-only DB state, not on the wire).
  */
 export function renderSessionTable(sessions: SandboxSession[]): string {
   return renderTable(
-    sessions.map((s) => {
-      const ts = s.lastHeartbeatAt ? Date.parse(s.lastHeartbeatAt) : NaN;
-      const live = Number.isFinite(ts) && Date.now() - ts < 90_000;
-      let listener = '';
-      if (s.lastHeartbeatAt) listener = live ? c.success('live') : c.dim('idle');
-      return {
-        Type: s.type === 'whatsapp' ? 'WhatsApp' : 'Instagram',
-        Identifier: sessionIdentifier(s),
-        Status: s.status,
-        Listener: listener,
-      };
-    }),
+    sessions.map((s) => ({
+      Type: s.type === 'whatsapp' ? 'WhatsApp' : 'Instagram',
+      Identifier: sessionIdentifier(s),
+      Status: s.status,
+    })),
   );
 }

@@ -14,7 +14,6 @@ const SESSION: WhatsAppSandboxSession = {
   workspaceName: 'Test Workspace',
   phone: '+15551234567',
   status: 'active',
-  lastHeartbeatAt: null,
   accessToken: 'ACT_banner',
   hmacSecret: 'HMAC_banner',
   origin: 'test',

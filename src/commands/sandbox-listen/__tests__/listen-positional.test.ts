@@ -25,9 +25,9 @@ import type { InstagramSandboxSession } from '../../../api/sandbox-session.js';
 const ig: InstagramSandboxSession = {
   id: 'ssn_IG000001',
   type: 'instagram',
-  instagramSenderId: '8745912038476523',
-  instagramAccountId: '17841478719287768',
-  instagramSenderUsername: 'ordvir',
+  senderInstagramId: '8745912038476523',
+  accountInstagramId: '17841478719287768',
+  senderInstagramUsername: 'ordvir',
   accessToken: 'ACT_ig',
   hmacSecret: 'HMAC_ig',
   status: 'active',
