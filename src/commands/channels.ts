@@ -431,8 +431,8 @@ export function registerChannelsCommand(program: Command): void {
     .command('token')
     .description('Reveal access token for a channel')
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
-    .action(async (channelRef: string) => {
-      await runChannelToken(channelRef);
+    .action(async function (this: Command, channelRef: string) {
+      await runChannelToken(channelRef, this);
     });
 
   const channelsHealth = channels
