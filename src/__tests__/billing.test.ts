@@ -37,23 +37,19 @@ const mockedOpen = vi.mocked(openDefault);
 
 const WORKSPACE_ID = 'ws_TEST0070';
 
+// Phase A backend DTO cleanup: planSlug + stripeSubscriptionId removed.
+// plan.slug is the single source of truth for tier; conditional fields
+// (currentPeriodEnd, billingInterval, cancelAtPeriodEnd) are optional.
 const activeSub = {
-  planSlug: 'growth',
   status: 'active',
   currentPeriodEnd: '2026-05-01T00:00:00.000Z',
-  stripeSubscriptionId: 'sub_123',
   billingInterval: 'annual',
   cancelAtPeriodEnd: false,
   plan: { slug: 'growth', name: 'Scale', messages: 1200, priceInCents: 2400, annualPriceInCents: 24000 },
 };
 
 const freeSub = {
-  planSlug: 'free',
   status: 'active',
-  currentPeriodEnd: null,
-  stripeSubscriptionId: null,
-  billingInterval: null,
-  cancelAtPeriodEnd: false,
   plan: { slug: 'free', name: 'Free', messages: 50, priceInCents: 0, annualPriceInCents: 0 },
 };
 
@@ -109,7 +105,7 @@ describe('billing commands', () => {
       const jsonCall = calls.find((c) => typeof c === 'string' && c.includes('"subscription"'));
       expect(jsonCall).toBeDefined();
       const parsed = JSON.parse(jsonCall as string);
-      expect(parsed.subscription.planSlug).toBe('growth');
+      expect(parsed.subscription.plan.slug).toBe('growth');
       expect(parsed.usage).toEqual(usage);
     });
   });
@@ -221,7 +217,7 @@ describe('billing commands', () => {
   describe('billingUpgrade', () => {
     it('opens Stripe Portal in update flow when user has active subscription', async () => {
       mockedApiClient
-        .mockResolvedValueOnce({ planSlug: 'growth', status: 'active', stripeSubscriptionId: 'sub_123' })
+        .mockResolvedValueOnce({ status: 'active', plan: { slug: 'growth', name: 'Scale' } })
         .mockResolvedValueOnce({ url: 'https://billing.stripe.com/p/upd' });
 
       await billingUpgrade();
@@ -233,9 +229,9 @@ describe('billing commands', () => {
       expect(mockedOpen).toHaveBeenCalledWith('https://billing.stripe.com/p/upd');
     });
 
-    it('treats past_due with stripeSubscriptionId as a subscriber', async () => {
+    it('treats past_due on a paid plan as a subscriber', async () => {
       mockedApiClient
-        .mockResolvedValueOnce({ planSlug: 'growth', status: 'past_due', stripeSubscriptionId: 'sub_456' })
+        .mockResolvedValueOnce({ status: 'past_due', plan: { slug: 'growth', name: 'Scale' } })
         .mockResolvedValueOnce({ url: 'https://billing.stripe.com/p/x' });
 
       await billingUpgrade();
@@ -251,7 +247,7 @@ describe('billing commands', () => {
         .mockResolvedValueOnce('growth' as never)
         .mockResolvedValueOnce('annual' as never);
       mockedApiClient
-        .mockResolvedValueOnce({ planSlug: 'free', status: 'active', stripeSubscriptionId: null })
+        .mockResolvedValueOnce({ status: 'active', plan: { slug: 'free', name: 'Free' } })
         .mockResolvedValueOnce({ url: 'https://checkout.stripe.com/x' });
 
       await billingUpgrade();
