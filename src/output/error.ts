@@ -260,17 +260,51 @@ export function exitCodeFor(err: unknown): number {
   return 1;
 }
 
+// Status resolution priority for the JSON envelope (cleanup spec D1):
+//   1. instance.statusCode
+//   2. constructor.httpStatus
+//   3. ERROR_CODE_STATUS lookup (codes minted outside the class hierarchy)
+//   4. fallback 500
+const ERROR_CODE_STATUS: Record<string, number> = {
+  MISSING_ARGUMENT: 400,
+  UNKNOWN_SUBCOMMAND: 400,
+  INVALID_FLAG: 400,
+  INVALID_ARGUMENT: 400,
+  CLI_ERROR: 400,
+};
+
+function resolveStatus(error: CliError): number {
+  if (error.statusCode !== undefined) return error.statusCode;
+  const subclassHttpStatus = (error.constructor as { httpStatus?: number }).httpStatus;
+  if (typeof subclassHttpStatus === 'number') return subclassHttpStatus;
+  const fromCode = ERROR_CODE_STATUS[error.code];
+  if (fromCode !== undefined) return fromCode;
+  return 500;
+}
+
+function stripCommanderPrefix(msg: string): string {
+  return msg.startsWith('error: ') ? msg.slice('error: '.length) : msg;
+}
+
 export function outputError(error: CliError, opts: { human?: boolean }): void {
   if (opts.human) {
     process.stderr.write(`Error: ${error.userMessage}\n`);
-  } else {
-    const obj: Record<string, unknown> = {
-      error: error.userMessage,
-      code: error.code,
-    };
-    if (error.statusCode !== undefined) {
-      obj.status = error.statusCode;
-    }
-    process.stderr.write(JSON.stringify(obj) + '\n');
+    return;
   }
+
+  const inner: Record<string, unknown> = {
+    code: error.code,
+    message: stripCommanderPrefix(error.userMessage),
+    status: resolveStatus(error),
+  };
+  const hint = (error as { hint?: unknown }).hint;
+  if (typeof hint === 'string' && hint.length > 0) {
+    inner.hint = hint;
+  }
+  const details = (error as { details?: unknown }).details;
+  if (details && typeof details === 'object' && Object.keys(details).length > 0) {
+    inner.details = details;
+  }
+
+  process.stderr.write(JSON.stringify({ error: inner }) + '\n');
 }

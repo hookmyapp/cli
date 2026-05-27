@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, test, expect, vi, beforeEach } from 'vitest';
 import {
   CliError,
   AuthError,
@@ -7,6 +7,7 @@ import {
   ApiError,
   ValidationError,
   ConflictError,
+  outputError,
 } from '../error.js';
 
 describe('error hierarchy — Wave 0 RED (ValidationError + ConflictError)', () => {
@@ -36,5 +37,75 @@ describe('error hierarchy — Wave 0 RED (ValidationError + ConflictError)', () 
     expect(new PermissionError('ws').exitCode).toBe(3);
     expect(new NetworkError('x').exitCode).toBe(5);
     expect(new ApiError('x', 500).exitCode).toBe(1);
+  });
+});
+
+describe('outputError JSON envelope (D1)', () => {
+  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true) as any;
+  });
+
+  test('When JSON mode, then envelope is nested under `error` with required fields', () => {
+    const err = new ValidationError('Bad input', 'BAD_INPUT');
+    outputError(err, { human: false });
+    expect(stderrSpy).toHaveBeenCalled();
+    const written = (stderrSpy.mock.calls[0][0] as string).trim();
+    const parsed = JSON.parse(written);
+    expect(parsed).toEqual({
+      error: {
+        code: 'BAD_INPUT',
+        message: 'Bad input',
+        status: 400,
+      },
+    });
+  });
+
+  test('When error has no statusCode but subclass defines httpStatus, then status is resolved', () => {
+    const err = new ValidationError('Bad input');
+    outputError(err, { human: false });
+    const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
+    expect(parsed.error.status).toBe(400);
+  });
+
+  test('When code is a CLI-error code (no class), then status comes from ERROR_CODE_STATUS', () => {
+    const err = new ValidationError("missing required argument 'channel'", 'MISSING_ARGUMENT');
+    outputError(err, { human: false });
+    const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
+    expect(parsed.error.status).toBe(400);
+    expect(parsed.error.code).toBe('MISSING_ARGUMENT');
+  });
+
+  test('When error has details, then they appear under error.details', () => {
+    const err = new ValidationError('Bad input', 'BAD_INPUT');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (err as any).details = { field: 'channel', supplied: 'garbage' };
+    outputError(err, { human: false });
+    const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
+    expect(parsed.error.details).toEqual({ field: 'channel', supplied: 'garbage' });
+  });
+
+  test('When error has a hint, then it appears under error.hint', () => {
+    const err = new ValidationError('Bad input', 'BAD_INPUT');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (err as any).hint = 'Run: hookmyapp channels list';
+    outputError(err, { human: false });
+    const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
+    expect(parsed.error.hint).toBe('Run: hookmyapp channels list');
+  });
+
+  test('When human mode, then plain text is emitted (unchanged behavior)', () => {
+    const err = new ValidationError('Bad input', 'BAD_INPUT');
+    outputError(err, { human: true });
+    expect(stderrSpy).toHaveBeenCalledWith('Error: Bad input\n');
+  });
+
+  test('When commander error has its own `error: ` prefix, then outputError strips it', () => {
+    const err = new ValidationError("error: missing required argument 'channel'", 'CLI_ERROR');
+    outputError(err, { human: false });
+    const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
+    expect(parsed.error.message).toBe("missing required argument 'channel'");
+    expect(parsed.error.message).not.toMatch(/^error: /);
   });
 });
