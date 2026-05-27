@@ -267,6 +267,7 @@ export function exitCodeFor(err: unknown): number {
 //   4. fallback 500
 const ERROR_CODE_STATUS: Record<string, number> = {
   MISSING_ARGUMENT: 400,
+  MISSING_SUBCOMMAND: 400,
   UNKNOWN_SUBCOMMAND: 400,
   INVALID_FLAG: 400,
   INVALID_ARGUMENT: 400,
@@ -296,11 +297,27 @@ const COMMANDER_CODE_MAP: Record<string, string> = {
   'commander.unknownOption': 'INVALID_FLAG',
   'commander.invalidArgument': 'INVALID_ARGUMENT',
   'commander.excessArguments': 'INVALID_ARGUMENT',
+  // `commander.help` is thrown by commander v14 when a parent command (e.g.
+  // `hookmyapp channels`) is invoked with no subcommand and no action handler
+  // — commander auto-displays help and throws with exitCode=1 and the
+  // useless literal message `(outputHelp)` (the .toString() artifact of the
+  // help callback). In human mode commander already printed the help text
+  // via configureOutput.writeErr; in JSON mode we suppress that write and
+  // emit a clean envelope here. `commander.helpDisplayed` (exitCode=0, fired
+  // for explicit `--help`) is handled separately in src/index.ts as a clean
+  // exit.
+  'commander.help': 'MISSING_SUBCOMMAND',
 };
 
 export function wrapCommanderError(err: Error & { code?: string }): CliError {
   const code = COMMANDER_CODE_MAP[err.code ?? ''] ?? 'CLI_ERROR';
-  return new ValidationError(err.message, code);
+  // commander.help carries a useless `(outputHelp)` literal. Replace with a
+  // useful message that points users at the help flag for the parent command.
+  const message =
+    err.code === 'commander.help'
+      ? `No subcommand specified. Run '${cliCommandPrefix()} <command> --help' to see available subcommands.`
+      : err.message;
+  return new ValidationError(message, code);
 }
 
 export function outputError(error: CliError, opts: { human?: boolean }): void {

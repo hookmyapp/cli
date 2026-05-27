@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { c } from '../output/color.js';
 import { renderTable } from '../output/table.js';
-import { CliError, ValidationError } from '../output/error.js';
+import { NotFoundError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import open from 'open';
@@ -101,11 +101,16 @@ function throwNoMatch(needle: string, channels: Channel[]): never {
       return c.id;
     })
     .join(', ');
-  const err = new CliError(
+  // NotFoundError carries `httpStatus = 404` + statusCode=404 so the JSON
+  // envelope reports status:404 (not the resolveStatus 500 fallback).
+  const err = new NotFoundError(
     `No channel matches ${needle}. Available: ${available || '(none)'}. ` +
       `Run: ${cliCommandPrefix()} channels list`,
     'CHANNEL_NOT_FOUND',
   );
+  // Preserve the Phase 108 exit-code contract for resolve-no-match (2).
+  // NotFoundError defaults to 1 but this caller always treated it as
+  // ValidationError-class (bad argv pointing at a non-existent channel).
   err.exitCode = 2;
   throw err;
 }
