@@ -41,7 +41,7 @@ export function buildEnvBlock(session: SandboxSession): string {
         `PORT=3000`,
         `INSTAGRAM_API_URL=${proxyBase}/${INSTAGRAM_GRAPH_VERSION}`,
         `INSTAGRAM_ACCESS_TOKEN=${session.accessToken}`,
-        `INSTAGRAM_ACCOUNT_ID=${session.instagramAccountId}`,
+        `INSTAGRAM_ACCOUNT_ID=${session.accountInstagramId}`,
         '',
       ].join('\n');
     default:

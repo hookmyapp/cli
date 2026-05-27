@@ -19,9 +19,9 @@ export function sessionIdentifier(s: SandboxSession): string {
     case 'whatsapp':
       return `+${s.whatsappPhone.replace(/^\+/, '')}`;
     case 'instagram':
-      return s.instagramSenderUsername
-        ? `@${s.instagramSenderUsername}`
-        : s.instagramSenderId;
+      return s.senderInstagramUsername
+        ? `@${s.senderInstagramUsername}`
+        : s.senderInstagramId;
     default:
       return assertNever(s, 'sessionIdentifier');
   }
@@ -49,8 +49,8 @@ export function sessionLabel(s: SandboxSession): string {
  *
  * WA:  POST {proxy}/{whatsappApiVersion}/{sandboxPhoneNumberId}/messages
  *      with { messaging_product:'whatsapp', to, type:'text', text:{body} }
- * IG:  POST {proxy}/{INSTAGRAM_GRAPH_VERSION}/{instagramAccountId}/messages
- *      with { recipient:{id:instagramSenderId}, message:{text} }
+ * IG:  POST {proxy}/{INSTAGRAM_GRAPH_VERSION}/{accountInstagramId}/messages
+ *      with { recipient:{id:senderInstagramId}, message:{text} }
  */
 export function buildSandboxSendRequest(
   s: SandboxSession,
@@ -72,9 +72,9 @@ export function buildSandboxSendRequest(
     }
     case 'instagram':
       return {
-        url: `${proxyBase}/${INSTAGRAM_GRAPH_VERSION}/${s.instagramAccountId}/messages`,
+        url: `${proxyBase}/${INSTAGRAM_GRAPH_VERSION}/${s.accountInstagramId}/messages`,
         body: {
-          recipient: { id: s.instagramSenderId },
+          recipient: { id: s.senderInstagramId },
           message: { text: message },
         },
       };

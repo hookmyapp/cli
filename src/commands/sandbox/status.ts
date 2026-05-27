@@ -1,9 +1,10 @@
 // `hookmyapp sandbox status` — list active sandbox sessions.
 //
-// Display: cli-table3 with Type | Identifier | Status | Listener columns.
+// Display: cli-table3 with Type | Identifier | Status columns.
 // Identifier is +phone for WA, @username for IG (falls back to IGSID per
-// sessionIdentifier()). Listener column shows live/idle derived from
-// lastHeartbeatAt — empty when never tunneled.
+// sessionIdentifier()). The Listener column was dropped along with
+// lastHeartbeatAt (Phase A — heartbeat is now internal-only DB state, not on
+// the wire).
 //
 // JSON mode emits a HAND-PICKED projection of SandboxSession (see
 // toStatusJson) — NOT the raw wire DTO. Reasons:
@@ -16,7 +17,7 @@
 //   - origin / lastDemoRefreshPromptAt / claimTokenHash / createdAt /
 //     updatedAt / workspaceName / activatedAt are backend metadata with
 //     no CLI value.
-//   - whatsappPhone:null / instagramSenderId:null discriminated-union
+//   - whatsappPhone:null / senderInstagramId:null discriminated-union
 //     nulls clutter every IG row with WA-shape fields and vice versa.
 
 import { apiClient } from '../../api/client.js';
@@ -24,7 +25,6 @@ import {
   parseSandboxSessions,
   type SandboxSession,
 } from '../../api/sandbox-session.js';
-import { c } from '../../output/color.js';
 import { renderTable } from '../../output/table.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
 import { sessionIdentifier } from './helpers.js';
@@ -35,15 +35,14 @@ interface StatusJsonRow {
   identifier: string;
   status: SandboxSession['status'];
   webhookUrl: string | null;
-  lastHeartbeatAt: string | null;
   // Channel-specific wire ids — only the fields applicable to the row's type
   // appear; the other channel's keys are omitted (no `whatsappPhone: null`
   // clutter on IG rows).
   whatsappPhone?: string;
   whatsappPhoneNumberId?: string;
-  instagramSenderUsername?: string | null;
-  instagramSenderId?: string;
-  instagramAccountId?: string;
+  senderInstagramUsername?: string | null;
+  senderInstagramId?: string;
+  accountInstagramId?: string;
 }
 
 function toStatusJson(s: SandboxSession): StatusJsonRow {
@@ -53,7 +52,6 @@ function toStatusJson(s: SandboxSession): StatusJsonRow {
     identifier: sessionIdentifier(s),
     status: s.status,
     webhookUrl: s.webhookUrl ?? null,
-    lastHeartbeatAt: s.lastHeartbeatAt ?? null,
   };
   switch (s.type) {
     case 'whatsapp':
@@ -65,19 +63,11 @@ function toStatusJson(s: SandboxSession): StatusJsonRow {
     case 'instagram':
       return {
         ...base,
-        instagramSenderUsername: s.instagramSenderUsername,
-        instagramSenderId: s.instagramSenderId,
-        instagramAccountId: s.instagramAccountId,
+        senderInstagramUsername: s.senderInstagramUsername,
+        senderInstagramId: s.senderInstagramId,
+        accountInstagramId: s.accountInstagramId,
       };
   }
-}
-
-function deriveListener(lastHeartbeatAt: string | null | undefined): string {
-  if (!lastHeartbeatAt) return '';
-  const ts = Date.parse(lastHeartbeatAt);
-  if (!Number.isFinite(ts)) return '';
-  const ageMs = Date.now() - ts;
-  return ageMs < 90_000 ? c.success('live') : c.dim('idle');
 }
 
 export async function runSandboxStatus(opts: { json?: boolean } = {}): Promise<void> {
@@ -99,7 +89,6 @@ export async function runSandboxStatus(opts: { json?: boolean } = {}): Promise<v
     Type: s.type === 'whatsapp' ? 'WhatsApp' : 'Instagram',
     Identifier: sessionIdentifier(s),
     Status: s.status,
-    Listener: deriveListener(s.lastHeartbeatAt),
   }));
   process.stdout.write(renderTable(rows) + '\n');
 }
