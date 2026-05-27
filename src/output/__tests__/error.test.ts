@@ -4,6 +4,7 @@ import {
   AuthError,
   PermissionError,
   NetworkError,
+  NotFoundError,
   ApiError,
   ValidationError,
   ConflictError,
@@ -109,6 +110,17 @@ describe('outputError JSON envelope (D1)', () => {
     expect(parsed.error.message).toBe("missing required argument 'channel'");
     expect(parsed.error.message).not.toMatch(/^error: /);
   });
+
+  test('When NotFoundError (used for CHANNEL_NOT_FOUND), then status resolves to 404', () => {
+    const err = new NotFoundError(
+      'No channel matches ch_zzzzzzzz. Available: ...',
+      'CHANNEL_NOT_FOUND',
+    );
+    outputError(err, { human: false });
+    const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
+    expect(parsed.error.code).toBe('CHANNEL_NOT_FOUND');
+    expect(parsed.error.status).toBe(404);
+  });
 });
 
 describe('wrapCommanderError (D1)', () => {
@@ -142,5 +154,16 @@ describe('wrapCommanderError (D1)', () => {
     cmdErr.code = 'commander.unknownOption';
     const wrapped = wrapCommanderError(cmdErr);
     expect(wrapped.code).toBe('INVALID_FLAG');
+  });
+
+  test('When commander throws help (no subcommand), then code is MISSING_SUBCOMMAND and message is useful', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cmdErr: any = new Error('(outputHelp)');
+    cmdErr.code = 'commander.help';
+    const wrapped = wrapCommanderError(cmdErr);
+    expect(wrapped.code).toBe('MISSING_SUBCOMMAND');
+    expect(wrapped.userMessage).not.toMatch(/outputHelp/);
+    expect(wrapped.userMessage).toMatch(/No subcommand specified/);
+    expect(wrapped.userMessage).toMatch(/--help/);
   });
 });
