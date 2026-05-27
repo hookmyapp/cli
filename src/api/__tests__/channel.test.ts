@@ -115,7 +115,7 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
     expect(parsed.metaWabaId).toBeNull();
   });
 
-  it('When WA channel lacks phoneVerifiedName + qualityRatingCheckedAt, then parser accepts', () => {
+  it('When WA channel omits phoneVerifiedName + qualityRatingCheckedAt, then parser tolerates (older backends)', () => {
     const dto = {
       id: 'ch_TEST0002',
       workspaceId: 'ws_TEST0001',
@@ -131,11 +131,41 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
       displayPhoneNumber: '+972 55-727-7945',
       phoneNumberId: '979105081963262',
       qualityRating: 'GREEN',
-      // phoneVerifiedName: ABSENT (Phase A drops it)
+      // phoneVerifiedName: ABSENT (older backend that didn't emit it)
       // qualityRatingCheckedAt: ABSENT (Phase A drops it)
     };
     const parsed = parseChannelListItem(dto);
     expect(parsed.type).toBe('whatsapp');
+    if (parsed.type === 'whatsapp') {
+      // Absent on the wire normalizes to null on the parsed shape.
+      expect(parsed.phoneVerifiedName).toBeNull();
+    }
+  });
+
+  it('When WA channel has phoneVerifiedName distinct from wabaName, then parser preserves both', () => {
+    const dto = {
+      id: 'ch_TEST0004',
+      workspaceId: 'ws_TEST0001',
+      metaWabaId: '1248091060795230',
+      metaResourceId: '1248091060795230',
+      connectionType: 'coexistence',
+      metaConnected: true,
+      forwardingEnabled: true,
+      webhookUrl: null,
+      verifyToken: null,
+      type: 'whatsapp',
+      wabaName: 'Acme Holdings',
+      phoneVerifiedName: 'Acme Sales Team', // distinct from wabaName
+      displayPhoneNumber: '+1 555-100-1000',
+      phoneNumberId: '979105081963262',
+      qualityRating: 'GREEN',
+    };
+    const parsed = parseChannelListItem(dto);
+    expect(parsed.type).toBe('whatsapp');
+    if (parsed.type === 'whatsapp') {
+      expect(parsed.wabaName).toBe('Acme Holdings');
+      expect(parsed.phoneVerifiedName).toBe('Acme Sales Team');
+    }
   });
 
   it('When channel omits hostname/lastHeartbeatAt/hasActiveCliTunnel/updatedAt, then parsed object does not carry them', () => {
