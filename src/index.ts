@@ -13,7 +13,13 @@ import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerSandboxCommand } from './commands/sandbox/index.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { registerConfigCommand } from './commands/config.js';
-import { CliError, UnexpectedError, exitCodeFor, outputError } from './output/error.js';
+import {
+  CliError,
+  UnexpectedError,
+  exitCodeFor,
+  outputError,
+  wrapCommanderError,
+} from './output/error.js';
 import { addExamples } from './output/help.js';
 import { VALID_ENV_NAMES, isValidEnv } from './config/env-profiles.js';
 import { initSentryLazy, captureError, flushAndExit } from './observability/sentry.js';
@@ -133,9 +139,10 @@ program.configureOutput({
   writeErr: (str) => {
     if (resolveHuman()) {
       process.stderr.write(str);
-    } else {
-      process.stderr.write(JSON.stringify({ error: str.trim(), code: 'CLI_ERROR' }) + '\n');
     }
+    // JSON mode: suppress here; the catch block routes the CommanderError
+    // through wrapCommanderError + outputError, which emits the canonical
+    // nested envelope with the right code + status.
   },
 });
 
@@ -266,8 +273,13 @@ async function main(): Promise<void> {
         errorCode: err.code ?? 'commander.unknown',
         argv: process.argv,
       });
-      // Arg errors already formatted by configureOutput — exit via
-      // flushAndExit below so any early Sentry events drain.
+      // JSON mode: route through wrapCommanderError + outputError so the
+      // canonical nested envelope is the only stderr write. Human mode
+      // already saw the message via configureOutput.writeErr above.
+      const wrapped = wrapCommanderError(err as Error & { code?: string });
+      if (!human) {
+        outputError(wrapped, { human: false });
+      }
     } else {
       const msg = 'Something went wrong. Try again later.';
       outputError(new UnexpectedError(msg, 'UNKNOWN_ERROR'), { human });
