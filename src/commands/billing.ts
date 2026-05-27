@@ -16,7 +16,10 @@ export async function billingManage(): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
   const sub = await apiClient('/stripe/subscription', { workspaceId });
 
-  if (sub.planSlug === 'free' || !sub.stripeSubscriptionId) {
+  // Phase A drops planSlug + stripeSubscriptionId. plan.slug is now the
+  // single source of truth for tier; backend guarantees plan.slug === 'free'
+  // iff there's no active Stripe subscription.
+  if (sub.plan.slug === 'free') {
     throw new ValidationError(
       `No active subscription. Run \`${cliCommandPrefix()} billing upgrade\` to subscribe.`,
     );
@@ -48,7 +51,7 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
     return;
   }
 
-  const plan = sub.plan?.name ?? sub.planSlug;
+  const plan = sub.plan.name;
   const status = sub.status;
   const interval = sub.billingInterval ?? '—';
   const renews = sub.currentPeriodEnd ?? '—';
@@ -80,7 +83,10 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
 export async function billingUpgrade(): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
   const sub = await apiClient('/stripe/subscription', { workspaceId });
-  const hasActiveSub = Boolean(sub.stripeSubscriptionId) && ['active', 'past_due'].includes(sub.status);
+  // Phase A drops stripeSubscriptionId. Gate on plan.slug for paid-tier
+  // detection AND preserve the existing status check so cancelled or
+  // incomplete subscriptions still route to the checkout flow.
+  const hasActiveSub = sub.plan.slug !== 'free' && ['active', 'past_due'].includes(sub.status);
 
   if (hasActiveSub) {
     const data = await apiClient('/stripe/portal', {
