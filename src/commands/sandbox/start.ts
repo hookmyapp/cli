@@ -149,9 +149,9 @@ export async function runSandboxStart(opts: {
           const ident =
             session.type === 'whatsapp'
               ? `+${session.whatsappPhone}`
-              : session.type === 'instagram' && session.instagramSenderUsername
-                ? `@${session.instagramSenderUsername}`
-                : (session as { instagramSenderId?: string }).instagramSenderId ?? '(unknown)';
+              : session.type === 'instagram' && session.senderInstagramUsername
+                ? `@${session.senderInstagramUsername}`
+                : (session as { senderInstagramId?: string }).senderInstagramId ?? '(unknown)';
           spinner?.succeed(`Session created. ${ident}. Token: ${session.accessToken}`);
           if (!isTty) {
             console.log(`Session created. ${ident}. Token: ${session.accessToken}`);

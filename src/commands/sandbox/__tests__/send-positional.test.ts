@@ -3,7 +3,7 @@
 // Proves that `runSandboxSend({ identifierArg: '@ordvir' })` shape-detects the
 // username, routes through pickSession's positional path, and lands on the IG
 // session — verified by asserting the outbound fetch URL contains the IG
-// account id segment `/{instagramAccountId}/messages`.
+// account id segment `/{accountInstagramId}/messages`.
 //
 // runSandboxSend uses fetch (not apiClient) for the actual send; only the
 // sessions list is fetched via apiClient. The existing send.test.ts uses the
@@ -25,9 +25,9 @@ import type { InstagramSandboxSession } from '../../../api/sandbox-session.js';
 const ig: InstagramSandboxSession = {
   id: 'ssn_IG000001',
   type: 'instagram',
-  instagramSenderId: '1907',
-  instagramAccountId: '1784',
-  instagramSenderUsername: 'ordvir',
+  senderInstagramId: '1907',
+  accountInstagramId: '1784',
+  senderInstagramUsername: 'ordvir',
   accessToken: 'tok',
   hmacSecret: 'hmac',
   status: 'active',

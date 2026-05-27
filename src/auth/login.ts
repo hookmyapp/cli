@@ -352,7 +352,6 @@ async function startListen(
   const fullSession: WhatsAppSandboxSession = {
     ...session,
     workspaceId: session.workspaceId ?? workspaceId,
-    lastHeartbeatAt: null,
   };
   await runSandboxListenFlow(fullSession);
 }

@@ -33,9 +33,9 @@ const validWa = {
 const validIg = {
   ...baseShared,
   type: 'instagram',
-  instagramSenderId: '8745912038476523',
-  instagramAccountId: '17841478719287768',
-  instagramSenderUsername: 'ordvir',
+  senderInstagramId: '8745912038476523',
+  accountInstagramId: '17841478719287768',
+  senderInstagramUsername: 'ordvir',
 };
 
 describe('parseSandboxSession', () => {
@@ -53,17 +53,43 @@ describe('parseSandboxSession', () => {
     const parsed = parseSandboxSession(validIg);
     expect(parsed.type).toBe('instagram');
     const ig = parsed as InstagramSandboxSession;
-    expect(ig.instagramSenderId).toBe('8745912038476523');
-    expect(ig.instagramAccountId).toBe('17841478719287768');
-    expect(ig.instagramSenderUsername).toBe('ordvir');
+    expect(ig.senderInstagramId).toBe('8745912038476523');
+    expect(ig.accountInstagramId).toBe('17841478719287768');
+    expect(ig.senderInstagramUsername).toBe('ordvir');
   });
 
-  it('tolerates null instagramSenderUsername (backend backfills async)', () => {
+  it('tolerates null senderInstagramUsername (backend backfills async)', () => {
     const parsed = parseSandboxSession({
       ...validIg,
-      instagramSenderUsername: null,
+      senderInstagramUsername: null,
     });
-    expect((parsed as InstagramSandboxSession).instagramSenderUsername).toBeNull();
+    expect((parsed as InstagramSandboxSession).senderInstagramUsername).toBeNull();
+  });
+
+  it('When IG session uses senderInstagramId/accountInstagramId/senderInstagramUsername (Phase A renames), then parser accepts and old names are absent', () => {
+    const dto = {
+      id: 'ssn_TEST0001',
+      type: 'instagram',
+      accessToken: 'ACT_xxx',
+      hmacSecret: 'HMAC_yyy',
+      status: 'active',
+      origin: 'manual',
+      senderInstagramId: '12345',
+      accountInstagramId: '67890',
+      senderInstagramUsername: 'audit',
+      // lastHeartbeatAt: ABSENT (dropped from wire)
+      // instagramSenderUsername: ABSENT (old name)
+      // instagramSenderId: ABSENT (old name)
+      // instagramAccountId: ABSENT (old name)
+    };
+    const parsed = parseSandboxSession(dto) as InstagramSandboxSession;
+    expect(parsed.senderInstagramId).toBe('12345');
+    expect(parsed.accountInstagramId).toBe('67890');
+    expect(parsed.senderInstagramUsername).toBe('audit');
+    expect(parsed).not.toHaveProperty('lastHeartbeatAt');
+    expect(parsed).not.toHaveProperty('instagramSenderUsername');
+    expect(parsed).not.toHaveProperty('instagramSenderId');
+    expect(parsed).not.toHaveProperty('instagramAccountId');
   });
 
   it('does NOT require workspaceId — backend strips it from list responses', () => {
@@ -104,16 +130,16 @@ describe('parseSandboxSession', () => {
     ).toThrow(/whatsappApiVersion/);
   });
 
-  it('rejects IG session missing instagramSenderId', () => {
+  it('rejects IG session missing senderInstagramId', () => {
     expect(() =>
-      parseSandboxSession({ ...validIg, instagramSenderId: '' }),
-    ).toThrow(/instagramSenderId/);
+      parseSandboxSession({ ...validIg, senderInstagramId: '' }),
+    ).toThrow(/senderInstagramId/);
   });
 
-  it('rejects IG session missing instagramAccountId', () => {
+  it('rejects IG session missing accountInstagramId', () => {
     expect(() =>
-      parseSandboxSession({ ...validIg, instagramAccountId: null }),
-    ).toThrow(/instagramAccountId/);
+      parseSandboxSession({ ...validIg, accountInstagramId: null }),
+    ).toThrow(/accountInstagramId/);
   });
 
   it('rejects shared base field missing accessToken', () => {
@@ -168,15 +194,15 @@ describe('parseSandboxSessions', () => {
     expect(() =>
       parseSandboxSessions([
         validWa,
-        { ...validIg, id: 'ssn_BADIG01', instagramSenderId: '' },
+        { ...validIg, id: 'ssn_BADIG01', senderInstagramId: '' },
       ]),
     ).toThrow(/ssn_BADIG01/);
     expect(() =>
       parseSandboxSessions([
         validWa,
-        { ...validIg, id: 'ssn_BADIG01', instagramSenderId: '' },
+        { ...validIg, id: 'ssn_BADIG01', senderInstagramId: '' },
       ]),
-    ).toThrow(/instagramSenderId/);
+    ).toThrow(/senderInstagramId/);
   });
 });
 

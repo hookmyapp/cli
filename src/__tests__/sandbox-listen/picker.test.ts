@@ -23,7 +23,6 @@ function makeSession(overrides: Partial<WhatsAppSandboxSession> = {}): WhatsAppS
     workspaceName: 'acme-corp',
     phone: '+15550001',
     status: 'active',
-    lastHeartbeatAt: null,
     accessToken: 'ACT_test',
     hmacSecret: 'HMAC_test',
     origin: 'test',
@@ -106,48 +105,13 @@ describe('pickSession', () => {
     expect(mockedSelect).not.toHaveBeenCalled();
   });
 
-  it('state derivation: recent heartbeat (<2min) → "listening elsewhere (Xs ago)"', async () => {
-    const now = Date.now();
-    const fiveSecAgo = new Date(now - 5_000).toISOString();
-    const a = makeSession({ id: 'ssn_TESTa01', lastHeartbeatAt: fiveSecAgo });
-    const b = makeSession({ id: 'ssn_TESTb01' });
-    let capturedChoices: any[] | undefined;
-    (mockedSelect as unknown as { mockImplementationOnce: (fn: (args: any) => Promise<any>) => void })
-      .mockImplementationOnce(async (args: any) => {
-        capturedChoices = args.choices;
-        return a;
-      });
-    await pickSession({ sessions: [a, b], isHuman: true });
-    expect(capturedChoices).toBeDefined();
-    const firstChoiceName = capturedChoices?.[0]?.name as string;
-    // The unified picker uses sessionLabel() for choice names
-    expect(firstChoiceName).toBeDefined();
-  });
-
-  it('state derivation: null heartbeat → session returned without prompting when single', async () => {
-    const a = makeSession({ id: 'ssn_TESTa01', lastHeartbeatAt: null });
-    const result = await pickSession({ sessions: [a], isHuman: true });
-    expect(result).toBe(a);
-    expect(mockedSelect).not.toHaveBeenCalled();
-  });
-
-  it('state derivation: old heartbeat (>2min) → select still invoked with session', async () => {
-    const threeHoursAgo = new Date(Date.now() - 3 * 3600_000).toISOString();
-    const a = makeSession({ id: 'ssn_TESTa01', lastHeartbeatAt: threeHoursAgo });
-    const b = makeSession({ id: 'ssn_TESTb01' });
-    mockedSelect.mockResolvedValueOnce(a);
-    const result = await pickSession({ sessions: [a, b], isHuman: true });
-    expect(mockedSelect).toHaveBeenCalledTimes(1);
-    expect(result).toBe(a);
-  });
-
   it('matches an IG session by --username', async () => {
     const ig: InstagramSandboxSession = {
       id: 'ssn_IG000001',
       type: 'instagram',
-      instagramSenderId: '8745912038476523',
-      instagramAccountId: '17841478719287768',
-      instagramSenderUsername: 'ordvir',
+      senderInstagramId: '8745912038476523',
+      accountInstagramId: '17841478719287768',
+      senderInstagramUsername: 'ordvir',
       accessToken: 'ACT_ig',
       hmacSecret: 'HMAC_ig',
       status: 'active',

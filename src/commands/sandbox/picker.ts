@@ -83,8 +83,8 @@ export async function pickSession(args: PickSessionArgs): Promise<SandboxSession
         const match = sessions.find(
           (s) =>
             s.type === 'instagram' &&
-            s.instagramSenderUsername !== null &&
-            s.instagramSenderUsername === parsed.value,
+            s.senderInstagramUsername !== null &&
+            s.senderInstagramUsername === parsed.value,
         );
         if (!match) return throwMismatch(`@${parsed.value}`, sessions);
         return match;
@@ -119,14 +119,14 @@ export async function pickSession(args: PickSessionArgs): Promise<SandboxSession
     const match = igSessions.find(
       (s) =>
         s.type === 'instagram' &&
-        s.instagramSenderUsername !== null &&
-        s.instagramSenderUsername === needle,
+        s.senderInstagramUsername !== null &&
+        s.senderInstagramUsername === needle,
     );
     if (!match) {
       const allUsernamesNull =
         igSessions.length > 0 &&
         igSessions.every(
-          (s) => s.type === 'instagram' && s.instagramSenderUsername === null,
+          (s) => s.type === 'instagram' && s.senderInstagramUsername === null,
         );
       if (allUsernamesNull) {
         const err = new CliError(

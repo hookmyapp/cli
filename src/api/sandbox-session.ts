@@ -30,7 +30,6 @@ interface SandboxSessionBase {
   workspaceName?: string | null;
   webhookUrl?: string | null;
   hostname?: string | null;
-  lastHeartbeatAt?: string | null;
   cloudflareTunnelId?: string | null;
   cloudflareTunnelToken?: string | null;
   activatedAt?: string | null;
@@ -47,16 +46,16 @@ export interface WhatsAppSandboxSession extends SandboxSessionBase {
   sandboxPhoneNumberId: string;
   whatsappApiVersion: string;
   // Channel-specific narrow: never populated on WA rows.
-  instagramSenderId?: null;
-  instagramAccountId?: null;
-  instagramSenderUsername?: null;
+  senderInstagramId?: null;
+  accountInstagramId?: null;
+  senderInstagramUsername?: null;
 }
 
 export interface InstagramSandboxSession extends SandboxSessionBase {
   type: 'instagram';
-  instagramSenderId: string;
-  instagramAccountId: string;
-  instagramSenderUsername: string | null;
+  senderInstagramId: string;
+  accountInstagramId: string;
+  senderInstagramUsername: string | null;
   // Channel-specific narrow: never populated on IG rows.
   whatsappPhone?: null;
   whatsappPhoneNumberId?: null;
@@ -113,17 +112,17 @@ export function parseSandboxSession(dto: unknown): SandboxSession {
   }
 
   if (d.type === 'instagram') {
-    if (!isNonEmptyString(d.instagramSenderId))
-      malformed(id, 'Instagram session missing instagramSenderId');
-    if (!isNonEmptyString(d.instagramAccountId))
-      malformed(id, 'Instagram session missing instagramAccountId');
-    // instagramSenderUsername may be null (backend backfills async).
+    if (!isNonEmptyString(d.senderInstagramId))
+      malformed(id, 'Instagram session missing senderInstagramId');
+    if (!isNonEmptyString(d.accountInstagramId))
+      malformed(id, 'Instagram session missing accountInstagramId');
+    // senderInstagramUsername may be null (backend backfills async).
     if (
-      d.instagramSenderUsername !== null &&
-      d.instagramSenderUsername !== undefined &&
-      typeof d.instagramSenderUsername !== 'string'
+      d.senderInstagramUsername !== null &&
+      d.senderInstagramUsername !== undefined &&
+      typeof d.senderInstagramUsername !== 'string'
     )
-      malformed(id, 'instagramSenderUsername must be string or null');
+      malformed(id, 'senderInstagramUsername must be string or null');
     return d as unknown as InstagramSandboxSession;
   }
 

@@ -13,9 +13,9 @@ import { runSandboxLogs } from '../logs.js';
 const ig = {
   id: 'ssn_IG000001',
   type: 'instagram',
-  instagramSenderId: '1907',
-  instagramAccountId: '1784',
-  instagramSenderUsername: 'ordvir',
+  senderInstagramId: '1907',
+  accountInstagramId: '1784',
+  senderInstagramUsername: 'ordvir',
   accessToken: 'tok',
   hmacSecret: 'hmac',
   status: 'active',
