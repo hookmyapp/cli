@@ -22,6 +22,13 @@ export interface WhatsAppChannel extends ChannelBase {
   wabaName: string | null;
   displayPhoneNumber: string | null;
   phoneNumberId: string | null;
+  /**
+   * Phone-number-verified sender display name. Independent of `wabaName`:
+   * the WABA may carry the parent business name while phoneVerifiedName
+   * is the customer-facing sender display. Backends < restore-commit may
+   * still emit this absent; parser tolerates that.
+   */
+  phoneVerifiedName: string | null;
   qualityRating: string | null;
 }
 
@@ -106,6 +113,10 @@ export function parseChannelListItem(dto: unknown): Channel {
         malformed(id, 'WA channel: displayPhoneNumber must be string or null');
       if (!isStringOrNull(d.phoneNumberId))
         malformed(id, 'WA channel: phoneNumberId must be string or null');
+      // Tolerate absent phoneVerifiedName for backends predating the restore
+      // commit — they simply omit the key. When present, must be string or null.
+      if (d.phoneVerifiedName !== undefined && !isStringOrNull(d.phoneVerifiedName))
+        malformed(id, 'WA channel: phoneVerifiedName must be string or null');
       if (!isStringOrNull(d.qualityRating))
         malformed(id, 'WA channel: qualityRating must be string or null');
       return {
@@ -114,6 +125,8 @@ export function parseChannelListItem(dto: unknown): Channel {
         wabaName: d.wabaName,
         displayPhoneNumber: d.displayPhoneNumber,
         phoneNumberId: d.phoneNumberId,
+        phoneVerifiedName:
+          d.phoneVerifiedName === undefined ? null : (d.phoneVerifiedName as string | null),
         qualityRating: d.qualityRating,
       };
     }
