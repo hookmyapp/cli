@@ -94,6 +94,76 @@ describe('parseChannelListItem', () => {
   });
 });
 
+describe('parseChannelListItem — Phase A backend cleanup shape', () => {
+  it('When IG channel has metaWabaId=null, then parser accepts', () => {
+    const dto = {
+      id: 'ch_TEST0001',
+      workspaceId: 'ws_TEST0001',
+      metaWabaId: null, // Phase A change: was '', now null
+      metaResourceId: '17841999999999999',
+      connectionType: 'instagram_login',
+      metaConnected: true,
+      forwardingEnabled: true,
+      webhookUrl: null,
+      verifyToken: null,
+      type: 'instagram',
+      instagramUsername: 'test',
+      instagramName: 'Test',
+      instagramProfilePictureUrl: null,
+    };
+    const parsed = parseChannelListItem(dto);
+    expect(parsed.metaWabaId).toBeNull();
+  });
+
+  it('When WA channel lacks phoneVerifiedName + qualityRatingCheckedAt, then parser accepts', () => {
+    const dto = {
+      id: 'ch_TEST0002',
+      workspaceId: 'ws_TEST0001',
+      metaWabaId: '1248091060795230',
+      metaResourceId: '1248091060795230',
+      connectionType: 'coexistence',
+      metaConnected: true,
+      forwardingEnabled: true,
+      webhookUrl: null,
+      verifyToken: null,
+      type: 'whatsapp',
+      wabaName: 'tomer office',
+      displayPhoneNumber: '+972 55-727-7945',
+      phoneNumberId: '979105081963262',
+      qualityRating: 'GREEN',
+      // phoneVerifiedName: ABSENT (Phase A drops it)
+      // qualityRatingCheckedAt: ABSENT (Phase A drops it)
+    };
+    const parsed = parseChannelListItem(dto);
+    expect(parsed.type).toBe('whatsapp');
+  });
+
+  it('When channel omits hostname/lastHeartbeatAt/hasActiveCliTunnel/updatedAt, then parsed object does not carry them', () => {
+    const dto = {
+      id: 'ch_TEST0003',
+      workspaceId: 'ws_TEST0001',
+      metaWabaId: null,
+      metaResourceId: '17841888888888888',
+      connectionType: 'instagram_login',
+      metaConnected: true,
+      forwardingEnabled: true,
+      webhookUrl: null,
+      verifyToken: null,
+      type: 'instagram',
+      instagramUsername: 'test',
+      instagramName: 'Test',
+      instagramProfilePictureUrl: null,
+      // hostname/lastHeartbeatAt/hasActiveCliTunnel/updatedAt: ABSENT (Phase A drops them)
+    };
+    const parsed = parseChannelListItem(dto);
+    expect(parsed).toBeDefined();
+    expect(parsed).not.toHaveProperty('hostname');
+    expect(parsed).not.toHaveProperty('lastHeartbeatAt');
+    expect(parsed).not.toHaveProperty('hasActiveCliTunnel');
+    expect(parsed).not.toHaveProperty('updatedAt');
+  });
+});
+
 describe('parseChannelDetail', () => {
   it('extends list-item with detail-only fields (accessToken, businessName, metaBusinessId)', () => {
     const detail: ChannelDetail = parseChannelDetail({
