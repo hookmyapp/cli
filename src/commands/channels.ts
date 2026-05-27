@@ -423,8 +423,12 @@ export function registerChannelsCommand(program: Command): void {
       '--write [path]',
       'Upsert credentials into a .env file (default ./.env). Replaces existing WHATSAPP_* keys, preserves everything else.',
     )
-    .action(async (channelRef: string, options: { write?: string | boolean }) => {
-      await runChannelEnv(channelRef, options);
+    .action(async function (
+      this: Command,
+      channelRef: string,
+      options: { write?: string | boolean },
+    ) {
+      await runChannelEnv(channelRef, options, this);
     });
 
   const channelsToken = channels
