@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { c } from '../output/color.js';
+import { output } from '../output/format.js';
 import { renderTable } from '../output/table.js';
 import { NotFoundError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
@@ -327,29 +328,38 @@ export async function runChannelsDisconnect(ref: string): Promise<void> {
 }
 
 /**
- * Exported handler for `hookmyapp channels enable <ref>` (Task B7).
- * Companion to `runChannelsDisconnect` — same docstring rationale.
+ * Exported handler for `hookmyapp channels enable <ref>`.
+ * `--json` emits `{ channelId, forwardingEnabled }` so AI-agent consumers get
+ * machine-readable output (supersedes the Task B7 human-only contract).
  */
-export async function runChannelsEnable(ref: string): Promise<void> {
+export async function runChannelsEnable(ref: string, json = false): Promise<void> {
   const channel = await resolveChannel(ref);
   await apiClient(`/meta/channels/${channel.id}/enable`, {
     method: 'POST',
     workspaceId: channel.workspaceId,
   });
-  console.log(`✓ Enabled forwarding on ${channelLabel(channel)}`);
+  if (json) {
+    output({ channelId: channel.id, forwardingEnabled: true }, { human: false });
+  } else {
+    console.log(`✓ Enabled forwarding on ${channelLabel(channel)}`);
+  }
 }
 
 /**
- * Exported handler for `hookmyapp channels disable <ref>` (Task B7).
- * Companion to `runChannelsDisconnect` — same docstring rationale.
+ * Exported handler for `hookmyapp channels disable <ref>`.
+ * `--json` emits `{ channelId, forwardingEnabled }` (see `runChannelsEnable`).
  */
-export async function runChannelsDisable(ref: string): Promise<void> {
+export async function runChannelsDisable(ref: string, json = false): Promise<void> {
   const channel = await resolveChannel(ref);
   await apiClient(`/meta/channels/${channel.id}/disable`, {
     method: 'POST',
     workspaceId: channel.workspaceId,
   });
-  console.log(`✓ Disabled forwarding on ${channelLabel(channel)}`);
+  if (json) {
+    output({ channelId: channel.id, forwardingEnabled: false }, { human: false });
+  } else {
+    console.log(`✓ Disabled forwarding on ${channelLabel(channel)}`);
+  }
 }
 
 export function registerChannelsCommand(program: Command): void {
@@ -405,7 +415,7 @@ export function registerChannelsCommand(program: Command): void {
     .description('Enable forwarding for a channel')
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
-      await runChannelsEnable(channelRef);
+      await runChannelsEnable(channelRef, !!program.opts().json);
     });
 
   const channelsDisable = channels
@@ -413,7 +423,7 @@ export function registerChannelsCommand(program: Command): void {
     .description('Disable forwarding for a channel')
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
-      await runChannelsDisable(channelRef);
+      await runChannelsDisable(channelRef, !!program.opts().json);
     });
 
   // ─── Canonical nested commands (D9) ────────────────────────────────────
