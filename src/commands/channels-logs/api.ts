@@ -3,49 +3,46 @@ import { readCredentials } from '../../auth/store.js';
 import { getEffectiveApiUrl } from '../../config/env-profiles.js';
 import { AuthError } from '../../output/error.js';
 
+/** Mirrors backend `WebhookDeliveryOutcome` (@hookmyapp/shared). */
+export type DeliveryOutcome = 'delivered' | 'no_response' | 'rejected' | 'skipped';
+
 /** Wire mirror of backend `DeliveryListItem` (deliveries/dto/delivery.response.ts). */
 export interface DeliveryListItem {
   id: string;
   receivedAt: string;
+  metaMessageId: string | null;
   fromPhone: string | null;
+  senderId: string | null;
+  senderDisplay: string | null;
   routingDecision: string;
-  attemptsCount: number;
   humanStatus: string;
   humanStatusCopy: string;
+  humanStatusTooltip: string | null;
   humanStatusColor: 'green' | 'red' | 'gray';
-  latestAttempt: {
-    outcome: 'delivered' | 'no_response' | 'rejected' | 'skipped';
-    forwardStatus: number | null;
-    attemptedAt: string;
-  } | null;
+  // Flat outcome columns (replaces the old nested latestAttempt sub-object).
+  outcome: DeliveryOutcome;
+  forwardStatus: number | null;
+  attemptedAt: string | null;
 }
 
-/** Wire mirror of backend `DeliveryAttemptResponse`. */
-export interface DeliveryAttempt {
+/** Wire mirror of backend `RelatedDelivery` — sibling rows sharing a metaMessageId. */
+export interface RelatedDelivery {
   id: string;
-  attemptNumber: number;
-  forwardUrl: string;
-  forwardRequestHeaders: Record<string, string> | null;
-  forwardRequestBody: string | null;
-  forwardStatus: number | null;
-  forwardDurationMs: number | null;
-  forwardResponseHeaders: Record<string, string> | null;
-  forwardResponseBody: string | null;
-  forwardResponseBodySha256: string | null;
-  forwardResponseBodyTruncated: boolean;
-  outcome: string;
-  outcomeReason: string | null;
-  attemptedAt: string;
+  receivedAt: string;
+  humanStatus: string;
+  outcome: DeliveryOutcome;
 }
 
 /**
- * Wire mirror of backend `DeliveryDetail`.
+ * Wire mirror of backend `DeliveryDetail` (row-per-request model): each row is
+ * exactly one forward, so the forward fields are flat on the DTO rather than a
+ * nested `attempts[]` array. `forwardUrl === null` means no destination was
+ * configured and no forward was attempted.
  *
  * `senderDisplay` + `senderId` (D8): IG-aware identity, returned by the
  * backend for every delivery regardless of channel type. WA channels get
  * `senderDisplay` mirroring `fromPhone`; IG channels carry the `@handle` +
- * IG scoped ID. Falls back to `fromPhone` in the CLI sender chain for
- * pre-D8 backends.
+ * IG scoped ID. Falls back to `fromPhone` in the CLI sender chain.
  *
  * `humanStatusTooltip`: GUI-only field (tooltip text shown on hover in the
  * web UI). Carried on the DTO for shape parity with sandbox/logs.ts; the
@@ -69,14 +66,27 @@ export interface DeliveryDetail {
   isSandbox: boolean;
   requestId: string | null;
   fromPhone: string | null;
-  senderDisplay: string | null;
   senderId: string | null;
+  senderDisplay: string | null;
   receivedAt: string;
   humanStatus: string;
   humanStatusCopy: string;
   humanStatusTooltip: string | null;
   humanStatusColor: 'green' | 'red' | 'gray';
-  attempts: DeliveryAttempt[];
+  // Flat forward fields (replaces the old nested attempts[] array).
+  outcome: DeliveryOutcome;
+  outcomeReason: string | null;
+  forwardUrl: string | null;
+  forwardRequestHeaders: Record<string, string> | null;
+  forwardRequestBody: string | null;
+  forwardStatus: number | null;
+  forwardDurationMs: number | null;
+  forwardResponseHeaders: Record<string, string> | null;
+  forwardResponseBody: string | null;
+  forwardResponseBodySha256: string | null;
+  forwardResponseBodyTruncated: boolean;
+  attemptedAt: string | null;
+  relatedDeliveries: RelatedDelivery[];
 }
 
 /**

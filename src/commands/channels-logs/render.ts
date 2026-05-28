@@ -1,4 +1,4 @@
-import type { DeliveryListItem, DeliveryAttempt, DeliveryDetail } from './api.js';
+import type { DeliveryDetail } from './api.js';
 
 /**
  * One-line summary row for `channels logs list` (D9 — table-by-default).
@@ -16,31 +16,26 @@ import type { DeliveryListItem, DeliveryAttempt, DeliveryDetail } from './api.js
  * '(unknown)'. fromPhone is the WA-only field; senderDisplay/senderId are
  * the IG-aware fields the backend provides for both channel types.
  *
- * Target host parse guards malformed forward URLs with a `(invalid forward
- * URL)` fallback — same try/catch shape as the sandbox-logs implementation
- * (introduced in Task A6).
+ * Row-per-request model: the forward is flat on the detail (no attempts[]).
+ * `forwardUrl === null` means no destination was configured; the status then
+ * falls back to the row `outcome`. Target host parse guards malformed forward
+ * URLs with a `(invalid forward URL)` fallback.
  */
 export function printSummaryRow(d: DeliveryDetail): void {
   const time = new Date(d.receivedAt).toLocaleString();
   const sender = d.senderDisplay ?? d.senderId ?? d.fromPhone ?? '(unknown)';
-  const lastAttempt = d.attempts[d.attempts.length - 1];
   const target = (() => {
-    if (!lastAttempt?.forwardUrl) return '(no forward URL set)';
+    if (!d.forwardUrl) return '(no forward URL set)';
     try {
-      return new URL(lastAttempt.forwardUrl).host;
+      return new URL(d.forwardUrl).host;
     } catch {
       return '(invalid forward URL)';
     }
   })();
-  const status =
-    lastAttempt === undefined
-      ? 'n/a'
-      : lastAttempt.forwardStatus !== null
-        ? `${lastAttempt.forwardStatus}`
-        : lastAttempt.outcome;
+  const status = d.forwardStatus !== null ? `${d.forwardStatus}` : d.outcome;
   const latency =
-    lastAttempt?.forwardDurationMs !== null && lastAttempt?.forwardDurationMs !== undefined
-      ? `${lastAttempt.forwardDurationMs}ms`
+    d.forwardDurationMs !== null && d.forwardDurationMs !== undefined
+      ? `${d.forwardDurationMs}ms`
       : '';
   const preview = previewInbound(d.inboundBody);
   process.stdout.write(
@@ -62,41 +57,6 @@ function previewInbound(body: string | null): string {
   text = text.replace(/\s+/g, ' ').trim();
   if (text.length > 40) text = text.slice(0, 40) + '…';
   return `"${text}"`;
-}
-
-/**
- * Compact "time ago" label for the list table's `Received` column.
- */
-export function relativeTime(iso: string, now: Date = new Date()): string {
-  const sec = Math.max(
-    0,
-    Math.floor((now.getTime() - new Date(iso).getTime()) / 1000),
-  );
-  if (sec < 60) return 'just now';
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
-}
-
-/**
- * Project delivery list items into flat rows for `renderTable`. `Status` is the
- * server-rendered `humanStatus`; the longer `humanStatusCopy` surfaces only in
- * `show` detail (spec D8).
- */
-export function toListRows(
-  deliveries: DeliveryListItem[],
-  now: Date = new Date(),
-): Record<string, unknown>[] {
-  return deliveries.map((d) => ({
-    ID: d.id,
-    Received: relativeTime(d.receivedAt, now),
-    Status: d.humanStatus,
-    From: d.fromPhone ?? '-',
-    Forwarded: d.latestAttempt?.forwardStatus ?? '-',
-    Attempts: d.attemptsCount,
-  }));
 }
 
 function indentBlock(text: string): string {
@@ -124,25 +84,26 @@ function renderHeaders(headers: Record<string, string> | null): string {
     .join('\n');
 }
 
-function renderAttempt(att: DeliveryAttempt, verbose: boolean): string {
-  const lines: string[] = ['', 'We sent it to your app', `  POST ${att.forwardUrl}`];
+/** Render the single flat forward block (request sent + app response). */
+function renderForward(d: DeliveryDetail, verbose: boolean): string {
+  const lines: string[] = ['', 'We sent it to your app', `  POST ${d.forwardUrl}`];
   if (verbose) {
     lines.push('  request headers:');
-    lines.push(renderHeaders(att.forwardRequestHeaders));
+    lines.push(renderHeaders(d.forwardRequestHeaders));
   }
-  lines.push(prettyBody(att.forwardRequestBody));
+  lines.push(prettyBody(d.forwardRequestBody));
 
   lines.push('', 'Your app responded');
-  const status = att.forwardStatus ?? '(no response)';
+  const status = d.forwardStatus ?? '(no response)';
   const duration =
-    att.forwardDurationMs !== null ? ` (${att.forwardDurationMs}ms)` : '';
+    d.forwardDurationMs !== null ? ` (${d.forwardDurationMs}ms)` : '';
   lines.push(`  ${status}${duration}`);
   if (verbose) {
     lines.push('  response headers:');
-    lines.push(renderHeaders(att.forwardResponseHeaders));
+    lines.push(renderHeaders(d.forwardResponseHeaders));
   }
-  lines.push(prettyBody(att.forwardResponseBody));
-  if (att.forwardResponseBodyTruncated) lines.push('  (truncated)');
+  lines.push(prettyBody(d.forwardResponseBody));
+  if (d.forwardResponseBodyTruncated) lines.push('  (truncated)');
   return lines.join('\n');
 }
 
@@ -173,14 +134,12 @@ export function renderDeliveryDetail(
   lines.push(prettyBody(detail.inboundBody));
   if (detail.inboundBodyTruncated) lines.push('  (truncated)');
 
-  // The web UI keys the no-destination case off "zero forward attempts" (see
-  // frontend `ExpandedDetail` in delivery-row.tsx), NOT off `routingDecision`.
-  // Real channels with no usable destination emit `routingDecision`
-  // `no_webhook_config` (forwarder/src/webhook/webhook.service.ts) — `channels
-  // logs` is channel-scoped, so `no_destination` (the sandbox value) never
-  // appears here. Branching on `attempts.length` mirrors the UI exactly and is
-  // decision-string-agnostic, so it is correct for every zero-forward case.
-  if (detail.attempts.length === 0) {
+  // Row-per-request model: `forwardUrl === null` is the no-forward signal (no
+  // destination was configured, so no forward was attempted). It is
+  // decision-string-agnostic and mirrors the web UI's "zero forward attempts"
+  // branch, which is correct for every no-forward case (skipped /
+  // no_webhook_config / no_destination).
+  if (detail.forwardUrl === null) {
     lines.push('');
     lines.push(
       'Not forwarded. No destination was configured for this channel at the time.',
@@ -189,7 +148,7 @@ export function renderDeliveryDetail(
       'Set one with: hookmyapp channels webhook set <channel> --url <your-url>',
     );
   } else {
-    for (const att of detail.attempts) lines.push(renderAttempt(att, verbose));
+    lines.push(renderForward(detail, verbose));
   }
 
   return lines.join('\n');
