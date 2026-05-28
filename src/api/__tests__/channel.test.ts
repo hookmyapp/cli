@@ -168,7 +168,7 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
     }
   });
 
-  it('When channel omits hostname/lastHeartbeatAt/hasActiveCliTunnel/updatedAt, then parsed object does not carry them', () => {
+  it('When channel omits hostname/lastHeartbeatAt/hasActiveCliTunnel, then parsed object does not carry them', () => {
     const dto = {
       id: 'ch_TEST0003',
       workspaceId: 'ws_TEST0001',
@@ -183,14 +183,34 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
       instagramUsername: 'test',
       instagramName: 'Test',
       instagramProfilePictureUrl: null,
-      // hostname/lastHeartbeatAt/hasActiveCliTunnel/updatedAt: ABSENT (Phase A drops them)
+      // hostname/lastHeartbeatAt/hasActiveCliTunnel: ABSENT (Phase A drops them)
     };
     const parsed = parseChannelListItem(dto);
     expect(parsed).toBeDefined();
     expect(parsed).not.toHaveProperty('hostname');
     expect(parsed).not.toHaveProperty('lastHeartbeatAt');
     expect(parsed).not.toHaveProperty('hasActiveCliTunnel');
-    expect(parsed).not.toHaveProperty('updatedAt');
+  });
+
+  it('When channel includes updatedAt, then the parser carries it through (CLI re-auth signal)', () => {
+    const dto = {
+      id: 'ch_TEST0004',
+      workspaceId: 'ws_TEST0001',
+      metaWabaId: null,
+      metaResourceId: '17841999999999999',
+      connectionType: 'instagram_login',
+      metaConnected: true,
+      forwardingEnabled: true,
+      webhookUrl: null,
+      verifyToken: null,
+      type: 'instagram',
+      instagramUsername: 'test',
+      instagramName: 'Test',
+      instagramProfilePictureUrl: null,
+      updatedAt: '2026-05-28T08:00:00.000Z',
+    };
+    const parsed = parseChannelListItem(dto);
+    expect(parsed.updatedAt).toBe('2026-05-28T08:00:00.000Z');
   });
 });
 

@@ -15,6 +15,13 @@ interface ChannelBase {
   forwardingEnabled: boolean;
   webhookUrl: string | null;
   verifyToken: string | null;
+  /**
+   * ISO timestamp. Drives `channels connect` re-auth detection: the poll
+   * snapshots {id -> updatedAt} pre-OAuth and treats an existing id whose
+   * updatedAt advanced as "interesting" alongside truly-new ids. Absent on
+   * older backends — poll falls back to id-diff only.
+   */
+  updatedAt?: string;
 }
 
 export interface WhatsAppChannel extends ChannelBase {
@@ -92,6 +99,7 @@ function parseBase(d: Record<string, unknown>, id: string): ChannelBase {
     forwardingEnabled: d.forwardingEnabled,
     webhookUrl: d.webhookUrl,
     verifyToken: d.verifyToken,
+    updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : undefined,
   };
 }
 
