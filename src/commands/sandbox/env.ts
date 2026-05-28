@@ -8,6 +8,7 @@
 //   VERIFY_TOKEN, PORT, INSTAGRAM_API_URL, INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_ACCOUNT_ID.
 
 import * as fs from 'node:fs';
+import type { Command } from 'commander';
 import { confirm } from '@inquirer/prompts';
 import { apiClient } from '../../api/client.js';
 import {
@@ -20,44 +21,61 @@ import {
   getEffectiveSandboxProxyUrl,
 } from '../../config/env-profiles.js';
 import { ValidationError } from '../../output/error.js';
+import { isJsonMode } from '../../output/format.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
 import { pickSession } from './picker.js';
 
-export function buildEnvBlock(session: SandboxSession): string {
+/**
+ * Ordered KEY/VALUE pairs for a sandbox session. `buildEnvBlock` joins these
+ * into dotenv text; the `--json` path serializes them into a flat object.
+ *
+ * Sandbox PORT=3000 is intentional — it's the real local forwarder port for
+ * the sandbox listener, NOT the channels-env starter default that Phase A
+ * dropped server-side. Keep it in both human and JSON output.
+ */
+export function buildEnvPairs(session: SandboxSession): [string, string][] {
   const proxyBase = getEffectiveSandboxProxyUrl().replace(/\/$/, '');
   switch (session.type) {
     case 'whatsapp':
       return [
-        `VERIFY_TOKEN=${session.hmacSecret}`,
-        `PORT=3000`,
-        `WHATSAPP_API_URL=${proxyBase}/${session.whatsappApiVersion}`,
-        `WHATSAPP_ACCESS_TOKEN=${session.accessToken}`,
-        `WHATSAPP_PHONE_NUMBER_ID=${session.whatsappPhone}`,
-        '',
-      ].join('\n');
+        ['VERIFY_TOKEN', session.hmacSecret],
+        ['PORT', '3000'],
+        ['WHATSAPP_API_URL', `${proxyBase}/${session.whatsappApiVersion}`],
+        ['WHATSAPP_ACCESS_TOKEN', session.accessToken],
+        ['WHATSAPP_PHONE_NUMBER_ID', session.whatsappPhone],
+      ];
     case 'instagram':
       return [
-        `VERIFY_TOKEN=${session.hmacSecret}`,
-        `PORT=3000`,
-        `INSTAGRAM_API_URL=${proxyBase}/${INSTAGRAM_GRAPH_VERSION}`,
-        `INSTAGRAM_ACCESS_TOKEN=${session.accessToken}`,
-        `INSTAGRAM_ACCOUNT_ID=${session.accountInstagramId}`,
-        '',
-      ].join('\n');
+        ['VERIFY_TOKEN', session.hmacSecret],
+        ['PORT', '3000'],
+        ['INSTAGRAM_API_URL', `${proxyBase}/${INSTAGRAM_GRAPH_VERSION}`],
+        ['INSTAGRAM_ACCESS_TOKEN', session.accessToken],
+        ['INSTAGRAM_ACCOUNT_ID', session.accountInstagramId],
+      ];
     default:
-      return assertNever(session, 'buildEnvBlock');
+      return assertNever(session, 'buildEnvPairs');
   }
 }
 
-export async function runSandboxEnv(opts: {
-  identifierArg?: string;
-  phone?: string;
-  username?: string;
-  session?: string;
-  write?: string | boolean;
-  force?: boolean;
-  json?: boolean;
-}): Promise<void> {
+export function buildEnvBlock(session: SandboxSession): string {
+  return buildEnvPairs(session)
+    .map(([k, v]) => `${k}=${v}`)
+    .concat('')
+    .join('\n');
+}
+
+export async function runSandboxEnv(
+  opts: {
+    identifierArg?: string;
+    phone?: string;
+    username?: string;
+    session?: string;
+    write?: string | boolean;
+    force?: boolean;
+    json?: boolean;
+  },
+  cmd?: Command,
+): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
   const dto = await apiClient('/sandbox/sessions?active=true', { workspaceId });
   const sessions = parseSandboxSessions(dto);
@@ -71,6 +89,18 @@ export async function runSandboxEnv(opts: {
     sessionFlag: opts.session,
     isHuman,
   });
+
+  // Symmetrical to the channels env --json fix (commit d0f0c82): emit a flat
+  // {KEY: VALUE} object so agents can iterate keys programmatically. Honors
+  // both the threaded Command (--json on the parsed tree) and the explicit
+  // opts.json the registration site already reconciles against the root flag.
+  // In JSON mode `--write` is ignored — the agent pipeline that wants
+  // JSON-on-disk can `> file.json` from the shell.
+  if (opts.json || (cmd && isJsonMode(cmd))) {
+    const flat = Object.fromEntries(buildEnvPairs(session));
+    process.stdout.write(JSON.stringify(flat) + '\n');
+    return;
+  }
 
   const content = buildEnvBlock(session);
 

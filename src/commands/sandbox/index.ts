@@ -134,7 +134,8 @@ export function registerSandboxCommand(program: Command): void {
     .option('--force', 'Overwrite without prompt')
     .option('--json', 'Machine-readable output')
     .action(
-      async (
+      async function (
+        this: Command,
         identifier: string | undefined,
         opts: {
           phone?: string;
@@ -144,12 +145,15 @@ export function registerSandboxCommand(program: Command): void {
           force?: boolean;
           json?: boolean;
         },
-      ) => {
-        await runSandboxEnv({
-          ...opts,
-          identifierArg: identifier,
-          json: !!(opts.json || program.opts().json),
-        });
+      ) {
+        await runSandboxEnv(
+          {
+            ...opts,
+            identifierArg: identifier,
+            json: !!(opts.json || program.opts().json),
+          },
+          this,
+        );
       },
     );
   addExamples(
