@@ -53,8 +53,8 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
 
   const plan = sub.plan.name;
   const status = sub.status;
-  const interval = sub.billingInterval ?? '—';
-  const renews = sub.currentPeriodEnd ?? '—';
+  const interval = sub.billingInterval ?? 'n/a';
+  const renews = sub.currentPeriodEnd ?? 'n/a';
   const messages = `${usage.totalMessages} / ${usage.limit} (${usage.percentage}%)`;
 
   output({ plan, status, interval, renews, messages }, { json: false, kind: 'read' });
@@ -74,7 +74,7 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
     console.log(
       '\n' +
         c.warn(
-          `You've used ${usage.percentage}% — run \`${cliCommandPrefix()} billing upgrade\` to upgrade.`,
+          `You've used ${usage.percentage}%. Run \`${cliCommandPrefix()} billing upgrade\` to upgrade.`,
         ),
     );
   }
@@ -103,9 +103,9 @@ export async function billingUpgrade(): Promise<void> {
   const planSlug = await select({
     message: 'Choose a plan',
     choices: [
-      { name: 'Build — 500 messages', value: 'starter' },
-      { name: 'Scale — 1,200 messages', value: 'growth', description: 'Most popular' },
-      { name: 'Business — 2,500 messages', value: 'pro' },
+      { name: 'Build: 500 messages', value: 'starter' },
+      { name: 'Scale: 1,200 messages', value: 'growth', description: 'Most popular' },
+      { name: 'Business: 2,500 messages', value: 'pro' },
     ],
   });
   const billingInterval = await select({
