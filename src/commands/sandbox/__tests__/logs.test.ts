@@ -323,7 +323,7 @@ describe('runSandboxLogs — list mode (human)', () => {
     logSpy.mockRestore();
   });
 
-  it('renders "(No forward attempt — destination wasn\'t reachable.)" for zero-attempts delivery (--verbose)', async () => {
+  it('renders "(No forward attempt: destination wasn\'t reachable.)" for zero-attempts delivery (--verbose)', async () => {
     const summary = makeDelivery({ attemptsCount: 0, humanStatus: 'Not delivered', humanStatusColor: 'red', latestAttempt: null });
     const detail = makeDetail({ attempts: [], humanStatus: 'Not delivered', humanStatusColor: 'red', routingDecision: 'forwarded' });
 

@@ -39,11 +39,11 @@ const program = new Command();
 
 program
   .name('hookmyapp')
-  .description('HookMyApp CLI — manage WhatsApp Business channels')
+  .description('HookMyApp CLI: manage WhatsApp Business channels')
   .version(pkg.version);
 
 program.option('--json', 'Machine-readable JSON output (scripts/CI)');
-program.option('--human', 'Human-readable output (default — kept for back-compat)');
+program.option('--human', 'Human-readable output (default, kept for back-compat)');
 program.option('--debug', 'Show full error stack traces');
 program.option(
   '--workspace <slug>',

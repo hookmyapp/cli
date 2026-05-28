@@ -179,7 +179,7 @@ function formatBodyForTerminal(
     text = body;
   }
   if (!unlimited && text.length > BODY_TRUNCATE_LIMIT) {
-    text = text.slice(0, BODY_TRUNCATE_LIMIT) + '\n... [truncated — use --json for full body]';
+    text = text.slice(0, BODY_TRUNCATE_LIMIT) + '\n... [truncated, use --json for full body]';
   }
   return text
     .split('\n')
@@ -207,7 +207,7 @@ export function printVerboseDelivery(detail: DeliveryDetail, sessionType: string
   const noun = providerNoun(sessionType);
   const dot = statusDot(detail.humanStatusColor);
   const lbl = statusLabel(detail.humanStatus, detail.humanStatusColor);
-  const sender = detail.senderDisplay ?? detail.senderId ?? detail.fromPhone ?? '—';
+  const sender = detail.senderDisplay ?? detail.senderId ?? detail.fromPhone ?? 'n/a';
   const relTime = formatRelativeTime(detail.receivedAt);
 
   // Header line: ● Delivered  Delivered to your app  ·  from 828667679804698  ·  5m ago
@@ -224,7 +224,7 @@ export function printVerboseDelivery(detail: DeliveryDetail, sessionType: string
     if (detail.routingDecision === 'skipped') {
       // Nothing additional needed for skipped; header already conveys it.
     } else {
-      console.log(`  ${c.dim('(No forward attempt — destination wasn\'t reachable.)')}`);
+      console.log(`  ${c.dim('(No forward attempt: destination wasn\'t reachable.)')}`);
     }
   } else {
     // Render each attempt (usually just 1; show all for completeness).
@@ -233,7 +233,7 @@ export function printVerboseDelivery(detail: DeliveryDetail, sessionType: string
         a.forwardStatus != null && a.forwardStatus >= 200 && a.forwardStatus < 300;
       const isErr =
         a.forwardStatus != null && (a.forwardStatus < 200 || a.forwardStatus >= 400);
-      const statusStr = `HTTP ${a.forwardStatus ?? '—'} in ${a.forwardDurationMs ?? '—'}ms`;
+      const statusStr = `HTTP ${a.forwardStatus ?? 'n/a'} in ${a.forwardDurationMs ?? 'n/a'}ms`;
       const coloredStatus = ok
         ? c.success(statusStr)
         : isErr
@@ -283,7 +283,7 @@ function printSummaryDelivery(d: DeliveryDetail): void {
   })();
   const status =
     lastAttempt === undefined
-      ? '—'
+      ? 'n/a'
       : lastAttempt.forwardStatus !== null
         ? `${lastAttempt.forwardStatus}`
         : lastAttempt.outcome; // 'timeout' | 'network_error' | 'success' (latter ⇒ status was set)

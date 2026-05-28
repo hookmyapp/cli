@@ -34,7 +34,7 @@ export function printSummaryRow(d: DeliveryDetail): void {
   })();
   const status =
     lastAttempt === undefined
-      ? '—'
+      ? 'n/a'
       : lastAttempt.forwardStatus !== null
         ? `${lastAttempt.forwardStatus}`
         : lastAttempt.outcome;

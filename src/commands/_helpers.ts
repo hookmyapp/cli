@@ -56,7 +56,7 @@ export async function getDefaultWorkspaceId(): Promise<string> {
     // so scripts see exit 2 with a clear remediation hint.
     if (isLikelyUuid(flag)) {
       throw new ValidationError(
-        `--workspace "${flag}" is a raw UUID — Phase 117 CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
+        `--workspace "${flag}" is a raw UUID. Phase 117 CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
       );
     }
     const workspaces = await listWorkspacesOrEmpty();
