@@ -253,6 +253,52 @@ describe('hookmyapp login --code', () => {
     logSpy.mockRestore();
   });
 
+  test('--code with a stale `config set env staging` persisted → exchange still hits PRODUCTION (config.json env is ignored for bootstrap)', async () => {
+    // The regression Codex caught: dropping `--env production` from the
+    // customer instruction is only safe if a persisted config.json env can't
+    // redirect a production-minted code. Honor only explicit overrides.
+    delete process.env.HOOKMYAPP_API_URL;
+    delete process.env.HOOKMYAPP_ENV;
+    mkdirSync(CONFIG_DIR, { recursive: true });
+    writeFileSync(
+      join(CONFIG_DIR, 'config.json'),
+      JSON.stringify({ env: 'staging' }),
+    );
+
+    const fetchMock = vi.fn().mockResolvedValue(okJson(makeExchangeResponse()));
+    vi.stubGlobal('fetch', fetchMock);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const mod = await import('../login.js');
+    await mod.runBootstrapCodeExchange('hma_boot_abc123', { next: 'exit' });
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://api.hookmyapp.com/auth/bootstrap/exchange',
+    );
+    logSpy.mockRestore();
+  });
+
+  test('--code with explicit HOOKMYAPP_ENV=staging → exchange hits STAGING (explicit --env override still wins)', async () => {
+    delete process.env.HOOKMYAPP_API_URL;
+    process.env.HOOKMYAPP_ENV = 'staging';
+
+    const fetchMock = vi.fn().mockResolvedValue(okJson(makeExchangeResponse()));
+    vi.stubGlobal('fetch', fetchMock);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    try {
+      const mod = await import('../login.js');
+      await mod.runBootstrapCodeExchange('hma_boot_abc123', { next: 'exit' });
+
+      expect(String(fetchMock.mock.calls[0][0])).toBe(
+        'https://staging-api.hookmyapp.com/auth/bootstrap/exchange',
+      );
+    } finally {
+      delete process.env.HOOKMYAPP_ENV;
+      logSpy.mockRestore();
+    }
+  });
+
   test('--code + --wizard → ValidationError exit 2 (mutually exclusive)', async () => {
     // The mutex is enforced in the commander .action() callback. This test
     // verifies the CLI-wiring contract: ValidationError is thrown BEFORE any

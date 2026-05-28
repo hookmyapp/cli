@@ -6,6 +6,7 @@ import { c, icon } from '../output/color.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import {
   getEffectiveApiUrl,
+  getBootstrapApiUrl,
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
 import { posthogAliasAndIdentify } from '../observability/posthog.js';
@@ -402,7 +403,11 @@ export async function runBootstrapCodeExchange(
 
   const prior = await peekIdentity();
 
-  const baseUrl = getEffectiveApiUrl();
+  // Bootstrap codes are backend-specific. Resolve the target ignoring any
+  // persisted `config.json` env so a stale `config set env staging` can't
+  // redirect a production-minted code (see getBootstrapApiUrl). Only an
+  // explicit --env / HOOKMYAPP_ENV / HOOKMYAPP_API_URL override is honored.
+  const baseUrl = getBootstrapApiUrl();
   let res: Response;
   try {
     res = await fetch(`${baseUrl}/auth/bootstrap/exchange`, {
