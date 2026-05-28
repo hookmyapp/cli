@@ -37,17 +37,16 @@ function assertConfigKey(key: string): asserts key is ConfigKey {
 export function registerConfigCommand(program: Command): void {
   const config = program
     .command('config')
-    .description('Manage persistent CLI settings (environment profile, etc.)');
+    .description('Manage persistent CLI settings (telemetry, etc.)');
 
   addExamples(
     config,
     `
 EXAMPLES:
-  $ hookmyapp config show                    # print active env + resolved URLs + telemetry state
-  $ hookmyapp config set env staging         # persist staging as active env
+  $ hookmyapp config show                    # print resolved URLs + telemetry state
   $ hookmyapp config set telemetry off       # disable Sentry crash reporting
-  $ hookmyapp config get env                 # print persisted env
-  $ hookmyapp config unset env               # revert to default (production)
+  $ hookmyapp config set telemetry on        # re-enable crash reporting
+  $ hookmyapp config get telemetry           # print persisted telemetry setting
 `,
   );
 
