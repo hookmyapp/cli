@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, test, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { Command } from 'commander';
 
 vi.mock('../../../api/client.js', () => ({
   apiClient: vi.fn(),
@@ -6,8 +7,15 @@ vi.mock('../../../api/client.js', () => ({
 vi.mock('../../_helpers.js', () => ({
   getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0001'),
 }));
+// Mock isJsonMode so we can toggle the --json branch without commander
+// gymnastics — mirrors the pattern in src/commands/__tests__/env.test.ts.
+vi.mock('../../../output/format.js', async (orig) => ({
+  ...(await orig<object>()),
+  isJsonMode: vi.fn(() => false),
+}));
 
 import { apiClient } from '../../../api/client.js';
+import { isJsonMode } from '../../../output/format.js';
 import { runSandboxEnv, buildEnvBlock } from '../env.js';
 import type {
   WhatsAppSandboxSession,
@@ -107,6 +115,44 @@ describe('runSandboxEnv — happy path', () => {
     const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await runSandboxEnv({});
     expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining('INSTAGRAM_API_URL='));
+    writeSpy.mockRestore();
+  });
+});
+
+describe('runSandboxEnv --json — flat {KEY: VALUE} object', () => {
+  beforeEach(() => {
+    process.env.HOOKMYAPP_SANDBOX_PROXY_URL = 'https://proxy.test';
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(isJsonMode).mockReset();
+  });
+  afterEach(() => {
+    delete process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
+  });
+
+  test('When --json (via threaded Command), then output parses as a flat object with the IG keys including PORT', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([ig]);
+    vi.mocked(isJsonMode).mockReturnValue(true);
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runSandboxEnv({}, {} as Command);
+    const parsed = JSON.parse((writeSpy.mock.calls[0][0] as string).trim());
+    expect(parsed).toEqual({
+      VERIFY_TOKEN: 'HMAC_ig_yyy',
+      PORT: '3000',
+      INSTAGRAM_API_URL: 'https://proxy.test/v25.0',
+      INSTAGRAM_ACCESS_TOKEN: 'ACT_ig_xxx',
+      INSTAGRAM_ACCOUNT_ID: '17841478719287768',
+    });
+    writeSpy.mockRestore();
+  });
+
+  test('When human mode, then output is dotenv text and JSON.parse throws', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([wa]);
+    vi.mocked(isJsonMode).mockReturnValue(false);
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runSandboxEnv({});
+    const out = writeSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(out).toContain('WHATSAPP_API_URL=');
+    expect(() => JSON.parse(out)).toThrow();
     writeSpy.mockRestore();
   });
 });
