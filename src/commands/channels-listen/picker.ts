@@ -86,12 +86,12 @@ function renderRow(c: Channel): string {
   if (c.type === 'whatsapp') {
     const name = c.wabaName ?? '(no name)';
     const phone = c.displayPhoneNumber ?? 'no phone';
-    return `${c.id} (${name} — ${phone})`;
+    return `${c.id} (${name}, ${phone})`;
   }
   if (c.type === 'instagram') {
     const handle = c.instagramUsername ? `@${c.instagramUsername}` : '(no handle)';
     const name = c.instagramName ?? '';
-    return `${c.id} (${handle}${name ? ` — ${name}` : ''})`;
+    return `${c.id} (${handle}${name ? `, ${name}` : ''})`;
   }
   return `${c.id} (Messenger)`;
 }

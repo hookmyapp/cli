@@ -449,11 +449,11 @@ export async function runBootstrapCodeExchange(
     (prior.email !== data.user.email || prior.workspaceSlug !== data.workspace.name)
   ) {
     console.log(
-      `${c.success(icon.success)} Replaced previous session (was: ${prior.email} — workspace "${prior.workspaceSlug}")`,
+      `${c.success(icon.success)} Replaced previous session (was: ${prior.email}, workspace "${prior.workspaceSlug}")`,
     );
   }
   console.log(
-    `${c.success(icon.success)} Logged in as ${data.user.email} — workspace "${data.workspace.name}"`,
+    `${c.success(icon.success)} Logged in as ${data.user.email}, workspace "${data.workspace.name}"`,
   );
 
   await runWizard({ phone: opts.phone, next: opts.next, json: opts.json });

@@ -245,7 +245,7 @@ describe('hookmyapp login --code', () => {
     // Identity echo present in stdout.
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).toMatch(
-      /Logged in as info@ordvir\.com — workspace "Or's Workspace"/,
+      /Logged in as info@ordvir\.com, workspace "Or's Workspace"/,
     );
 
     // runWizard was invoked — the /workspaces apiClient mock confirms it.
@@ -322,10 +322,10 @@ describe('hookmyapp login --code', () => {
 
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).toMatch(
-      /Replaced previous session \(was: old@other\.com — workspace "Old Workspace"\)/,
+      /Replaced previous session \(was: old@other\.com, workspace "Old Workspace"\)/,
     );
     expect(out).toMatch(
-      /Logged in as info@ordvir\.com — workspace "Or's Workspace"/,
+      /Logged in as info@ordvir\.com, workspace "Or's Workspace"/,
     );
     // "was:" MUST appear before the "Logged in as" line.
     const wasIdx = out.search(/Replaced previous session/);
@@ -487,7 +487,7 @@ describe('hookmyapp login --code', () => {
     });
   });
 
-  test('identity echo line format: ✓ Logged in as <email> — workspace "<name>" (exact em-dash, exact quote chars)', async () => {
+  test('identity echo line format: ✓ Logged in as <email>, workspace "<name>" (exact separator, exact quote chars)', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -504,10 +504,10 @@ describe('hookmyapp login --code', () => {
     await mod.runBootstrapCodeExchange('hma_boot_abc', { next: 'exit' });
     const out = logSpy.mock.calls.flat().join('\n');
     // Regex pins the exact contract: leading checkmark (may be color-wrapped),
-    // literal "Logged in as", email, space, em-dash (U+2014), space,
-    // workspace name in double quotes.
+    // literal "Logged in as", email, comma, space, workspace name in
+    // double quotes. House style bans em-dashes in user-facing copy.
     expect(out).toMatch(
-      /\u2713.*Logged in as info@ordvir\.com \u2014 workspace "Or's Workspace"/,
+      /\u2713.*Logged in as info@ordvir\.com, workspace "Or's Workspace"/,
     );
     logSpy.mockRestore();
   });
