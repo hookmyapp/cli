@@ -153,6 +153,29 @@ export function getEffectiveWorkosClientId(): string {
 }
 
 /**
+ * API base URL for the bootstrap-code exchange (`login --code`). A bootstrap
+ * code is minted for ONE specific backend, so a persisted `config.json` env
+ * (the user's "default backend" preference) must never silently redirect a
+ * pasted code to the wrong `/auth/bootstrap/exchange`. We therefore skip
+ * `getPersistedEnv()` here and honor only an EXPLICIT override — the surgical
+ * `HOOKMYAPP_API_URL`, or `HOOKMYAPP_ENV` (set by the `--env` flag handler) —
+ * otherwise force production. This is what lets the customer-facing
+ * `hookmyapp login --code …` instruction omit `--env` and still always reach
+ * production, even on a machine where `config set env staging` was once run.
+ */
+export function getBootstrapApiUrl(): string {
+  if (process.env.HOOKMYAPP_API_URL) return process.env.HOOKMYAPP_API_URL;
+  const candidate = process.env.HOOKMYAPP_ENV ?? DEFAULT_ENV;
+  if (!isValidEnv(candidate)) {
+    throw new ConfigurationError(
+      `Invalid env "${candidate}". Valid values: ${VALID_ENV_NAMES.join(', ')}.`,
+      'INVALID_ENV',
+    );
+  }
+  return ENV_PROFILES[candidate].apiUrl;
+}
+
+/**
  * Sandbox WhatsApp destination number (digits-only, no '+') the CLI shows in
  * `sandbox start` output for the bind-code WhatsApp deep link. Per-env: each
  * env runs an isolated sandbox WABA under its own Meta App, so the number
