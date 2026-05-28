@@ -25,11 +25,12 @@ const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
 
 const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-import { apiClient } from '../api/client.js';
+import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { output } from '../output/format.js';
 
 const mockedApiClient = vi.mocked(apiClient);
 const mockedOutput = vi.mocked(output);
+const mockedForceTokenRefresh = vi.mocked(forceTokenRefresh);
 
 // Phase 117 — every id fixture below is a publicId (ws_/ch_/ssn_/mem_/inv_ prefix, 8-char
 // alphanumeric body). Raw UUIDs are rejected with a typed ValidationError at every
@@ -222,8 +223,19 @@ describe('workspace commands', () => {
   });
 
   describe('workspace new', () => {
+    // The create endpoint returns the raw Prisma row: `id` is the raw DB UUID,
+    // `publicId` is the ws_ handle. The CLI must persist/emit the publicId, never
+    // the raw UUID (which writeWorkspaceConfig rejects → the exit-2 break).
+    const created = {
+      id: 'a79634d0-7d8b-435c-8d49-9e5a524645ae',
+      publicId: 'ws_TEST0004',
+      name: 'New WS',
+      workosOrganizationId: 'org_NEW0001',
+      createdAt: '2026-04-01',
+      updatedAt: '2026-04-01',
+    };
+
     it('creates workspace and auto-switches to it (human mode)', async () => {
-      const created = { id: 'ws_TEST0004', name: 'New WS', createdAt: '2026-04-01', updatedAt: '2026-04-01' };
       mockedApiClient.mockResolvedValue(created);
 
       const program = new Command();
@@ -239,8 +251,7 @@ describe('workspace commands', () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('New WS'));
     });
 
-    it('outputs JSON under --json', async () => {
-      const created = { id: 'ws_TEST0004', name: 'New WS', createdAt: '2026-04-01', updatedAt: '2026-04-01' };
+    it('outputs a clean public DTO under --json (no raw UUID)', async () => {
       mockedApiClient.mockResolvedValue(created);
 
       const program = new Command();
@@ -249,8 +260,11 @@ describe('workspace commands', () => {
       registerWorkspaceCommand(program);
       await program.parseAsync(['workspace', 'new', 'New WS', '--json'], { from: 'user' });
 
-      // With --json flipped on, output should be called with human:false.
-      expect(mockedOutput).toHaveBeenCalledWith(created, { human: false });
+      // publicId-as-id, name only — never the raw `id` UUID or workosOrganizationId.
+      expect(mockedOutput).toHaveBeenCalledWith(
+        { id: 'ws_TEST0004', name: 'New WS' },
+        { human: false },
+      );
     });
   });
 
@@ -360,6 +374,42 @@ describe('workspace commands', () => {
         }
       }
     });
+
+    it('outputs a clean public DTO under --json (no raw UUID)', async () => {
+      // PATCH returns the raw row (raw UUID `id` + workosOrganizationId).
+      mockedApiClient.mockResolvedValue({
+        id: 'a79634d0-7d8b-435c-8d49-9e5a524645ae',
+        publicId: 'ws_TEST0001',
+        name: 'Renamed WS',
+        workosOrganizationId: 'org_01ALPHA',
+      });
+
+      const fs = await import('node:fs');
+      const pathMod = await import('node:path');
+      const os = await import('node:os');
+      const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? pathMod.join(os.homedir(), '.hookmyapp'));
+      const configPath = pathMod.join(configDir, 'config.json');
+      fs.mkdirSync(configDir, { recursive: true });
+      let originalConfig: string | null = null;
+      try { originalConfig = fs.readFileSync(configPath, 'utf-8'); } catch { /* noop */ }
+      fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'ws_TEST0001' }));
+
+      try {
+        const program = new Command();
+        program.option('--json');
+        registerWorkspaceCommand(program);
+        await program.parseAsync(['workspace', 'rename', 'Renamed WS', '--json'], { from: 'user' });
+
+        expect(mockedOutput).toHaveBeenCalledWith(
+          { id: 'ws_TEST0001', name: 'Renamed WS' },
+          { human: false },
+        );
+      } finally {
+        if (originalConfig !== null) {
+          fs.writeFileSync(configPath, originalConfig);
+        }
+      }
+    });
   });
 
   describe('workspace use with name', () => {
@@ -385,6 +435,39 @@ describe('workspace commands', () => {
         // Verify config was written
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         expect(config.activeWorkspaceId).toBe('ws_TEST0001');
+      } finally {
+        if (originalConfig !== null) {
+          fs.writeFileSync(configPath, originalConfig);
+        }
+      }
+    });
+
+    it('re-scopes the token to the target org and emits a clean DTO under --json', async () => {
+      mockedForceTokenRefresh.mockClear();
+      mockedApiClient.mockResolvedValue(fakeWorkspaces);
+
+      const fs = await import('node:fs');
+      const pathMod = await import('node:path');
+      const os = await import('node:os');
+      const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? pathMod.join(os.homedir(), '.hookmyapp'));
+      const configPath = pathMod.join(configDir, 'config.json');
+      fs.mkdirSync(configDir, { recursive: true });
+      let originalConfig: string | null = null;
+      try { originalConfig = fs.readFileSync(configPath, 'utf-8'); } catch { /* noop */ }
+
+      try {
+        const program = new Command();
+        program.option('--json');
+        registerWorkspaceCommand(program);
+        await program.parseAsync(['workspace', 'use', 'Alpha Workspace', '--json'], { from: 'user' });
+
+        // Token re-scoped to the resolved workspace's WorkOS org before the
+        // switch is persisted (the list DTO carries workosOrganizationId).
+        expect(mockedForceTokenRefresh).toHaveBeenCalledWith('org_01ALPHA');
+        expect(mockedOutput).toHaveBeenCalledWith(
+          { id: 'ws_TEST0001', name: 'Alpha Workspace' },
+          { human: false },
+        );
       } finally {
         if (originalConfig !== null) {
           fs.writeFileSync(configPath, originalConfig);
@@ -441,8 +524,8 @@ describe('workspace commands', () => {
 
 const fakeMembersResponse = {
   members: [
-    { id: 'mem_TEST001', userId: 'usr_TEST001', workspaceId: 'ws_TEST0001', role: 'owner', user: { id: 'usr_TEST001', email: 'owner@co.com', firstName: 'Owner', lastName: 'User' } },
-    { id: 'mem_TEST002', userId: 'usr_TEST002', workspaceId: 'ws_TEST0001', role: 'member', user: { id: 'usr_TEST002', email: 'member@co.com', firstName: 'Member', lastName: null } },
+    { id: 'mem_TEST001', role: 'owner', email: 'owner@co.com', firstName: 'Owner', lastName: 'User', joinedAt: 1735689600000, cliLastSeenAt: null },
+    { id: 'mem_TEST002', role: 'member', email: 'member@co.com', firstName: 'Member', lastName: null, joinedAt: 1735689600000, cliLastSeenAt: null },
   ],
   invites: [
     { id: 'inv_TEST001', email: 'pending@co.com', role: 'admin', workspaceId: 'ws_TEST0001', invitedBy: 'usr_TEST001', createdAt: '2026-01-01' },
