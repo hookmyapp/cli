@@ -37,6 +37,7 @@ function makeChannel(
     wabaName: 'Test WABA',
     displayPhoneNumber: '+1 (555) 111-1111',
     phoneNumberId: null,
+    phoneVerifiedName: null,
     qualityRating: null,
     ...overrides,
   };

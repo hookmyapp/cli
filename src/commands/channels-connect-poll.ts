@@ -52,21 +52,13 @@ export async function pollForNewChannels(
     for (const dto of dtos) {
       const ch = parseChannelListItem(dto);
       if (seen.has(ch.id)) continue;
-      // Phase A cleanup: `updatedAt` was dropped from the typed Channel shape
-      // but the backend may still emit it on the raw wire payload. Read it
-      // directly from the DTO so re-auth (b) detection keeps working when
-      // present, and degrades to id-diff-only (a) when absent.
-      const rawUpdatedAt =
-        typeof dto === 'object' && dto !== null && typeof (dto as Record<string, unknown>).updatedAt === 'string'
-          ? ((dto as Record<string, unknown>).updatedAt as string)
-          : undefined;
       const snapUpdatedAt = snapshot.get(ch.id);
       const isNew = !snapshot.has(ch.id);
       const isUpdated =
         snapshot.has(ch.id) &&
-        typeof rawUpdatedAt === 'string' &&
+        typeof ch.updatedAt === 'string' &&
         typeof snapUpdatedAt === 'string' &&
-        rawUpdatedAt > snapUpdatedAt;
+        ch.updatedAt > snapUpdatedAt;
       if (isNew || isUpdated) {
         seen.set(ch.id, ch);
         lastChangeAt = Date.now();
