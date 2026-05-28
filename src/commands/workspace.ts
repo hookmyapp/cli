@@ -69,7 +69,7 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
   safeWriteFileSync(getConfigFile(), JSON.stringify(merged, null, 2) + '\n');
 }
 
-export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; name: string; role: string }> {
+export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; name: string; role: string; workosOrganizationId: string }> {
   // Phase 117: raw UUID input is not an accepted shape. A `ws_` publicId,
   // a workspace name, or a WorkOS organizationId (slug) are the three
   // accepted identifier shapes — matching what the backend now surfaces
@@ -116,7 +116,7 @@ function validateAssignableRole(role: string): void {
 
 export async function resolveMemberByEmail(workspaceId: string, email: string): Promise<any> {
   const data = await apiClient(`/workspaces/${workspaceId}/members`);
-  const member = data.members.find((m: any) => m.user.email.toLowerCase() === email.toLowerCase());
+  const member = data.members.find((m: any) => m.email.toLowerCase() === email.toLowerCase());
   if (!member) {
     throw new ValidationError(`member "${email}" not found in workspace`);
   }
@@ -175,8 +175,12 @@ export function registerWorkspaceCommand(program: Command): void {
         method: 'POST',
         body: JSON.stringify({ name }),
       });
+      // Persist the ws_ publicId, never the raw DB UUID (`result.id`). The
+      // create endpoint returns the raw row whose `id` is the UUID;
+      // writeWorkspaceConfig rejects a non-publicId, which previously broke
+      // `workspace new` with exit 2.
       writeWorkspaceConfig({
-        activeWorkspaceId: result.id,
+        activeWorkspaceId: result.publicId,
         activeWorkspaceSlug: result.name,
       });
       // Refresh JWT so it's scoped to the newly-created workspace's WorkOS org;
@@ -188,7 +192,7 @@ export function registerWorkspaceCommand(program: Command): void {
       if (!program.opts().json) {
         console.log(`Created workspace "${result.name}" and switched to it`);
       } else {
-        output(result, { human: !program.opts().json });
+        output({ id: result.publicId, name: result.name }, { human: false });
       }
     });
 
@@ -228,7 +232,9 @@ export function registerWorkspaceCommand(program: Command): void {
       if (!program.opts().json) {
         console.log(`Renamed workspace to "${result.name}"`);
       } else {
-        output(result, { human: !program.opts().json });
+        // Emit a clean public DTO; the PATCH endpoint returns the raw row
+        // (raw UUID `id` + workosOrganizationId) which must never reach stdout.
+        output({ id: result.publicId, name: result.name }, { human: false });
       }
     });
 
@@ -257,12 +263,19 @@ export function registerWorkspaceCommand(program: Command): void {
         });
         workspace = workspaces.find((w) => w.id === chosenId)!;
       }
+      // Re-scope the token to the target org BEFORE persisting the switch, so
+      // a failed refresh never leaves config pointing at a workspace the token
+      // isn't valid for (previously config was written first → poisoned state).
+      await forceTokenRefresh(workspace.workosOrganizationId);
       writeWorkspaceConfig({
         activeWorkspaceId: workspace.id,
         activeWorkspaceSlug: workspace.name,
       });
-      await forceTokenRefresh(workspace.workosOrganizationId);
-      console.log(`Active workspace: ${workspace.name} (${workspace.id})`);
+      if (program.opts().json) {
+        output({ id: workspace.id, name: workspace.name }, { human: false });
+      } else {
+        console.log(`Active workspace: ${workspace.name} (${workspace.id})`);
+      }
     });
 
   // --- Members subcommand group ---
@@ -276,8 +289,8 @@ export function registerWorkspaceCommand(program: Command): void {
       const data = await apiClient(`/workspaces/${workspaceId}/members`);
       const rows = [
         ...data.members.map((m: any) => ({
-          email: m.user.email,
-          name: `${m.user.firstName ?? ''} ${m.user.lastName ?? ''}`.trim() || '-',
+          email: m.email,
+          name: `${m.firstName ?? ''} ${m.lastName ?? ''}`.trim() || '-',
           role: m.role,
           status: 'active',
         })),
