@@ -127,6 +127,19 @@ describe('billing commands', () => {
     });
   });
 
+  describe('billingStatus human — free tier', () => {
+    it('renders interval/renews as "n/a" (not an em-dash) when the subscription has no billing fields', async () => {
+      mockSubAndUsage(freeSub, { totalMessages: 10, limit: 50, percentage: 20 });
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('interval: n/a');
+      expect(logged).toContain('renews: n/a');
+      expect(logged).not.toContain('—');
+    });
+  });
+
   describe('billingStatus cancel warning', () => {
     it('prints cancel warning when cancelAtPeriodEnd is true', async () => {
       mockSubAndUsage({ ...activeSub, cancelAtPeriodEnd: true }, {
