@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, Option } from 'commander';
 import { loginCommand } from './auth/login.js';
 import { logoutCommand } from './auth/logout.js';
 import { registerChannelsCommand } from './commands/channels.js';
@@ -49,9 +49,14 @@ program.option(
   '--workspace <slug>',
   'Override default workspace for this invocation (name, slug, or id)',
 );
-program.option(
-  '--env <name>',
-  `Environment profile (one-off override). One of: ${VALID_ENV_NAMES.join(', ')}.`,
+// Hidden from --help: `--env` selects an internal HookMyApp backend
+// (staging/local). Customers always run against production (the default) and
+// never need this flag; it stays functional for our internal testing.
+program.addOption(
+  new Option(
+    '--env <name>',
+    `Environment profile (internal override). One of: ${VALID_ENV_NAMES.join(', ')}.`,
+  ).hideHelp(),
 );
 
 // Phase 125 — capture the command + subcommand resolved by Commander into
