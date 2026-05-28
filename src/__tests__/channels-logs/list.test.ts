@@ -23,20 +23,26 @@ function listItem(id: string) {
   return {
     id,
     receivedAt: new Date().toISOString(),
+    metaMessageId: null,
     fromPhone: '+14155550100',
+    senderId: '14155550100',
+    senderDisplay: '+14155550100',
     routingDecision: 'forwarded',
-    attemptsCount: 1,
     humanStatus: 'Delivered',
     humanStatusCopy: 'Delivered to your app',
+    humanStatusTooltip: null,
     humanStatusColor: 'green',
-    latestAttempt: { outcome: 'delivered', forwardStatus: 200, attemptedAt: new Date().toISOString() },
+    outcome: 'delivered',
+    forwardStatus: 200,
+    attemptedAt: new Date().toISOString(),
   };
 }
 
 /**
- * DeliveryDetail factory mirroring the wire shape for /deliveries/:id.
- * Default-mode and --json mode both fetch detail per row (N+1) post-B11, so
- * tests that exercise either need to mock the detail response too.
+ * DeliveryDetail factory mirroring the flat wire shape for /deliveries/:id
+ * (row-per-request: one forward per row, no nested attempts[]). Default-mode
+ * and --json mode both fetch detail per row (N+1) post-B11, so tests that
+ * exercise either need to mock the detail response too.
  */
 function detailItem(id: string) {
   return {
@@ -57,31 +63,26 @@ function detailItem(id: string) {
     isSandbox: false,
     requestId: 'req1',
     fromPhone: '+14155550100',
-    senderDisplay: '+14155550100',
     senderId: '14155550100',
+    senderDisplay: '+14155550100',
     receivedAt: new Date().toISOString(),
     humanStatus: 'Delivered',
     humanStatusCopy: 'Delivered to your app',
     humanStatusTooltip: null,
     humanStatusColor: 'green',
-    attempts: [
-      {
-        id: 'a1',
-        attemptNumber: 1,
-        forwardUrl: 'https://customer.app/webhook',
-        forwardRequestHeaders: null,
-        forwardRequestBody: null,
-        forwardStatus: 200,
-        forwardDurationMs: 100,
-        forwardResponseHeaders: null,
-        forwardResponseBody: null,
-        forwardResponseBodySha256: null,
-        forwardResponseBodyTruncated: false,
-        outcome: 'delivered',
-        outcomeReason: null,
-        attemptedAt: new Date().toISOString(),
-      },
-    ],
+    outcome: 'delivered',
+    outcomeReason: null,
+    forwardUrl: 'https://customer.app/webhook',
+    forwardRequestHeaders: null,
+    forwardRequestBody: null,
+    forwardStatus: 200,
+    forwardDurationMs: 100,
+    forwardResponseHeaders: null,
+    forwardResponseBody: null,
+    forwardResponseBodySha256: null,
+    forwardResponseBodyTruncated: false,
+    attemptedAt: new Date().toISOString(),
+    relatedDeliveries: [],
   };
 }
 
@@ -151,14 +152,26 @@ describe('channels logs list', () => {
       isSandbox: false,
       requestId: 'req1',
       fromPhone: '+14155550100',
-      senderDisplay: '+14155550100',
       senderId: '14155550100',
+      senderDisplay: '+14155550100',
       receivedAt: '2026-05-20T11:58:00.000Z',
       humanStatus: 'Delivered',
       humanStatusCopy: 'Delivered to your app',
       humanStatusTooltip: 'shown on hover (GUI)',
       humanStatusColor: 'green',
-      attempts: [],
+      outcome: 'delivered',
+      outcomeReason: null,
+      forwardUrl: 'https://customer.app/webhook',
+      forwardRequestHeaders: null,
+      forwardRequestBody: null,
+      forwardStatus: 200,
+      forwardDurationMs: 100,
+      forwardResponseHeaders: null,
+      forwardResponseBody: null,
+      forwardResponseBodySha256: null,
+      forwardResponseBodyTruncated: false,
+      attemptedAt: '2026-05-20T11:58:01.000Z',
+      relatedDeliveries: [],
     };
     mocks.apiClient
       .mockResolvedValueOnce({

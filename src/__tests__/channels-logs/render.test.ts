@@ -1,85 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { relativeTime, toListRows } from '../../commands/channels-logs/render.js';
-import type { DeliveryListItem } from '../../commands/channels-logs/api.js';
-
-const NOW = new Date('2026-05-20T12:00:00.000Z');
-
-function item(over: Partial<DeliveryListItem>): DeliveryListItem {
-  return {
-    id: 'd1',
-    receivedAt: '2026-05-20T11:58:00.000Z',
-    fromPhone: '+14155550100',
-    routingDecision: 'forwarded',
-    attemptsCount: 1,
-    humanStatus: 'Delivered',
-    humanStatusCopy: 'Delivered to your app',
-    humanStatusColor: 'green',
-    latestAttempt: { outcome: 'delivered', forwardStatus: 200, attemptedAt: '2026-05-20T11:58:01.000Z' },
-    ...over,
-  };
-}
-
-describe('relativeTime', () => {
-  it('renders sub-minute deltas as "just now"', () => {
-    expect(relativeTime('2026-05-20T11:59:30.000Z', NOW)).toBe('just now');
-  });
-
-  it('renders minute, hour and day buckets', () => {
-    expect(relativeTime('2026-05-20T11:45:00.000Z', NOW)).toBe('15m ago');
-    expect(relativeTime('2026-05-20T09:00:00.000Z', NOW)).toBe('3h ago');
-    expect(relativeTime('2026-05-18T12:00:00.000Z', NOW)).toBe('2d ago');
-  });
-
-  it('renders exactly 60 seconds as the first minute bucket, not "just now"', () => {
-    expect(relativeTime('2026-05-20T11:59:00.000Z', NOW)).toBe('1m ago');
-  });
-});
-
-describe('toListRows', () => {
-  it('projects delivery items into flat table rows', () => {
-    const rows = toListRows([item({ id: 'abc' })], NOW);
-    expect(rows[0]).toEqual({
-      ID: 'abc',
-      Received: '2m ago',
-      Status: 'Delivered',
-      From: '+14155550100',
-      Forwarded: 200,
-      Attempts: 1,
-    });
-  });
-
-  it('falls back to a dash for a missing phone or forward status', () => {
-    const rows = toListRows(
-      [item({ fromPhone: null, latestAttempt: null, attemptsCount: 0 })],
-      NOW,
-    );
-    expect(rows[0].From).toBe('-');
-    expect(rows[0].Forwarded).toBe('-');
-  });
-});
-
-import { renderDeliveryDetail } from '../../commands/channels-logs/render.js';
-import type { DeliveryDetail, DeliveryAttempt } from '../../commands/channels-logs/api.js';
-
-function attempt(over: Partial<DeliveryAttempt> = {}): DeliveryAttempt {
-  return {
-    id: 'a1',
-    attemptNumber: 1,
-    forwardUrl: 'https://customer.app/webhook',
-    forwardRequestHeaders: { 'content-type': 'application/json' },
-    forwardRequestBody: '{"hello":"world"}',
-    forwardStatus: 500,
-    forwardDurationMs: 842,
-    forwardResponseHeaders: { 'x-trace': 'abc' },
-    forwardResponseBody: 'internal error',
-    forwardResponseBodySha256: 'sha',
-    forwardResponseBodyTruncated: false,
-    outcome: 'rejected',
-    outcomeReason: null,
-    attemptedAt: '2026-05-20T11:58:01.000Z',
-    ...over,
-  };
-}
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+  renderDeliveryDetail,
+  printSummaryRow,
+} from '../../commands/channels-logs/render.js';
+import type { DeliveryDetail } from '../../commands/channels-logs/api.js';
 
 function detail(over: Partial<DeliveryDetail> = {}): DeliveryDetail {
   return {
@@ -100,17 +24,69 @@ function detail(over: Partial<DeliveryDetail> = {}): DeliveryDetail {
     isSandbox: false,
     requestId: 'req1',
     fromPhone: '+14155550100',
-    senderDisplay: null,
-    senderId: null,
+    senderId: '14155550100',
+    senderDisplay: '+14155550100',
     receivedAt: '2026-05-20T11:58:00.000Z',
     humanStatus: 'Rejected',
     humanStatusCopy: "Your app got this, but couldn't process it",
     humanStatusTooltip: null,
     humanStatusColor: 'red',
-    attempts: [attempt()],
+    outcome: 'rejected',
+    outcomeReason: null,
+    forwardUrl: 'https://customer.app/webhook',
+    forwardRequestHeaders: { 'content-type': 'application/json' },
+    forwardRequestBody: '{"hello":"world"}',
+    forwardStatus: 500,
+    forwardDurationMs: 842,
+    forwardResponseHeaders: { 'x-trace': 'abc' },
+    forwardResponseBody: 'internal error',
+    forwardResponseBodySha256: 'sha',
+    forwardResponseBodyTruncated: false,
+    attemptedAt: '2026-05-20T11:58:01.000Z',
+    relatedDeliveries: [],
     ...over,
   };
 }
+
+describe('printSummaryRow', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('renders a one-line summary from the flat forward fields', () => {
+    const writes: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+
+    printSummaryRow(detail({ forwardStatus: 200, forwardDurationMs: 100 }));
+
+    const line = writes.join('');
+    expect(line).toContain('customer.app');
+    expect(line).toContain('200');
+    expect(line).toContain('(100ms)');
+  });
+
+  it('does not crash and falls back to outcome when no forward was made', () => {
+    const writes: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+
+    printSummaryRow(
+      detail({
+        forwardUrl: null,
+        forwardStatus: null,
+        forwardDurationMs: null,
+        outcome: 'skipped',
+      }),
+    );
+
+    const line = writes.join('');
+    expect(line).toContain('(no forward URL set)');
+    expect(line).toContain('skipped');
+  });
+});
 
 describe('renderDeliveryDetail', () => {
   it('renders the three sections for a forwarded delivery', () => {
@@ -122,22 +98,23 @@ describe('renderDeliveryDetail', () => {
     expect(out).toContain('  500 (842ms)');
   });
 
-  it('renders one block pair per attempt for a multi-attempt delivery', () => {
+  it('shows the no-destination note when no forward URL was set', () => {
     const out = renderDeliveryDetail(
-      detail({ attempts: [attempt({ attemptNumber: 1 }), attempt({ attemptNumber: 2 })] }),
+      detail({ forwardUrl: null, forwardStatus: null, attemptedAt: null, outcome: 'skipped' }),
     );
-    expect(out.match(/We sent it to your app/g)).toHaveLength(2);
-  });
-
-  it('shows the no-destination note when a delivery has zero attempts', () => {
-    const out = renderDeliveryDetail(detail({ attempts: [] }));
     expect(out).toContain('No destination was configured');
     expect(out).not.toContain('We sent it to your app');
   });
 
   it('treats a real-channel no_webhook_config delivery as no-destination', () => {
     const out = renderDeliveryDetail(
-      detail({ routingDecision: 'no_webhook_config', attempts: [] }),
+      detail({
+        routingDecision: 'no_webhook_config',
+        forwardUrl: null,
+        forwardStatus: null,
+        attemptedAt: null,
+        outcome: 'skipped',
+      }),
     );
     expect(out).toContain('No destination was configured');
   });

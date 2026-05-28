@@ -46,18 +46,13 @@ describe('runSandboxLogs — default is table-by-default (D9)', () => {
         receivedAt: '2026-05-26T14:30:01Z',
         humanStatus: 'delivered',
         humanStatusCopy: 'Delivered to your webhook',
-        attempts: [
-          {
-            id: 'a1', attemptNumber: 1,
-            forwardUrl: 'https://n8n.example/webhook',
-            forwardRequestBody: '',
-            forwardStatus: 200,
-            forwardDurationMs: 150,
-            forwardResponseBody: null,
-            outcome: 'success',
-            attemptedAt: '2026-05-26T14:30:01.150Z',
-          },
-        ],
+        outcome: 'delivered',
+        forwardUrl: 'https://n8n.example/webhook',
+        forwardRequestBody: '',
+        forwardStatus: 200,
+        forwardDurationMs: 150,
+        forwardResponseBody: null,
+        attemptedAt: '2026-05-26T14:30:01.150Z',
       })
       .mockResolvedValueOnce({
         id: 'wph_002',
@@ -69,18 +64,13 @@ describe('runSandboxLogs — default is table-by-default (D9)', () => {
         receivedAt: '2026-05-26T14:32:15Z',
         humanStatus: 'failed',
         humanStatusCopy: 'Webhook timed out',
-        attempts: [
-          {
-            id: 'a2', attemptNumber: 1,
-            forwardUrl: 'https://n8n.example/webhook',
-            forwardRequestBody: '',
-            forwardStatus: null,
-            forwardDurationMs: null,
-            forwardResponseBody: null,
-            outcome: 'timeout',
-            attemptedAt: '2026-05-26T14:32:15.500Z',
-          },
-        ],
+        outcome: 'no_response',
+        forwardUrl: 'https://n8n.example/webhook',
+        forwardRequestBody: '',
+        forwardStatus: null,
+        forwardDurationMs: null,
+        forwardResponseBody: null,
+        attemptedAt: '2026-05-26T14:32:15.500Z',
       });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -96,7 +86,7 @@ describe('runSandboxLogs — default is table-by-default (D9)', () => {
     expect(combined).toContain('n8n.example');
     expect(combined).toContain('200');
     expect(combined).toContain('150ms');
-    expect(combined).toContain('timeout');
+    expect(combined).toContain('no_response');
     outSpy.mockRestore();
     logSpy.mockRestore();
   });

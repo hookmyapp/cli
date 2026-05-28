@@ -38,20 +38,19 @@ import { sessionIdentifier } from './helpers.js';
 interface DeliverySummary {
   id: string;
   receivedAt: string;
+  metaMessageId: string | null;
   fromPhone: string | null;
   senderId: string | null;
   senderDisplay: string | null;
   routingDecision: string;
-  attemptsCount: number;
   humanStatus: string;
   humanStatusCopy: string;
   humanStatusTooltip: string | null;
   humanStatusColor: 'green' | 'red' | 'gray';
-  latestAttempt: {
-    outcome: string;
-    forwardStatus: number | null;
-    attemptedAt: string;
-  } | null;
+  // Flat outcome columns (replaces the old nested latestAttempt sub-object).
+  outcome: string;
+  forwardStatus: number | null;
+  attemptedAt: string | null;
 }
 
 interface DeliveriesListResponse {
@@ -60,18 +59,9 @@ interface DeliveriesListResponse {
   floorHours: number;
 }
 
-interface DeliveryAttemptDetail {
-  id: string;
-  attemptNumber: number;
-  forwardUrl: string;
-  forwardRequestBody: string | null;
-  forwardStatus: number | null;
-  forwardDurationMs: number | null;
-  forwardResponseBody: string | null;
-  outcome: string;
-  attemptedAt: string;
-}
-
+// Row-per-request model: each row is exactly one forward, so the forward
+// fields are flat on the detail (no nested attempts[] array). `forwardUrl ===
+// null` means no destination was configured and no forward was attempted.
 interface DeliveryDetail {
   id: string;
   routingDecision: string;
@@ -84,7 +74,14 @@ interface DeliveryDetail {
   humanStatusCopy: string;
   humanStatusTooltip: string | null;
   humanStatusColor: 'green' | 'red' | 'gray';
-  attempts: DeliveryAttemptDetail[];
+  outcome: string;
+  outcomeReason: string | null;
+  forwardUrl: string | null;
+  forwardRequestBody: string | null;
+  forwardStatus: number | null;
+  forwardDurationMs: number | null;
+  forwardResponseBody: string | null;
+  attemptedAt: string | null;
 }
 
 // JSON-mode projection. humanStatusTooltip + humanStatusColor are GUI-only
@@ -219,38 +216,36 @@ export function printVerboseDelivery(detail: DeliveryDetail, sessionType: string
   console.log(formatBodyForTerminal(detail.inboundBody));
   console.log();
 
-  if (detail.attempts.length === 0) {
-    // Skipped or destination offline — no attempt made.
+  if (detail.forwardUrl === null) {
+    // No forward attempt — skipped (no destination) or destination offline.
     if (detail.routingDecision === 'skipped') {
       // Nothing additional needed for skipped; header already conveys it.
     } else {
       console.log(`  ${c.dim('(No forward attempt: destination wasn\'t reachable.)')}`);
     }
   } else {
-    // Render each attempt (usually just 1; show all for completeness).
-    for (const a of detail.attempts) {
-      const ok =
-        a.forwardStatus != null && a.forwardStatus >= 200 && a.forwardStatus < 300;
-      const isErr =
-        a.forwardStatus != null && (a.forwardStatus < 200 || a.forwardStatus >= 400);
-      const statusStr = `HTTP ${a.forwardStatus ?? 'n/a'} in ${a.forwardDurationMs ?? 'n/a'}ms`;
-      const coloredStatus = ok
-        ? c.success(statusStr)
-        : isErr
-          ? c.error(statusStr)
-          : statusStr;
+    // Row-per-request model: exactly one forward, rendered from flat fields.
+    const ok =
+      detail.forwardStatus != null && detail.forwardStatus >= 200 && detail.forwardStatus < 300;
+    const isErr =
+      detail.forwardStatus != null && (detail.forwardStatus < 200 || detail.forwardStatus >= 400);
+    const statusStr = `HTTP ${detail.forwardStatus ?? 'n/a'} in ${detail.forwardDurationMs ?? 'n/a'}ms`;
+    const coloredStatus = ok
+      ? c.success(statusStr)
+      : isErr
+        ? c.error(statusStr)
+        : statusStr;
 
-      console.log(`  We sent it to your app`);
-      console.log(`    ${pc.bold('POST')} ${a.forwardUrl}`);
-      console.log(`    Request body:`);
-      console.log(formatBodyForTerminal(a.forwardRequestBody));
-      console.log();
-      console.log(`  Your app responded`);
-      console.log(`    ${coloredStatus}`);
-      console.log(`    Response body:`);
-      console.log(formatBodyForTerminal(a.forwardResponseBody));
-      console.log();
-    }
+    console.log(`  We sent it to your app`);
+    console.log(`    ${pc.bold('POST')} ${detail.forwardUrl}`);
+    console.log(`    Request body:`);
+    console.log(formatBodyForTerminal(detail.forwardRequestBody));
+    console.log();
+    console.log(`  Your app responded`);
+    console.log(`    ${coloredStatus}`);
+    console.log(`    Response body:`);
+    console.log(formatBodyForTerminal(detail.forwardResponseBody));
+    console.log();
   }
 
   console.log(SEPARATOR);
@@ -272,24 +267,18 @@ export function printVerboseDelivery(detail: DeliveryDetail, sessionType: string
 function printSummaryDelivery(d: DeliveryDetail): void {
   const time = new Date(d.receivedAt).toLocaleString();
   const sender = d.senderDisplay ?? d.senderId ?? '(unknown)';
-  const lastAttempt = d.attempts[d.attempts.length - 1];
   const target = (() => {
-    if (!lastAttempt?.forwardUrl) return '(no forward URL set)';
+    if (!d.forwardUrl) return '(no forward URL set)';
     try {
-      return new URL(lastAttempt.forwardUrl).host;
+      return new URL(d.forwardUrl).host;
     } catch {
       return '(invalid forward URL)';
     }
   })();
-  const status =
-    lastAttempt === undefined
-      ? 'n/a'
-      : lastAttempt.forwardStatus !== null
-        ? `${lastAttempt.forwardStatus}`
-        : lastAttempt.outcome; // 'timeout' | 'network_error' | 'success' (latter ⇒ status was set)
+  const status = d.forwardStatus !== null ? `${d.forwardStatus}` : d.outcome;
   const latency =
-    lastAttempt?.forwardDurationMs !== null && lastAttempt?.forwardDurationMs !== undefined
-      ? `${lastAttempt.forwardDurationMs}ms`
+    d.forwardDurationMs !== null && d.forwardDurationMs !== undefined
+      ? `${d.forwardDurationMs}ms`
       : '';
   const preview = previewInbound(d.inboundBody);
   process.stdout.write(
