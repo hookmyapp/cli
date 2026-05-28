@@ -170,7 +170,7 @@ export async function runChannelListenFlow(
     intervalMs: 30_000,
     onError: (err) => {
       process.stderr.write(
-        `heartbeat: repeated failures (${err.message}) — tunnel may be reconciled\n`,
+        `heartbeat: repeated failures (${err.message}); tunnel may be reconciled\n`,
       );
     },
     onTerminal: ({ userMessage }) => {
@@ -223,7 +223,7 @@ export async function runChannelListenFlow(
       if (shuttingDown) return;
       process.stderr.write(
         `cloudflared exited unexpectedly (code=${code ?? 'null'}` +
-          `${signal ? `, signal=${signal}` : ''}) — shutting down listen.\n`,
+          `${signal ? `, signal=${signal}` : ''}); shutting down listen.\n`,
       );
       void runShutdown('signal').then(() => {
         process.exit(7);

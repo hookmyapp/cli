@@ -117,7 +117,7 @@ EXAMPLES:
         } else if (persisted) {
           console.log(persisted);
         } else {
-          console.log(`${active} (default — no value persisted)`);
+          console.log(`${active} (default, no value persisted)`);
         }
         return;
       }
@@ -131,7 +131,7 @@ EXAMPLES:
       } else if (persisted) {
         console.log(persisted);
       } else {
-        console.log(`${active} (default — no value persisted)`);
+        console.log(`${active} (default, no value persisted)`);
       }
     });
 

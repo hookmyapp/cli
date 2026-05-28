@@ -113,7 +113,7 @@ export async function runSandboxEnv(
   if (fs.existsSync(target) && !opts.force) {
     if (opts.json) {
       throw new ValidationError(
-        `${target} exists — pass --force to overwrite (or --write=<other-path>)`,
+        `${target} exists. Pass --force to overwrite (or --write=<other-path>)`,
       );
     }
     const ok = await confirm({

@@ -55,7 +55,7 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
   // "no UUID ever reaches disk or escapes to the backend."
   if (config.activeWorkspaceId && !isValidPublicId(config.activeWorkspaceId, 'ws')) {
     throw new ValidationError(
-      `activeWorkspaceId "${config.activeWorkspaceId}" is not a valid ws_ publicId. This is a bug — callers must pass the server-returned publicId.`,
+      `activeWorkspaceId "${config.activeWorkspaceId}" is not a valid ws_ publicId. This is a bug: callers must pass the server-returned publicId.`,
     );
   }
   // Merge with existing config so we never clobber env-profiles fields
@@ -77,7 +77,7 @@ export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; 
   // error instead of silently accepting it (would 400 at the backend).
   if (isLikelyUuid(nameOrId)) {
     throw new ValidationError(
-      `workspace identifier "${nameOrId}" is a raw UUID — Phase 117 CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
+      `workspace identifier "${nameOrId}" is a raw UUID. Phase 117 CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
     );
   }
 

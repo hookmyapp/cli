@@ -127,8 +127,8 @@ export async function runSandboxStart(opts: {
     console.log();
     console.log(
       isTty
-        ? c.dim('Cancelled. Your bind code is still valid — run `hookmyapp sandbox start` again to resume.')
-        : 'Cancelled. Your bind code is still valid — run `hookmyapp sandbox start` again to resume.',
+        ? c.dim('Cancelled. Your bind code is still valid. Run `hookmyapp sandbox start` again to resume.')
+        : 'Cancelled. Your bind code is still valid. Run `hookmyapp sandbox start` again to resume.',
     );
     process.exit(0);
   };
