@@ -47,20 +47,18 @@ function makeDelivery(overrides: Record<string, unknown> = {}) {
   return {
     id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
     receivedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5m ago
+    metaMessageId: null,
     fromPhone: '972545434384',
     senderId: '972545434384',
     senderDisplay: '972545434384',
     routingDecision: 'forwarded',
-    attemptsCount: 1,
     humanStatus: 'Delivered',
     humanStatusCopy: 'Delivered to your app',
     humanStatusTooltip: null,
     humanStatusColor: 'green' as const,
-    latestAttempt: {
-      outcome: 'delivered',
-      forwardStatus: 200,
-      attemptedAt: new Date().toISOString(),
-    },
+    outcome: 'delivered',
+    forwardStatus: 200,
+    attemptedAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -78,19 +76,14 @@ function makeDetail(overrides: Record<string, unknown> = {}) {
     humanStatusCopy: 'Delivered to your app',
     humanStatusTooltip: null,
     humanStatusColor: 'green' as const,
-    attempts: [
-      {
-        id: 'att_001',
-        attemptNumber: 1,
-        forwardUrl: 'https://my.example/hook',
-        forwardRequestBody: JSON.stringify({ object: 'whatsapp_business_account' }),
-        forwardStatus: 200,
-        forwardDurationMs: 142,
-        forwardResponseBody: JSON.stringify({ received: true }),
-        outcome: 'delivered',
-        attemptedAt: new Date().toISOString(),
-      },
-    ],
+    outcome: 'delivered',
+    outcomeReason: null,
+    forwardUrl: 'https://my.example/hook',
+    forwardRequestBody: JSON.stringify({ object: 'whatsapp_business_account' }),
+    forwardStatus: 200,
+    forwardDurationMs: 142,
+    forwardResponseBody: JSON.stringify({ received: true }),
+    attemptedAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -111,19 +104,14 @@ function makeIgDetail(overrides: Record<string, unknown> = {}) {
     humanStatusCopy: 'Delivered to your app',
     humanStatusTooltip: null,
     humanStatusColor: 'green' as const,
-    attempts: [
-      {
-        id: 'att_002',
-        attemptNumber: 1,
-        forwardUrl: 'https://my.example/hook',
-        forwardRequestBody: JSON.stringify({ object: 'instagram' }),
-        forwardStatus: 200,
-        forwardDurationMs: 55,
-        forwardResponseBody: JSON.stringify({ ok: true }),
-        outcome: 'delivered',
-        attemptedAt: new Date().toISOString(),
-      },
-    ],
+    outcome: 'delivered',
+    outcomeReason: null,
+    forwardUrl: 'https://my.example/hook',
+    forwardRequestBody: JSON.stringify({ object: 'instagram' }),
+    forwardStatus: 200,
+    forwardDurationMs: 55,
+    forwardResponseBody: JSON.stringify({ ok: true }),
+    attemptedAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -324,8 +312,8 @@ describe('runSandboxLogs — list mode (human)', () => {
   });
 
   it('renders "(No forward attempt: destination wasn\'t reachable.)" for zero-attempts delivery (--verbose)', async () => {
-    const summary = makeDelivery({ attemptsCount: 0, humanStatus: 'Not delivered', humanStatusColor: 'red', latestAttempt: null });
-    const detail = makeDetail({ attempts: [], humanStatus: 'Not delivered', humanStatusColor: 'red', routingDecision: 'forwarded' });
+    const summary = makeDelivery({ outcome: 'no_response', forwardStatus: null, attemptedAt: null, humanStatus: 'Not delivered', humanStatusColor: 'red' });
+    const detail = makeDetail({ forwardUrl: null, forwardStatus: null, forwardDurationMs: null, attemptedAt: null, outcome: 'no_response', humanStatus: 'Not delivered', humanStatusColor: 'red', routingDecision: 'forwarded' });
 
     vi.mocked(apiClient)
       .mockResolvedValueOnce([wa])
@@ -376,7 +364,7 @@ describe('runSandboxLogs — --json mode', () => {
     // Detail DTO fields are present (not just summary)
     expect(parsed.id).toBe(detail.id);
     expect(parsed.inboundBody).toBeDefined();
-    expect(parsed.attempts).toBeDefined();
+    expect(parsed.forwardUrl).toBeDefined();
     // No ANSI codes in JSON output
     expect(lines[0]).not.toMatch(/\x1b\[/);
     writeSpy.mockRestore();
@@ -482,7 +470,7 @@ describe('printVerboseDelivery — status colorization and provider noun', () =>
   });
 
   it('renders no-attempt message when attempts is empty and routingDecision is forwarded', () => {
-    const detail = makeDetail({ attempts: [], routingDecision: 'forwarded' });
+    const detail = makeDetail({ forwardUrl: null, forwardStatus: null, forwardDurationMs: null, attemptedAt: null, routingDecision: 'forwarded' });
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     printVerboseDelivery(detail, 'whatsapp');
     const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
@@ -492,7 +480,7 @@ describe('printVerboseDelivery — status colorization and provider noun', () =>
   });
 
   it('renders gray dot + dim label for gray/Skipped status', () => {
-    const detail = makeDetail({ humanStatusColor: 'gray', humanStatus: 'Skipped', routingDecision: 'skipped', attempts: [] });
+    const detail = makeDetail({ humanStatusColor: 'gray', humanStatus: 'Skipped', routingDecision: 'skipped', forwardUrl: null, forwardStatus: null, forwardDurationMs: null, attemptedAt: null });
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     printVerboseDelivery(detail, 'whatsapp');
     const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
@@ -502,14 +490,13 @@ describe('printVerboseDelivery — status colorization and provider noun', () =>
     logSpy.mockRestore();
   });
 
-  it('does NOT expose delivery UUIDs anywhere in the output', () => {
+  it('does NOT expose the delivery UUID anywhere in the output', () => {
     const detail = makeDetail();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     printVerboseDelivery(detail, 'whatsapp');
     const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
-    // The delivery UUID and attempt UUID must not appear in human output
+    // The delivery UUID must not appear in human output.
     expect(output).not.toContain('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
-    expect(output).not.toContain('att_001');
     logSpy.mockRestore();
   });
 

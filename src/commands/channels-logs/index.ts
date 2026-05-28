@@ -16,7 +16,6 @@ import {
   type FetchDeliveriesParams,
 } from './api.js';
 import {
-  toListRows,
   renderDeliveryDetail,
   printSummaryRow,
 } from './render.js';
