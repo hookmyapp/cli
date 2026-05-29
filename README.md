@@ -45,7 +45,7 @@ hookmyapp sandbox env --username @<your-handle> --write .env
 hookmyapp sandbox listen --username @<your-handle> --port 3000
 ```
 
-**Real channel** — your own onboarded WhatsApp or Instagram channel, no
+**Real channel**: your own onboarded WhatsApp or Instagram channel, no
 customer-owned HTTPS URL required. The CLI provisions a per-channel Cloudflare
 Tunnel and pipes inbound webhooks straight to localhost. The channel argument
 is a positional and accepts a channel ID, a phone, or an Instagram handle.
