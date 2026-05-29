@@ -17,12 +17,14 @@ hookmyapp --help
 hookmyapp --version
 ```
 
-Run the interactive setup to connect your WhatsApp Business account and start
-receiving webhooks:
+Run the interactive setup to connect a WhatsApp Business or Instagram account
+and start receiving webhooks:
 
 ```bash
 hookmyapp login
-hookmyapp channels connect
+hookmyapp channels connect              # interactive: pick WhatsApp or Instagram
+hookmyapp channels connect whatsapp     # or name the type directly
+hookmyapp channels connect instagram
 ```
 
 ## Listening for webhooks on localhost
@@ -43,12 +45,17 @@ hookmyapp sandbox env --username @<your-handle> --write .env
 hookmyapp sandbox listen --username @<your-handle> --port 3000
 ```
 
-**Real channel** — your own onboarded WABA, no customer-owned HTTPS URL
-required. The CLI provisions a per-channel Cloudflare Tunnel and pipes
-inbound webhooks straight to localhost:
+**Real channel** — your own onboarded WhatsApp or Instagram channel, no
+customer-owned HTTPS URL required. The CLI provisions a per-channel Cloudflare
+Tunnel and pipes inbound webhooks straight to localhost. The channel argument
+is a positional and accepts a channel ID, a phone, or an Instagram handle.
+Omit it to get an interactive picker:
 
 ```bash
-hookmyapp channels listen --channel ch_XXXXXXXX --port 3000
+hookmyapp channels listen ch_XXXXXXXX --port 3000
+hookmyapp channels listen +15551234567 --port 3000
+hookmyapp channels listen @your-handle --port 3000
+hookmyapp channels listen --port 3000              # interactive picker
 ```
 
 While the CLI is running, the channel's dashboard destination shows as
@@ -61,8 +68,7 @@ the URL wins — the CLI exits cleanly on its next heartbeat with a notice.
 
 ## Identifiers
 
-Starting with v0.5.0, every id flag takes a Stripe-style publicId instead of
-a raw UUID. Prefixes:
+Every id flag takes a Stripe-style publicId. Prefixes:
 
 | prefix | entity             | example        |
 | ------ | ------------------ | -------------- |
@@ -79,31 +85,72 @@ hookmyapp --workspace ws_A4zq8d2T channels list
 hookmyapp sandbox listen --session ssn_3Bq8RkP2
 ```
 
-Raw UUID input (from pre-0.5.0 scripts) is rejected with a typed error —
-upgrade your automation to the publicId shape.
+Raw UUID input is rejected with a typed error. Use the publicId shape in your
+automation.
 
-Starting with v0.12.1, `<channel>` positional args take a HookMyApp Channel
-ID (`ch_xxxxxxxx`) instead of a Meta WABA ID. The resolver also accepts a
-`phoneNumberId`, the display phone number, or the display name (when
-unambiguous). Run `hookmyapp channels list` to see your channel IDs;
-passing a stale wabaId returns a typed error pointing at the same list.
+Every `<channel>` argument is shape-detected and accepts any of three forms:
+a HookMyApp Channel ID (`ch_xxxxxxxx`), a phone in `+E164` form (WhatsApp
+channels), or an Instagram handle as `@handle` (Instagram channels). It never
+takes a Meta WABA ID. Run `hookmyapp channels list` to see your channel IDs,
+phones, and handles.
 
 ## Channel commands
 
-All channel-scoped operations live under `hookmyapp channels`:
+All channel-scoped operations live under `hookmyapp channels`. Every
+`<channel>` argument accepts a channel ID (`ch_xxxxxxxx`), a `+phone`
+(WhatsApp), or an `@handle` (Instagram):
 
 ```bash
-hookmyapp channels list
+hookmyapp channels connect [whatsapp|instagram]   # Meta OAuth (interactive if no type)
+hookmyapp channels list                            # all channels (WhatsApp + Instagram)
 hookmyapp channels show ch_xxxxxxxx
+hookmyapp channels show @your-handle               # Instagram channel by handle
 hookmyapp channels env ch_xxxxxxxx --write .env
 hookmyapp channels token ch_xxxxxxxx
 hookmyapp channels health ch_xxxxxxxx
+hookmyapp channels enable ch_xxxxxxxx              # turn forwarding on
+hookmyapp channels disable ch_xxxxxxxx             # turn forwarding off
+hookmyapp channels disconnect ch_xxxxxxxx
 hookmyapp channels webhook show ch_xxxxxxxx
 hookmyapp channels webhook set ch_xxxxxxxx --url https://example.com/webhook
-hookmyapp channels listen ch_xxxxxxxx --port 3000
+hookmyapp channels webhook clear ch_xxxxxxxx       # revert to the HookMyApp CLI tunnel
 hookmyapp channels logs list ch_xxxxxxxx
 hookmyapp channels logs show <delivery-id>
 ```
+
+Add `--json` to any of these for machine-readable output (see the JSON
+output section below). The `listen` subcommand is covered in
+"Listening for webhooks on localhost" above.
+
+### Env values written by `channels env`
+
+`channels env <channel>` emits the credentials for a real connected channel.
+The key names differ by channel type:
+
+WhatsApp channel:
+
+```bash
+META_GRAPH_API_URL=...
+WHATSAPP_ACCESS_TOKEN=...
+WHATSAPP_PHONE_NUMBER_ID=...
+WHATSAPP_WABA_ID=...
+HOOKMYAPP_CHANNEL_ID=ch_xxxxxxxx
+VERIFY_TOKEN=...
+```
+
+Instagram channel:
+
+```bash
+INSTAGRAM_GRAPH_API_URL=...
+INSTAGRAM_ACCESS_TOKEN=...
+INSTAGRAM_USER_ID=...
+HOOKMYAPP_CHANNEL_ID=ch_xxxxxxxx
+VERIFY_TOKEN=...
+```
+
+These are the real-channel key names. The sandbox emits a different shape
+(see "Sandbox env values" under the sandbox section). A `channels env` block
+has no `PORT` line; the sandbox block does.
 
 ### Deprecated top-level forms
 
@@ -118,13 +165,92 @@ canonical nested handler:
 | `hookmyapp health <channel>`          | `hookmyapp channels health <channel>`       |
 | `hookmyapp webhook show <channel>`    | `hookmyapp channels webhook show <channel>` |
 | `hookmyapp webhook set <channel>`     | `hookmyapp channels webhook set <channel>`  |
+| `hookmyapp webhook clear <channel>`   | `hookmyapp channels webhook clear <channel>`|
+
+## JSON output and global flags
+
+Four global flags apply to every command:
+
+| flag                 | effect                                                      |
+| -------------------- | ----------------------------------------------------------- |
+| `--json`             | Machine-readable JSON output (silences colors and spinners) |
+| `--human`            | Force human-readable output (the default)                   |
+| `--workspace <slug>` | Run in a specific workspace (name, slug, or id)             |
+| `--debug`            | Print full request/response and stack traces                |
+
+In `--json` mode, success output is a JSON document on stdout and errors are a
+single envelope on stderr:
+
+```json
+{"error":{"code":"CHANNEL_NOT_FOUND","message":"No channel matches @nope","status":404}}
+```
+
+The `code` is a stable machine-readable string, `message` is human text, and
+`status` is the HTTP-style status. Some errors add an optional `hint` or
+`details` field.
+
+Credentials are stored as a plain local file at `credentials.json` in the CLI
+config directory, readable and writable only by you (`0600`). This matches how
+`gh`, `vercel`, `firebase`, and `netlify` store their tokens.
+
+## Sandbox commands
+
+The sandbox is a shared WhatsApp and Instagram environment managed by
+HookMyApp for local development. All sandbox operations live under
+`hookmyapp sandbox`. Identifiers are shape-detected: pass a `+phone`
+(WhatsApp), an `@username` (Instagram), or an `ssn_XXXXXXXX` session id as a
+positional, or use the explicit `--phone` / `--username` / `--session`
+selectors:
+
+```bash
+hookmyapp sandbox start [whatsapp|instagram]       # bind a session (prompts if no type)
+hookmyapp sandbox start --type=instagram           # flag form also works
+hookmyapp sandbox status
+hookmyapp sandbox stop --session ssn_XXXXXXXX
+hookmyapp sandbox env --phone +15551234567 --write .env
+hookmyapp sandbox env --username @your-handle --write .env
+hookmyapp sandbox send --username @your-handle --message "hello"
+hookmyapp sandbox logs --username @your-handle
+hookmyapp sandbox webhook show --phone +15551234567
+hookmyapp sandbox webhook set --username @your-handle --url https://example.com/webhook
+hookmyapp sandbox webhook clear --username @your-handle
+hookmyapp sandbox listen --username @your-handle --port 3000
+```
+
+Add `--json` to any of these for machine-readable output.
+
+### Sandbox env values
+
+`sandbox env` emits a different key shape from `channels env`. Sandbox blocks
+always include a `PORT` line and use the `*_API_URL` and `INSTAGRAM_ACCOUNT_ID`
+names (real channels use `*_GRAPH_API_URL` and `INSTAGRAM_USER_ID` instead).
+
+WhatsApp sandbox:
+
+```bash
+VERIFY_TOKEN=...
+PORT=3000
+WHATSAPP_API_URL=...
+WHATSAPP_ACCESS_TOKEN=...
+WHATSAPP_PHONE_NUMBER_ID=...
+```
+
+Instagram sandbox:
+
+```bash
+VERIFY_TOKEN=...
+PORT=3000
+INSTAGRAM_API_URL=...
+INSTAGRAM_ACCESS_TOKEN=...
+INSTAGRAM_ACCOUNT_ID=...
+```
 
 ## Telemetry
 
-Starting with v0.8.0, HookMyApp CLI reports crashes to our Sentry project so
-we can fix bugs fast. **No command arguments, file contents, or environment
-variable values are sent** — only the error class, stack trace, CLI version,
-platform, and (when you're logged in) your WorkOS user id.
+HookMyApp CLI reports crashes to our Sentry project so we can fix bugs fast.
+**No command arguments, file contents, or environment variable values are
+sent.** Only the error class, stack trace, CLI version, platform, and (when
+you are logged in) your WorkOS user id are reported.
 
 Telemetry is ON by default — industry norm for product CLIs (npm, Next.js,
 Vercel, Homebrew). You can disable it any time:
