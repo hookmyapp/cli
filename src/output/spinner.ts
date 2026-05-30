@@ -18,5 +18,9 @@ export function startSpinner(text: string, json?: boolean): Ora | SpinnerHandle 
     };
     return noop;
   }
-  return ora({ text }).start();
+  // discardStdin:false is REQUIRED: ora's default puts stdin in raw mode while
+  // spinning, which consumes the Ctrl+C byte so Node never raises SIGINT and the
+  // command becomes un-cancellable. We never prompt while spinning, so leaving
+  // stdin untouched is safe and keeps Ctrl+C working.
+  return ora({ text, discardStdin: false }).start();
 }
