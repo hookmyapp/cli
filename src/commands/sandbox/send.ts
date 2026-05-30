@@ -72,8 +72,16 @@ export async function runSandboxSend(opts: {
           'Recipient has not sent an inbound message in the last 24 hours.',
       );
     }
+    // The API/Meta error body's `message` is not guaranteed to be a string
+    // (it can be a nested object). Coerce so ApiError always carries a string
+    // userMessage — a non-string crashes the error renderer (HOOKMYAPP-CLI-J).
+    const rawMsg = resBody?.error?.message ?? resBody?.message;
     const msg: string =
-      resBody?.error?.message ?? resBody?.message ?? `Send failed (${res.status})`;
+      typeof rawMsg === 'string'
+        ? rawMsg
+        : rawMsg != null
+          ? JSON.stringify(rawMsg)
+          : `Send failed (${res.status})`;
     throw new ApiError(msg, res.status);
   }
 

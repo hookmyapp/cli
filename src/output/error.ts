@@ -283,8 +283,21 @@ function resolveStatus(error: CliError): number {
   return 500;
 }
 
-function stripCommanderPrefix(msg: string): string {
-  return msg.startsWith('error: ') ? msg.slice('error: '.length) : msg;
+function stripCommanderPrefix(msg: unknown): string {
+  // Defensive: outputError must NEVER throw. A CliError carrying a non-string
+  // userMessage (e.g. an API error body whose `message` field was an object,
+  // or an undefined message) would otherwise crash here with
+  // `msg.startsWith is not a function`, masking the real error as an opaque
+  // TypeError (Sentry HOOKMYAPP-CLI-J, 2026-05-30). Coerce to a string first.
+  const s =
+    typeof msg === 'string'
+      ? msg
+      : msg == null
+        ? ''
+        : typeof msg === 'object'
+          ? JSON.stringify(msg)
+          : String(msg);
+  return s.startsWith('error: ') ? s.slice('error: '.length) : s;
 }
 
 // Cleanup spec D1: commander.js error types map to specific machine codes so
