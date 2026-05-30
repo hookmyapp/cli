@@ -332,7 +332,13 @@ export async function runSandboxLogs(opts: {
 
   const scope = `sandbox-session:${session.id}`;
   // Clamp to 1–100 inclusive (mirrors backend @Min(1) @Max(100) validator).
-  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+  // `??` only catches null/undefined, NOT NaN — a programmatic NaN limit would
+  // otherwise send `limit=NaN`, which the backend 400s (and the error renderer
+  // crashed on the non-string body — Sentry HOOKMYAPP-CLI-J). The CLI option
+  // parser rejects non-numeric --limit locally (exit 2); this is the last-line
+  // guard for any other caller. Treat non-finite as the default 50.
+  const requested = Number.isFinite(opts.limit) ? (opts.limit as number) : 50;
+  const limit = Math.min(Math.max(requested, 1), 100);
 
   const qs = new URLSearchParams({ scope, limit: String(limit) });
   const initial = (await apiClient(`/deliveries?${qs.toString()}`, { workspaceId })) as DeliveriesListResponse;
