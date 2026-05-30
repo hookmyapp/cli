@@ -80,14 +80,14 @@ function detail(over: Record<string, unknown> = {}) {
   };
 }
 
-describe('channels logs list --json emits JSONL with GUI fields stripped', () => {
+describe('channels logs list --json emits a JSON array with GUI fields stripped', () => {
   beforeEach(() => {
     vi.mocked(apiClient).mockReset();
     vi.mocked(fetchDeliveriesPage).mockReset();
     vi.mocked(fetchDeliveryDetail).mockReset();
   });
 
-  it('emits one JSON object per line; humanStatusTooltip + humanStatusColor stripped', async () => {
+  it('emits a single JSON array of DTOs; humanStatusTooltip + humanStatusColor stripped', async () => {
     // resolveChannel hits /meta/channels.
     vi.mocked(apiClient).mockResolvedValueOnce([igDto]);
     vi.mocked(fetchDeliveriesPage).mockResolvedValueOnce({
@@ -110,24 +110,40 @@ describe('channels logs list --json emits JSONL with GUI fields stripped', () =>
         }),
       );
 
-    const outSpy = vi
-      .spyOn(process.stdout, 'write')
-      .mockImplementation(() => true);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     await runChannelLogsList('@ordvir', {}, true);
 
-    const writes = outSpy.mock.calls
-      .map((c) => c[0] as string)
-      .filter((s) => s.startsWith('{'));
-    expect(writes).toHaveLength(2);
-    for (const line of writes) {
-      const dto = JSON.parse(line);
+    // Exactly one write, and it parses as a JSON array of the two DTOs.
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const arr = JSON.parse(logSpy.mock.calls[0][0] as string);
+    expect(Array.isArray(arr)).toBe(true);
+    expect(arr).toHaveLength(2);
+    for (const dto of arr) {
       expect(dto.humanStatusTooltip).toBeUndefined();
       expect(dto.humanStatusColor).toBeUndefined();
       expect(dto.id).toMatch(/^wph_/);
       // Sender chain carries through.
       expect(dto.senderDisplay).toBe('@ordvir');
     }
-    outSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it('emits [] (not empty output) when the channel has no deliveries', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([igDto]);
+    vi.mocked(fetchDeliveriesPage).mockResolvedValueOnce({
+      deliveries: [],
+      nextCursor: null,
+      floorHours: 168,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await runChannelLogsList('@ordvir', {}, true);
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(logSpy.mock.calls[0][0] as string)).toEqual([]);
+    expect(fetchDeliveryDetail).not.toHaveBeenCalled();
+    logSpy.mockRestore();
   });
 });
