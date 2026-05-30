@@ -8,7 +8,11 @@ vi.mock('../../_helpers.js', () => ({
 }));
 
 import { apiClient } from '../../../api/client.js';
-import { runSandboxWebhookSet, runSandboxWebhookShow } from '../webhook.js';
+import {
+  runSandboxWebhookSet,
+  runSandboxWebhookShow,
+  runSandboxWebhookClear,
+} from '../webhook.js';
 import { ValidationError } from '../../../output/error.js';
 import type {
   WhatsAppSandboxSession,
@@ -143,5 +147,51 @@ describe('runSandboxWebhookSet — --username selects IG session', () => {
       method: 'PATCH',
       body: JSON.stringify({ webhookUrl: 'https://my.example/hook' }),
     });
+  });
+});
+
+describe('runSandboxWebhookSet/Clear — mutations honor --json', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+  });
+
+  it('set --json emits a structured status envelope, not human text', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([wa]); // sessions list
+    vi.mocked(apiClient).mockResolvedValueOnce(undefined); // PATCH
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await runSandboxWebhookSet({
+      session: 'ssn_WA000001',
+      url: 'https://my.example/hook',
+      json: true,
+    });
+
+    const payload = JSON.parse(outSpy.mock.calls[0][0] as string);
+    expect(payload).toMatchObject({
+      status: 'set',
+      sessionId: 'ssn_WA000001',
+      type: 'whatsapp',
+      webhookUrl: 'https://my.example/hook',
+    });
+    expect(logSpy).not.toHaveBeenCalled();
+    outSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it('clear --json emits a structured status envelope', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([wa]); // sessions list
+    vi.mocked(apiClient).mockResolvedValueOnce(undefined); // reset
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await runSandboxWebhookClear({ session: 'ssn_WA000001', json: true });
+
+    const payload = JSON.parse(outSpy.mock.calls[0][0] as string);
+    expect(payload).toMatchObject({
+      status: 'cleared',
+      sessionId: 'ssn_WA000001',
+      type: 'whatsapp',
+    });
+    outSpy.mockRestore();
   });
 });

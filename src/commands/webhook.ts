@@ -4,8 +4,6 @@ import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { resolveChannel, channelLabel } from './channels.js';
-import { readCredentials } from '../auth/store.js';
-import { getEffectiveApiUrl } from '../config/env-profiles.js';
 
 export interface WebhookSetOptions {
   url?: string;
@@ -43,14 +41,23 @@ export async function runChannelWebhookSet(
   const channel = await resolveChannel(channelRef);
   const payload = { webhookUrl: setOpts.url, verifyToken: setOpts.verifyToken ?? undefined };
 
-  // Check if webhook config already exists
-  const baseUrl = getEffectiveApiUrl();
-  const creds = await readCredentials();
-  const checkRes = await fetch(`${baseUrl}/webhook-config/${channel.id}`, {
-    headers: { Authorization: `Bearer ${creds!.accessToken}` },
-  });
+  // Check whether a webhook config already exists. Route through apiClient (not
+  // a raw fetch) so workspace/version headers, 426 handling, token refresh, and
+  // typed error mapping all apply. ONLY a 404 means "absent" → create; any
+  // other failure (403/500/network) must surface as a typed error rather than
+  // silently falling through to a POST (which would be the wrong mutation).
+  let exists = true;
+  try {
+    await apiClient(`/webhook-config/${channel.id}`, { method: 'GET' });
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) {
+      exists = false;
+    } else {
+      throw err;
+    }
+  }
 
-  if (checkRes.ok) {
+  if (exists) {
     await apiClient(`/webhook-config/${channel.id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
