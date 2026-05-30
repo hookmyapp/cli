@@ -275,7 +275,39 @@ describe('hookmyapp login --code', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe(
       'https://api.hookmyapp.com/auth/bootstrap/exchange',
     );
+
+    // The fix: after a prod exchange, the stale `env: 'staging'` is rewritten
+    // to production so the wizard's /workspaces call — and every future
+    // command (getEffectiveApiUrl honors persisted env) — hits the SAME
+    // backend the code was minted for. Without this, /workspaces went to
+    // staging-api with a prod token → 401.
+    const cfg = JSON.parse(
+      readFileSync(join(CONFIG_DIR, 'config.json'), 'utf-8'),
+    );
+    expect(cfg.env).toBe('production');
     logSpy.mockRestore();
+  });
+
+  test('--code with explicit HOOKMYAPP_ENV=staging → persists env=staging so the whole session stays on staging', async () => {
+    delete process.env.HOOKMYAPP_API_URL;
+    process.env.HOOKMYAPP_ENV = 'staging';
+
+    const fetchMock = vi.fn().mockResolvedValue(okJson(makeExchangeResponse()));
+    vi.stubGlobal('fetch', fetchMock);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    try {
+      const mod = await import('../login.js');
+      await mod.runBootstrapCodeExchange('hma_boot_abc123', { next: 'exit' });
+
+      const cfg = JSON.parse(
+        readFileSync(join(CONFIG_DIR, 'config.json'), 'utf-8'),
+      );
+      expect(cfg.env).toBe('staging');
+    } finally {
+      delete process.env.HOOKMYAPP_ENV;
+      logSpy.mockRestore();
+    }
   });
 
   test('--code with explicit HOOKMYAPP_ENV=staging → exchange hits STAGING (explicit --env override still wins)', async () => {

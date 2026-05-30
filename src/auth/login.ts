@@ -7,6 +7,8 @@ import { cliCommandPrefix } from '../output/cli-self.js';
 import {
   getEffectiveApiUrl,
   getBootstrapApiUrl,
+  getBootstrapEnv,
+  setPersistedEnv,
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
 import { posthogAliasAndIdentify } from '../observability/posthog.js';
@@ -428,6 +430,17 @@ export async function runBootstrapCodeExchange(
     refreshToken: data.refreshToken,
     expiresAt: data.expiresAt,
   });
+
+  // Pin the session to the backend the code was exchanged against. The
+  // exchange above ignores any persisted `config.json` env (getBootstrapApiUrl
+  // forces production unless --env/HOOKMYAPP_ENV overrides), but the wizard's
+  // `/workspaces` call and every future command resolve via getEffectiveApiUrl,
+  // which DOES honor the persisted env. Without persisting here, a stale
+  // `config set env staging` silently routes this prod-minted session's
+  // follow-up calls to staging-api with a production token → 401 (WorkOS envs
+  // are separate). Persist the resolved env so the whole session is coherent.
+  const bootstrapEnv = getBootstrapEnv();
+  if (bootstrapEnv) setPersistedEnv(bootstrapEnv);
   writeWorkspaceConfig({
     activeWorkspaceId: data.workspace.id,
     activeWorkspaceSlug: data.workspace.name,
