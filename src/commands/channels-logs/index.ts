@@ -121,13 +121,16 @@ export async function runChannelLogsList(
     : await fetchDeliveriesPage(params);
 
   if (json) {
-    // JSONL: one full detail DTO per line, GUI fields stripped via toLogsJson.
-    // Contract change vs prior versions (which printed the raw API page) — see
-    // CHANGELOG 0.13.0 + plan B11.
+    // Snapshot mode emits a single JSON array of detail DTOs (GUI fields
+    // stripped via toLogsJson) — `[]` when empty, matching `channels list
+    // --json` and every other snapshot `--json` command. The streaming
+    // `--follow` path above stays JSONL (a live tail can't be a closed array).
+    const dtos = [];
     for (const summary of page.deliveries) {
       const detail = await fetchDeliveryDetail(summary.id, channel.workspaceId);
-      process.stdout.write(JSON.stringify(toLogsJson(detail)) + '\n');
+      dtos.push(toLogsJson(detail));
     }
+    output(dtos, { json: true });
     return;
   }
 
@@ -210,7 +213,7 @@ export function registerChannelsLogsCommand(
     .option('--cursor <cursor>', 'Continue from a previous page nextCursor')
     .option('--all', 'Auto-paginate every page (capped at 1000 rows)')
     .option('-f, --follow', 'Stream new deliveries as they arrive (Ctrl-C to stop)')
-    .option('--json', 'JSONL output (one delivery DTO per line)')
+    .option('--json', 'JSON array of delivery DTOs ([] when empty; JSONL when --follow)')
     .option(
       '-v, --verbose',
       'Full inbound body + forward attempt dump (default: one-line summary)',
