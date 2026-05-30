@@ -16,6 +16,7 @@ import {
   ValidationError,
 } from '../../output/error.js';
 import { c } from '../../output/color.js';
+import { output } from '../../output/format.js';
 import {
   getEffectiveSandboxInstagramUsername,
   getEffectiveSandboxWhatsAppNumber,
@@ -101,6 +102,16 @@ export async function runSandboxStart(opts: {
     headerHint = `DM the sandbox Instagram account (${igHandle}) from the account you want to bind.`;
   }
 
+  // --json: emit the minted bind code + deep link and exit immediately. A
+  // machine consumer arranges delivery of the code out-of-band and polls
+  // `sandbox status`; blocking on the human "send the code" poll loop below
+  // would hang CI forever, and the human prints + spinner are not
+  // machine-readable.
+  if (opts.json) {
+    output({ code: bindCode, type: channelType, deepLink, issuedAt: bindRes.issuedAt }, { json: true });
+    return;
+  }
+
   console.log();
   console.log(isTty ? pc.bold('Start a sandbox testing session') : 'Start a sandbox testing session');
   console.log(isTty ? c.dim(headerHint) : headerHint);
@@ -119,7 +130,10 @@ export async function runSandboxStart(opts: {
     channelType === 'whatsapp'
       ? 'Waiting for your WhatsApp message…'
       : 'Waiting for your Instagram DM…';
-  const spinner = isTty ? ora(waitingMsg) : null;
+  // discardStdin:false keeps stdin out of raw mode so Ctrl+C raises SIGINT and
+  // the onSigint handler below can cancel the poll. ora's default (raw mode)
+  // swallows the Ctrl+C byte and traps the user in the spinner.
+  const spinner = isTty ? ora({ text: waitingMsg, discardStdin: false }) : null;
   spinner?.start();
 
   const onSigint = (): void => {
