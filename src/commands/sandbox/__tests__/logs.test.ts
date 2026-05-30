@@ -341,7 +341,7 @@ describe('runSandboxLogs — --json mode', () => {
     vi.restoreAllMocks();
   });
 
-  it('fetches detail and emits one JSONL line per delivery with no ANSI styling', async () => {
+  it('fetches detail and emits a single JSON array with no ANSI styling', async () => {
     const d = makeDelivery();
     const detail = makeDetail();
     vi.mocked(apiClient)
@@ -349,28 +349,29 @@ describe('runSandboxLogs — --json mode', () => {
       .mockResolvedValueOnce(makeDeliveriesListResponse([d]))
       .mockResolvedValueOnce(detail);
 
-    const lines: string[] = [];
-    const writeSpy = vi
-      .spyOn(process.stdout, 'write')
-      .mockImplementation((chunk: unknown) => {
-        if (typeof chunk === 'string') lines.push(chunk);
-        return true;
+    const logs: string[] = [];
+    const logSpy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...a: unknown[]) => {
+        logs.push(a.map(String).join(' '));
       });
 
     await runSandboxLogs({ phone: '+15551234567', json: true });
 
-    expect(lines).toHaveLength(1);
-    const parsed = JSON.parse(lines[0]);
+    expect(logs).toHaveLength(1);
+    const parsed = JSON.parse(logs[0]);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed).toHaveLength(1);
     // Detail DTO fields are present (not just summary)
-    expect(parsed.id).toBe(detail.id);
-    expect(parsed.inboundBody).toBeDefined();
-    expect(parsed.forwardUrl).toBeDefined();
+    expect(parsed[0].id).toBe(detail.id);
+    expect(parsed[0].inboundBody).toBeDefined();
+    expect(parsed[0].forwardUrl).toBeDefined();
     // No ANSI codes in JSON output
-    expect(lines[0]).not.toMatch(/\x1b\[/);
-    writeSpy.mockRestore();
+    expect(logs[0]).not.toMatch(/\x1b\[/);
+    logSpy.mockRestore();
   });
 
-  it('emits one line per delivery (line count equals list length)', async () => {
+  it('array length equals delivery list length', async () => {
     const summaries = [makeDelivery({ id: 'id1-0000-0000-0000-000000000000' }), makeDelivery({ id: 'id2-0000-0000-0000-000000000000' })];
     const details = [makeDetail({ id: summaries[0].id }), makeDetail({ id: summaries[1].id })];
 
@@ -380,18 +381,39 @@ describe('runSandboxLogs — --json mode', () => {
       .mockResolvedValueOnce(details[0])
       .mockResolvedValueOnce(details[1]);
 
-    const lines: string[] = [];
-    const writeSpy = vi
-      .spyOn(process.stdout, 'write')
-      .mockImplementation((chunk: unknown) => {
-        if (typeof chunk === 'string') lines.push(chunk);
-        return true;
+    const logs: string[] = [];
+    const logSpy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...a: unknown[]) => {
+        logs.push(a.map(String).join(' '));
       });
 
     await runSandboxLogs({ phone: '+15551234567', json: true });
 
-    expect(lines).toHaveLength(2);
-    writeSpy.mockRestore();
+    expect(logs).toHaveLength(1);
+    expect(JSON.parse(logs[0])).toHaveLength(2);
+    logSpy.mockRestore();
+  });
+
+  it('emits [] (not empty output) when the session has no deliveries', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([wa])
+      .mockResolvedValueOnce(makeDeliveriesListResponse([]));
+
+    const logs: string[] = [];
+    const logSpy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...a: unknown[]) => {
+        logs.push(a.map(String).join(' '));
+      });
+
+    await runSandboxLogs({ phone: '+15551234567', json: true });
+
+    expect(logs).toHaveLength(1);
+    expect(JSON.parse(logs[0])).toEqual([]);
+    // No detail fetch when there are no deliveries (sessions + list only).
+    expect(vi.mocked(apiClient)).toHaveBeenCalledTimes(2);
+    logSpy.mockRestore();
   });
 
   it('emits no section headings in --json mode', async () => {
@@ -401,20 +423,19 @@ describe('runSandboxLogs — --json mode', () => {
       .mockResolvedValueOnce(makeDeliveriesListResponse([makeDelivery()]))
       .mockResolvedValueOnce(detail);
 
-    const lines: string[] = [];
-    const writeSpy = vi
-      .spyOn(process.stdout, 'write')
-      .mockImplementation((chunk: unknown) => {
-        if (typeof chunk === 'string') lines.push(chunk);
-        return true;
+    const logs: string[] = [];
+    const logSpy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...a: unknown[]) => {
+        logs.push(a.map(String).join(' '));
       });
 
     await runSandboxLogs({ phone: '+15551234567', json: true });
 
-    const output = lines.join('');
+    const output = logs.join('');
     expect(output).not.toContain('What WhatsApp sent us');
     expect(output).not.toContain('We sent it to your app');
-    writeSpy.mockRestore();
+    logSpy.mockRestore();
   });
 });
 
