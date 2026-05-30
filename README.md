@@ -152,21 +152,6 @@ These are the real-channel key names. The sandbox emits a different shape
 (see "Sandbox env values" under the sandbox section). A `channels env` block
 has no `PORT` line; the sandbox block does.
 
-### Deprecated top-level forms
-
-The following top-level commands still work but are deprecated and will be
-removed in a future release. They emit a stderr warning and delegate to the
-canonical nested handler:
-
-| Deprecated form                       | Canonical replacement                       |
-| ------------------------------------- | ------------------------------------------- |
-| `hookmyapp env <channel>`             | `hookmyapp channels env <channel>`          |
-| `hookmyapp token <channel>`           | `hookmyapp channels token <channel>`        |
-| `hookmyapp health <channel>`          | `hookmyapp channels health <channel>`       |
-| `hookmyapp webhook show <channel>`    | `hookmyapp channels webhook show <channel>` |
-| `hookmyapp webhook set <channel>`     | `hookmyapp channels webhook set <channel>`  |
-| `hookmyapp webhook clear <channel>`   | `hookmyapp channels webhook clear <channel>`|
-
 ## JSON output and global flags
 
 Four global flags apply to every command:
