@@ -46,11 +46,12 @@ const ENV_PAYLOAD = {
 
 async function runEnv(args: string[]) {
   vi.resetModules();
-  const { registerEnvCommand } = await import('../env.js');
-  const program = new Command();
-  program.exitOverride();
-  registerEnvCommand(program);
-  await program.parseAsync(['node', 'hookmyapp', 'env', ...args]);
+  const { runChannelEnv } = await import('../env.js');
+  const channelRef = args[0];
+  const writeIndex = args.indexOf('--write');
+  const write =
+    writeIndex === -1 ? undefined : (args[writeIndex + 1] ?? true);
+  await runChannelEnv(channelRef, { write });
 }
 
 beforeEach(() => {

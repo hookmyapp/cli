@@ -59,8 +59,9 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 describe('webhook commands', () => {
-  let registerWebhookCommand: typeof import('../commands/webhook.js').registerWebhookCommand;
-  let Command: typeof import('commander').Command;
+  let runChannelWebhookShow: typeof import('../commands/webhook.js').runChannelWebhookShow;
+  let runChannelWebhookSet: typeof import('../commands/webhook.js').runChannelWebhookSet;
+  let runChannelWebhookClear: typeof import('../commands/webhook.js').runChannelWebhookClear;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -69,10 +70,10 @@ describe('webhook commands', () => {
     mockConsoleError.mockClear();
     mockFetch.mockReset();
 
-    const commander = await import('commander');
-    Command = commander.Command;
     const mod = await import('../commands/webhook.js');
-    registerWebhookCommand = mod.registerWebhookCommand;
+    runChannelWebhookShow = mod.runChannelWebhookShow;
+    runChannelWebhookSet = mod.runChannelWebhookSet;
+    runChannelWebhookClear = mod.runChannelWebhookClear;
   });
 
   it('showWebhook calls apiClient /webhook-config/:channelId', async () => {
@@ -83,9 +84,7 @@ describe('webhook commands', () => {
       .mockResolvedValueOnce(fakeChannels)
       .mockResolvedValueOnce(config);
 
-    const program = new Command();
-    registerWebhookCommand(program);
-    await program.parseAsync(['webhook', 'show', 'ch_TEST0001'], { from: 'user' });
+    await runChannelWebhookShow('ch_TEST0001');
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/ch_TEST0001');
@@ -104,9 +103,10 @@ describe('webhook commands', () => {
     // Suppress console.log
     vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    const program = new Command();
-    registerWebhookCommand(program);
-    await program.parseAsync(['webhook', 'set', 'ch_TEST0001', '--url', 'https://example.com/hook', '--verify-token', 'secret'], { from: 'user' });
+    await runChannelWebhookSet(
+      'ch_TEST0001',
+      { url: 'https://example.com/hook', verifyToken: 'secret' },
+    );
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/ch_TEST0001', {
@@ -116,11 +116,8 @@ describe('webhook commands', () => {
   });
 
   it('setWebhook throws ValidationError when --url flag is missing', async () => {
-    const program = new Command();
-    registerWebhookCommand(program);
-
     await expect(
-      program.parseAsync(['webhook', 'set', 'ch_TEST0001'], { from: 'user' }),
+      runChannelWebhookSet('ch_TEST0001', {}),
     ).rejects.toThrow('--url is required');
   });
 
@@ -131,9 +128,7 @@ describe('webhook commands', () => {
       .mockResolvedValueOnce(undefined);
     vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    const program = new Command();
-    registerWebhookCommand(program);
-    await program.parseAsync(['webhook', 'clear', 'ch_TEST0001'], { from: 'user' });
+    await runChannelWebhookClear('ch_TEST0001');
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/ch_TEST0001', { method: 'DELETE' });
@@ -142,17 +137,14 @@ describe('webhook commands', () => {
 });
 
 describe('token command', () => {
-  let registerTokenCommand: typeof import('../commands/token.js').registerTokenCommand;
-  let Command: typeof import('commander').Command;
+  let runChannelToken: typeof import('../commands/token.js').runChannelToken;
 
   beforeEach(async () => {
     vi.resetModules();
     mockedApiClient.mockReset();
 
-    const commander = await import('commander');
-    Command = commander.Command;
     const mod = await import('../commands/token.js');
-    registerTokenCommand = mod.registerTokenCommand;
+    runChannelToken = mod.runChannelToken;
   });
 
   it('token command calls apiClient /meta/channels/:id/token and writes raw token to stdout', async () => {
@@ -162,9 +154,7 @@ describe('token command', () => {
       .mockResolvedValueOnce({ accessToken: 'EAABxyz123' });
     const mockWrite = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
-    const program = new Command();
-    registerTokenCommand(program);
-    await program.parseAsync(['token', 'ch_TEST0001'], { from: 'user' });
+    await runChannelToken('ch_TEST0001');
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/token');
