@@ -80,7 +80,20 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
   }
 }
 
-export async function billingUpgrade(): Promise<void> {
+export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<void> {
+  // `billing upgrade` is interactive end-to-end: the free path prompts for a
+  // plan + interval, and both paths open a browser. There is no machine-
+  // readable form, so reject --json up front with a clear pointer instead of
+  // rendering an inquirer prompt that aborts into a generic error in non-TTY
+  // / --json contexts.
+  if (opts.json) {
+    throw new ValidationError(
+      `billing upgrade is interactive (plan selection + browser checkout) and has no --json form. ` +
+        `Run it without --json from a terminal, or use \`${cliCommandPrefix()} billing manage\` for an existing subscription.`,
+      'UPGRADE_NO_JSON',
+    );
+  }
+
   const workspaceId = await getDefaultWorkspaceId();
   const sub = await apiClient('/stripe/subscription', { workspaceId });
   // Phase A drops stripeSubscriptionId. Gate on plan.slug for paid-tier
@@ -97,6 +110,17 @@ export async function billingUpgrade(): Promise<void> {
     console.log('Opening Stripe Customer Portal to update your plan...');
     await open(data.url);
     return;
+  }
+
+  // Free tier → interactive plan selection. Requires a TTY (mirrors the
+  // `channels connect` / `login` non-TTY guard); without it the @inquirer
+  // prompt aborts into a confusing generic error.
+  if (process.stdout.isTTY !== true) {
+    throw new ValidationError(
+      `billing upgrade requires an interactive terminal to choose a plan. Re-run from a TTY, ` +
+        `or use \`${cliCommandPrefix()} billing manage\` to manage an existing subscription.`,
+      'UPGRADE_REQUIRES_TTY',
+    );
   }
 
   const { select } = await import('@inquirer/prompts');
@@ -151,7 +175,8 @@ export function registerBillingCommand(_program: Command): void {
     .command('upgrade')
     .description('Upgrade plan (interactive for free users, opens portal for subscribers)')
     .action(async () => {
-      await billingUpgrade();
+      const { program: rootProgram } = await import('../index.js');
+      await billingUpgrade({ json: !!rootProgram.opts().json });
     });
 
   addExamples(
