@@ -1,6 +1,6 @@
 {
   "name": "@gethookmyapp/cli",
-  "version": "0.12.5",
+  "version": "0.12.6",
   "description": "HookMyApp CLI, No BS. Just go live.",
   "type": "module",
   "bin": {
@@ -38,6 +38,14 @@
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^3.0.0"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.6"
+  },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion": "5.0.6"
+    }
   },
   "engines": {
     "node": ">=18"
