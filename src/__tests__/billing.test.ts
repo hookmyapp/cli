@@ -63,7 +63,7 @@ function mockSubAndUsage(sub: any, usage: { totalMessages: number; limit: number
 
 describe('billing commands', () => {
   let billingStatus: (opts: { human?: boolean }) => Promise<void>;
-  let billingUpgrade: () => Promise<void>;
+  let billingUpgrade: (opts?: { json?: boolean }) => Promise<void>;
   let billingManage: () => Promise<void>;
 
   beforeEach(async () => {
@@ -252,6 +252,28 @@ describe('billing commands', () => {
       expect(mockedApiClient).toHaveBeenNthCalledWith(2, '/stripe/portal', expect.objectContaining({
         body: JSON.stringify({ flow: 'update' }),
       }));
+    });
+
+    it('rejects --json with UPGRADE_NO_JSON (no machine-readable form)', async () => {
+      // Throws before any backend call, so no apiClient mock is needed.
+      await expect(billingUpgrade({ json: true })).rejects.toMatchObject({
+        code: 'UPGRADE_NO_JSON',
+      });
+      expect(mockedApiClient).not.toHaveBeenCalled();
+    });
+
+    it('rejects the free-tier prompt path in a non-TTY with UPGRADE_REQUIRES_TTY', async () => {
+      const origTTY = process.stdout.isTTY;
+      process.stdout.isTTY = false;
+      mockedApiClient.mockResolvedValueOnce({ status: 'active', plan: { slug: 'free', name: 'Free' } });
+
+      try {
+        await expect(billingUpgrade()).rejects.toMatchObject({
+          code: 'UPGRADE_REQUIRES_TTY',
+        });
+      } finally {
+        process.stdout.isTTY = origTTY;
+      }
     });
 
     it('prompts free user for plan + interval and opens checkout', async () => {
