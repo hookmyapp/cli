@@ -427,10 +427,7 @@ export function registerChannelsCommand(program: Command): void {
       await runChannelsDisable(channelRef, !!program.opts().json);
     });
 
-  // ─── Canonical nested commands (D9) ────────────────────────────────────
-  // env / token / health / webhook{show|set} live under `channels` as the
-  // canonical surface. Top-level forms in env.ts/token.ts/health.ts/webhook.ts
-  // are deprecated aliases that delegate to these handlers.
+  // ─── Channel-scoped utility commands ───────────────────────────────────
 
   const channelsEnv = channels
     .command('env')

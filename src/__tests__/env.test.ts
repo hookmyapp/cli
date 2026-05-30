@@ -17,7 +17,6 @@ vi.mock('../commands/workspace.js', () => ({
 }));
 
 const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-const mockConsoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
 import { apiClient } from '../api/client.js';
 
@@ -71,25 +70,23 @@ function mockApiClientForEnv(): void {
 }
 
 describe('env command', () => {
-  let registerEnvCommand: typeof import('../commands/env.js').registerEnvCommand;
-  let Command: typeof import('commander').Command;
+  let runChannelEnv: typeof import('../commands/env.js').runChannelEnv;
 
   beforeEach(async () => {
     vi.resetModules();
     mockedApiClient.mockReset();
     mockConsoleError.mockClear();
-    mockConsoleWarn.mockClear();
 
-    const commander = await import('commander');
-    Command = commander.Command;
     const mod = await import('../commands/env.js');
-    registerEnvCommand = mod.registerEnvCommand;
+    runChannelEnv = mod.runChannelEnv;
   });
 
   async function runEnvCommand(args: string[]): Promise<void> {
-    const program = new Command();
-    registerEnvCommand(program);
-    await program.parseAsync(['env', ...args], { from: 'user' });
+    const channelRef = args[0];
+    const writeIndex = args.indexOf('--write');
+    const write =
+      writeIndex === -1 ? undefined : (args[writeIndex + 1] ?? true);
+    await runChannelEnv(channelRef, { write });
   }
 
   it('fetches /meta/channels then /meta/channels/:id/env, emits values+defaults as dotenv lines', async () => {
@@ -115,12 +112,10 @@ describe('env command', () => {
   it('throws CliError when channel not found', async () => {
     // Arrange
     mockedApiClient.mockResolvedValueOnce(fakeChannels);
-    const program = new Command();
-    registerEnvCommand(program);
 
     // Act + Assert
     await expect(
-      program.parseAsync(['env', 'ch_zzzzzzzz'], { from: 'user' }),
+      runEnvCommand(['ch_zzzzzzzz']),
     ).rejects.toThrow(/No channel matches ch_zzzzzzzz/);
   });
 

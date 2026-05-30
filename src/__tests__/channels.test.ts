@@ -10,6 +10,7 @@ vi.mock('../api/client.js', () => ({
 // Mock output
 vi.mock('../output/format.js', () => ({
   output: vi.fn(),
+  isJsonMode: vi.fn(() => false),
 }));
 
 // Mock open
@@ -435,8 +436,7 @@ describe('resolveChannel — strict resolver order (Task 5)', () => {
 });
 
 describe('health command', () => {
-  let registerHealthCommand: typeof import('../commands/health.js').registerHealthCommand;
-  let Command: typeof import('commander').Command;
+  let runChannelHealth: typeof import('../commands/health.js').runChannelHealth;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -444,10 +444,8 @@ describe('health command', () => {
     mockedOutput.mockReset();
     mockConsoleError.mockClear();
 
-    const commander = await import('commander');
-    Command = commander.Command;
     const mod = await import('../commands/health.js');
-    registerHealthCommand = mod.registerHealthCommand;
+    runChannelHealth = mod.runChannelHealth;
   });
 
   it('health command calls refresh with POST and workspaceId', async () => {
@@ -455,9 +453,7 @@ describe('health command', () => {
       .mockResolvedValueOnce(fakeChannels) // channel lookup
       .mockResolvedValueOnce({ metaConnected: true, forwardingEnabled: true, wabaName: 'Test' }); // health result
 
-    const program = new Command();
-    registerHealthCommand(program);
-    await program.parseAsync(['health', 'ch_TEST0001'], { from: 'user' });
+    await runChannelHealth('ch_TEST0001');
 
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/refresh', {
