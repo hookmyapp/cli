@@ -255,6 +255,10 @@ describe('billing commands', () => {
     });
 
     it('prompts free user for plan + interval and opens checkout', async () => {
+      // Free-tier path is interactive: guarded by a TTY check. Stub isTTY so
+      // the prompt branch runs instead of the non-TTY rejection.
+      const origTTY = process.stdout.isTTY;
+      process.stdout.isTTY = true;
       const inq = await import('@inquirer/prompts');
       vi.mocked(inq.select)
         .mockResolvedValueOnce('growth' as never)
@@ -263,7 +267,11 @@ describe('billing commands', () => {
         .mockResolvedValueOnce({ status: 'active', plan: { slug: 'free', name: 'Free' } })
         .mockResolvedValueOnce({ url: 'https://checkout.stripe.com/x' });
 
-      await billingUpgrade();
+      try {
+        await billingUpgrade();
+      } finally {
+        process.stdout.isTTY = origTTY;
+      }
 
       expect(inq.select).toHaveBeenCalledTimes(2);
       expect(mockedApiClient).toHaveBeenNthCalledWith(2, '/stripe/checkout', expect.objectContaining({
