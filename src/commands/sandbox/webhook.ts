@@ -94,6 +94,22 @@ export async function runSandboxWebhookSet(opts: SetOpts): Promise<void> {
     method: 'PATCH',
     body: JSON.stringify({ webhookUrl: opts.url }),
   });
+  if (opts.json) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: 'set',
+          sessionId: session.id,
+          type: session.type,
+          identifier: sessionIdentifier(session),
+          webhookUrl: opts.url,
+        },
+        null,
+        2,
+      ) + '\n',
+    );
+    return;
+  }
   console.log(`${c.success(icon.success)} Set webhook URL on ${sessionLabel(session)}: ${opts.url}`);
 }
 
@@ -105,5 +121,20 @@ export async function runSandboxWebhookClear(opts: BaseOpts): Promise<void> {
   await apiClient(`/sandbox/sessions/${session.id}/reset-webhook`, {
     method: 'POST',
   });
+  if (opts.json) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: 'cleared',
+          sessionId: session.id,
+          type: session.type,
+          identifier: sessionIdentifier(session),
+        },
+        null,
+        2,
+      ) + '\n',
+    );
+    return;
+  }
   console.log(`${c.success(icon.success)} Cleared webhook URL on ${sessionLabel(session)}`);
 }

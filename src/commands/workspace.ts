@@ -332,8 +332,18 @@ export function registerWorkspaceCommand(program: Command): void {
       const workspaceId = await getDefaultWorkspaceId();
       const member = await resolveMemberByEmail(workspaceId, email);
       if (!opts.yes) {
-        console.log(`Would remove ${email} (role: ${member.role}) from workspace. Pass --yes to confirm.`);
-        process.exit(0);
+        // Dry-run. Return (don't process.exit) so the normal flushAndExit(0)
+        // path runs the telemetry flush, and emit JSON under --json so machine
+        // consumers don't get human text on stdout.
+        if (program.opts().json) {
+          output(
+            { dryRun: true, action: 'remove-member', email, role: member.role },
+            { human: false },
+          );
+        } else {
+          console.log(`Would remove ${email} (role: ${member.role}) from workspace. Pass --yes to confirm.`);
+        }
+        return;
       }
       await apiClient(`/workspaces/${workspaceId}/members/${member.id}`, {
         method: 'DELETE',
@@ -377,8 +387,17 @@ export function registerWorkspaceCommand(program: Command): void {
       const workspaceId = await getDefaultWorkspaceId();
       const invite = await resolveInviteByIdOrEmail(workspaceId, idOrEmail);
       if (!opts.yes) {
-        console.log(`Would cancel invite for ${invite.email}. Pass --yes to confirm.`);
-        process.exit(0);
+        // Dry-run. Return (don't process.exit) so flushAndExit(0) runs, and
+        // emit JSON under --json instead of human text on stdout.
+        if (program.opts().json) {
+          output(
+            { dryRun: true, action: 'cancel-invite', email: invite.email },
+            { human: false },
+          );
+        } else {
+          console.log(`Would cancel invite for ${invite.email}. Pass --yes to confirm.`);
+        }
+        return;
       }
       await apiClient(`/workspaces/${workspaceId}/invites/${invite.id}`, {
         method: 'DELETE',
