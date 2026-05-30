@@ -165,6 +165,15 @@ export function getEffectiveWorkosClientId(): string {
  */
 export function getBootstrapApiUrl(): string {
   if (process.env.HOOKMYAPP_API_URL) return process.env.HOOKMYAPP_API_URL;
+  return ENV_PROFILES[resolveBootstrapEnvName()].apiUrl;
+}
+
+/**
+ * The env name for the non-explicit-URL bootstrap path: `HOOKMYAPP_ENV` →
+ * DEFAULT_ENV (production). Always non-null. Deliberately skips
+ * `getPersistedEnv()` (see getBootstrapApiUrl).
+ */
+function resolveBootstrapEnvName(): EnvName {
   const candidate = process.env.HOOKMYAPP_ENV ?? DEFAULT_ENV;
   if (!isValidEnv(candidate)) {
     throw new ConfigurationError(
@@ -172,7 +181,32 @@ export function getBootstrapApiUrl(): string {
       'INVALID_ENV',
     );
   }
-  return ENV_PROFILES[candidate].apiUrl;
+  return candidate;
+}
+
+/**
+ * The EnvName the bootstrap-code exchange resolves against, using the same
+ * precedence as {@link getBootstrapApiUrl} MINUS the surgical
+ * `HOOKMYAPP_API_URL` (which is a raw URL with no env name): `HOOKMYAPP_ENV`
+ * → DEFAULT_ENV (production). Deliberately skips `getPersistedEnv()` for the
+ * same reason getBootstrapApiUrl does.
+ *
+ * The caller (`runBootstrapCodeExchange`) persists this AFTER a successful
+ * exchange so the post-login wizard's `/workspaces` call — and every future
+ * command — resolves to the SAME backend the code was minted for. Without it,
+ * a stale `config set env staging` silently routes a prod-minted session's
+ * follow-up calls to staging, 401-ing a production token (the WorkOS envs are
+ * separate). Returns null only for the explicit-URL override, where there's
+ * no env name to persist.
+ */
+export function getBootstrapEnv(): EnvName | null {
+  if (process.env.HOOKMYAPP_API_URL) {
+    const match = (
+      Object.entries(ENV_PROFILES) as [EnvName, EnvProfile][]
+    ).find(([, p]) => p.apiUrl === process.env.HOOKMYAPP_API_URL);
+    return match ? match[0] : null;
+  }
+  return resolveBootstrapEnvName();
 }
 
 /**
