@@ -502,10 +502,24 @@ export function loginCommand(program: Command): void {
         next?: string;
         code?: string;
       }) => {
-        const nextAction =
-          opts.next === 'sandbox' || opts.next === 'channels' || opts.next === 'exit'
-            ? opts.next
-            : undefined;
+        // Reject an invalid --next locally (exit 2) instead of silently
+        // coercing it to undefined — `login --next bogus` previously ran the
+        // default flow and exited 0, hiding the typo.
+        if (
+          opts.next !== undefined &&
+          opts.next !== 'sandbox' &&
+          opts.next !== 'channels' &&
+          opts.next !== 'exit'
+        ) {
+          throw new ValidationError(
+            `--next must be one of: sandbox, channels, exit (got "${opts.next}").`,
+          );
+        }
+        const nextAction = opts.next as
+          | 'sandbox'
+          | 'channels'
+          | 'exit'
+          | undefined;
         const json = program.opts().json === true;
 
         // Phase 122 — bootstrap-code branch. MUST run BEFORE the wizard

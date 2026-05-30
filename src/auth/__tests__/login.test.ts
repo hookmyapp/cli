@@ -53,6 +53,8 @@ vi.mock('../../commands/channels.js', () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let runWizard: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let loginCommand: any;
 
 beforeEach(async () => {
   selectMock.mockReset();
@@ -68,6 +70,8 @@ beforeEach(async () => {
   const mod = await import('../login.js');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   runWizard = (mod as any).runWizard;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  loginCommand = (mod as any).loginCommand;
 });
 
 describe('post-login wizard', () => {
@@ -265,5 +269,32 @@ describe('post-login wizard', () => {
     expect(humanOut).not.toContain('Next steps');
     writeSpy.mockRestore();
     logSpy.mockRestore();
+  });
+});
+
+describe('login --next validation', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function parseLogin(argv: string[]): Promise<any> {
+    const { Command } = await import('commander');
+    const program = new Command();
+    program.exitOverride();
+    program.option('--json', 'global');
+    loginCommand(program);
+    return program.parseAsync(['login', ...argv], { from: 'user' });
+  }
+
+  it('rejects an invalid --next locally with ValidationError (exit 2) before any auth flow', async () => {
+    const { ValidationError } = await import('../../output/error.js');
+    await expect(parseLogin(['--next', 'bogus'])).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    // It must NOT silently fall through to the wizard / device flow.
+    expect(apiClientMock).not.toHaveBeenCalled();
+  });
+
+  it('reports the offending value in the message', async () => {
+    await expect(parseLogin(['--next', 'bogus'])).rejects.toThrow(
+      /--next must be one of: sandbox, channels, exit \(got "bogus"\)/,
+    );
   });
 });

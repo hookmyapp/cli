@@ -17,6 +17,25 @@ import {
   runSandboxWebhookShow,
 } from './webhook.js';
 
+/**
+ * Validate `--limit` locally into the API's [1,100] integer range. Returns
+ * undefined when omitted (runSandboxLogs defaults to 50). Throws ValidationError
+ * (exit 2) on non-numeric / out-of-range input so a bad `--limit abc` is
+ * rejected client-side instead of sending `limit=NaN` to the API — which 400s
+ * and previously crashed the error renderer (Sentry HOOKMYAPP-CLI-J). Mirrors
+ * the channels-logs `parseLimit` validator.
+ */
+function parseLimitArg(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 100) {
+    throw new ValidationError(
+      `--limit must be an integer between 1 and 100 (got "${raw}").`,
+    );
+  }
+  return n;
+}
+
 export function registerSandboxCommand(program: Command): void {
   const sandbox = program
     .command('sandbox')
@@ -213,7 +232,7 @@ export function registerSandboxCommand(program: Command): void {
     .option('--phone <e164>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
-    .option('--limit <n>', 'Number of deliveries (1-100, default 50)', (v) => parseInt(v, 10))
+    .option('--limit <n>', 'Number of deliveries (1-100, default 50)')
     .option('-f, --follow', 'Stream new deliveries as they arrive (Ctrl+C to stop)')
     .option('-v, --verbose', 'Full inbound body + forward attempt dump (default is one-line summary)')
     .option('--json', 'JSON array of delivery DTOs ([] when empty; JSONL when --follow)')
@@ -224,7 +243,7 @@ export function registerSandboxCommand(program: Command): void {
           phone?: string;
           username?: string;
           session?: string;
-          limit?: number;
+          limit?: string;
           follow?: boolean;
           verbose?: boolean;
           json?: boolean;
@@ -232,6 +251,7 @@ export function registerSandboxCommand(program: Command): void {
       ) => {
         await runSandboxLogs({
           ...opts,
+          limit: parseLimitArg(opts.limit),
           identifierArg: identifier,
           json: !!(opts.json || program.opts().json),
         });
