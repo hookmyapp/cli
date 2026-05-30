@@ -216,7 +216,7 @@ export function registerSandboxCommand(program: Command): void {
     .option('--limit <n>', 'Number of deliveries (1-100, default 50)', (v) => parseInt(v, 10))
     .option('-f, --follow', 'Stream new deliveries as they arrive (Ctrl+C to stop)')
     .option('-v, --verbose', 'Full inbound body + forward attempt dump (default is one-line summary)')
-    .option('--json', 'Machine-readable JSONL (one full delivery DTO per line)')
+    .option('--json', 'JSON array of delivery DTOs ([] when empty; JSONL when --follow)')
     .action(
       async (
         identifier: string | undefined,

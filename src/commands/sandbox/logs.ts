@@ -338,10 +338,22 @@ export async function runSandboxLogs(opts: {
   const initial = (await apiClient(`/deliveries?${qs.toString()}`, { workspaceId })) as DeliveriesListResponse;
 
   if (opts.json) {
-    // JSON mode: fetch full detail for each summary and emit one DTO per line.
-    for (const summary of initial.deliveries) {
-      const detail = (await apiClient(`/deliveries/${summary.id}`, { workspaceId })) as DeliveryDetail;
-      process.stdout.write(JSON.stringify(toLogsJson(detail)) + '\n');
+    if (opts.follow) {
+      // Streaming: emit the initial dump as JSONL so it's consistent with the
+      // live tail that follows below (a stream can't be a closed array).
+      for (const summary of initial.deliveries) {
+        const detail = (await apiClient(`/deliveries/${summary.id}`, { workspaceId })) as DeliveryDetail;
+        process.stdout.write(JSON.stringify(toLogsJson(detail)) + '\n');
+      }
+    } else {
+      // Snapshot: a single JSON array ([] when empty), matching
+      // `channels logs list --json` and the other snapshot `--json` commands.
+      const dtos: ReturnType<typeof toLogsJson>[] = [];
+      for (const summary of initial.deliveries) {
+        const detail = (await apiClient(`/deliveries/${summary.id}`, { workspaceId })) as DeliveryDetail;
+        dtos.push(toLogsJson(detail));
+      }
+      console.log(JSON.stringify(dtos, null, 2));
     }
   } else {
     // Human mode: empty state or verbose blocks.

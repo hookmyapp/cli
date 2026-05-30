@@ -129,11 +129,11 @@ describe('channels logs list', () => {
     expect(writes.filter((w) => w.includes('customer.app'))).toHaveLength(2);
   });
 
-  it('emits one JSONL line per delivery under --json (contract change in 0.13.0)', async () => {
-    // BREAKING CHANGE vs 0.12.x: --json was a pretty-printed dump of the raw
-    // /deliveries page; it is now JSONL — one full DeliveryDetail per line,
-    // with GUI-only humanStatusTooltip + humanStatusColor stripped. Mirrors
-    // sandbox/logs.ts contract (D8 + plan B11).
+  it('emits a single JSON array of DeliveryDetail under --json', async () => {
+    // Snapshot --json is a single JSON array (one full DeliveryDetail per
+    // element, GUI-only humanStatusTooltip + humanStatusColor stripped),
+    // matching `channels list --json`; `--follow` stays JSONL. Mirrors
+    // sandbox/logs.ts.
     const fullDetail = {
       id: 'row-aaa',
       workspaceId: 'ws_w1',
@@ -180,20 +180,38 @@ describe('channels logs list', () => {
         floorHours: 24,
       })
       .mockResolvedValueOnce(fullDetail);
-    const writes: string[] = [];
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      writes.push(String(chunk));
-      return true;
+    const logs: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => {
+      logs.push(a.map(String).join(' '));
     });
 
     await run(['logs', 'list', 'ch_abc12345', '--json']);
 
-    expect(writes).toHaveLength(1);
-    const parsed = JSON.parse(writes[0]);
-    expect(parsed.id).toBe('row-aaa');
-    expect(parsed.inboundBody).toBe('{"hello":"world"}');
-    expect(parsed.humanStatusTooltip).toBeUndefined();
-    expect(parsed.humanStatusColor).toBeUndefined();
+    expect(logs).toHaveLength(1);
+    const parsed = JSON.parse(logs[0]);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].id).toBe('row-aaa');
+    expect(parsed[0].inboundBody).toBe('{"hello":"world"}');
+    expect(parsed[0].humanStatusTooltip).toBeUndefined();
+    expect(parsed[0].humanStatusColor).toBeUndefined();
+  });
+
+  it('emits [] under --json when there are no deliveries', async () => {
+    mocks.apiClient.mockResolvedValueOnce({
+      deliveries: [],
+      nextCursor: null,
+      floorHours: 24,
+    });
+    const logs: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => {
+      logs.push(a.map(String).join(' '));
+    });
+
+    await run(['logs', 'list', 'ch_abc12345', '--json']);
+
+    expect(logs).toHaveLength(1);
+    expect(JSON.parse(logs[0])).toEqual([]);
   });
 
   it('prints a friendly message when there are no deliveries', async () => {
