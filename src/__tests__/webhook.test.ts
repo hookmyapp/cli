@@ -123,6 +123,22 @@ describe('webhook commands', () => {
       program.parseAsync(['webhook', 'set', 'ch_TEST0001'], { from: 'user' }),
     ).rejects.toThrow('--url is required');
   });
+
+  it('clearWebhook DELETEs /webhook-config/:channelId', async () => {
+    // resolveChannel -> /meta/channels, then DELETE /webhook-config/:id (204)
+    mockedApiClient
+      .mockResolvedValueOnce(fakeChannels)
+      .mockResolvedValueOnce(undefined);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const program = new Command();
+    registerWebhookCommand(program);
+    await program.parseAsync(['webhook', 'clear', 'ch_TEST0001'], { from: 'user' });
+
+    expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
+    expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/ch_TEST0001', { method: 'DELETE' });
+    expect(mockedOutput).toHaveBeenCalledWith({ status: 'cleared' }, expect.objectContaining({ kind: 'mutation' }));
+  });
 });
 
 describe('token command', () => {
