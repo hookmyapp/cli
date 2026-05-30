@@ -17,6 +17,7 @@ import { runChannelHealth } from './health.js';
 import {
   runChannelWebhookShow,
   runChannelWebhookSet,
+  runChannelWebhookClear,
   type WebhookSetOptions,
 } from './webhook.js';
 import {
@@ -485,6 +486,14 @@ export function registerChannelsCommand(program: Command): void {
       await runChannelWebhookSet(channelRef, opts, { json: !!program.opts().json });
     });
 
+  const channelsWebhookClear = channelsWebhook
+    .command('clear')
+    .description('Clear the webhook URL (revert to the HookMyApp CLI tunnel)')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .action(async (channelRef: string) => {
+      await runChannelWebhookClear(channelRef, { json: !!program.opts().json });
+    });
+
   addExamples(
     channels,
     `
@@ -582,6 +591,7 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp channels webhook show ch_AAAAAAAA
   $ hookmyapp channels webhook set ch_AAAAAAAA --url https://example.com/hook
+  $ hookmyapp channels webhook clear ch_AAAAAAAA
 `,
   );
 
@@ -600,6 +610,15 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp channels webhook set ch_AAAAAAAA --url https://example.com/hook
   $ hookmyapp channels webhook set ch_AAAAAAAA --url https://example.com/hook --verify-token my-secret
+`,
+  );
+
+  addExamples(
+    channelsWebhookClear,
+    `
+EXAMPLES:
+  $ hookmyapp channels webhook clear ch_AAAAAAAA
+  $ hookmyapp channels webhook clear ch_AAAAAAAA --json
 `,
   );
 }
