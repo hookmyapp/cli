@@ -103,6 +103,27 @@ describe('outputError JSON envelope (D1)', () => {
     expect(stderrSpy).toHaveBeenCalledWith('Error: Bad input\n');
   });
 
+  test('When userMessage is a non-string object (bad API body), then outputError does not throw and serializes it (HOOKMYAPP-CLI-J)', () => {
+    const err = new ValidationError('placeholder', 'API_ERROR');
+    // Simulate an ApiError built from a JSON body whose `message` field was an
+    // object — the exact shape that crashed the renderer with
+    // `msg.startsWith is not a function`.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (err as any).userMessage = { nested: 'meta error' };
+    expect(() => outputError(err, { human: false })).not.toThrow();
+    const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
+    expect(parsed.error.message).toBe('{"nested":"meta error"}');
+  });
+
+  test('When userMessage is undefined, then outputError does not throw and emits an empty message', () => {
+    const err = new ValidationError('placeholder', 'API_ERROR');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (err as any).userMessage = undefined;
+    expect(() => outputError(err, { human: false })).not.toThrow();
+    const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
+    expect(parsed.error.message).toBe('');
+  });
+
   test('When commander error has its own `error: ` prefix, then outputError strips it', () => {
     const err = new ValidationError("error: missing required argument 'channel'", 'CLI_ERROR');
     outputError(err, { human: false });
