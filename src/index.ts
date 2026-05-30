@@ -4,10 +4,6 @@ import { Command, CommanderError, Option } from 'commander';
 import { loginCommand } from './auth/login.js';
 import { logoutCommand } from './auth/logout.js';
 import { registerChannelsCommand } from './commands/channels.js';
-import { registerHealthCommand } from './commands/health.js';
-import { registerWebhookCommand } from './commands/webhook.js';
-import { registerTokenCommand } from './commands/token.js';
-import { registerEnvCommand } from './commands/env.js';
 import { registerBillingCommand } from './commands/billing.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerSandboxCommand } from './commands/sandbox/index.js';
@@ -157,18 +153,6 @@ logoutCommand(program);
 
 // Channel management
 registerChannelsCommand(program);
-
-// Health check
-registerHealthCommand(program);
-
-// Webhook configuration
-registerWebhookCommand(program);
-
-// Token reveal
-registerTokenCommand(program);
-
-// Env output
-registerEnvCommand(program);
 
 // Billing
 registerBillingCommand(program);

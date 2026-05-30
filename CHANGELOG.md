@@ -2,6 +2,13 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.12.7 — 2026-05-30
+
+### Breaking
+
+- Removed the deprecated top-level channel aliases: `hookmyapp env`, `hookmyapp token`, `hookmyapp health`, and `hookmyapp webhook show|set|clear`.
+- Use the canonical channel-scoped forms instead: `hookmyapp channels env`, `hookmyapp channels token`, `hookmyapp channels health`, and `hookmyapp channels webhook show|set|clear`.
+
 ## 0.12.3 — 2026-05-26
 
 ### Added

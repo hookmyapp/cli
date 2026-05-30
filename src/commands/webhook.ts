@@ -1,8 +1,6 @@
-import type { Command } from 'commander';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
-import { addExamples } from '../output/help.js';
 import { resolveChannel, channelLabel } from './channels.js';
 
 export interface WebhookSetOptions {
@@ -11,8 +9,7 @@ export interface WebhookSetOptions {
 }
 
 /**
- * Canonical handler for `hookmyapp channels webhook show <channel>` (D9). Also
- * invoked by the deprecated top-level `hookmyapp webhook show <channel>` alias.
+ * Canonical handler for `hookmyapp channels webhook show <channel>`.
  */
 export async function runChannelWebhookShow(
   channelRef: string,
@@ -24,8 +21,7 @@ export async function runChannelWebhookShow(
 }
 
 /**
- * Canonical handler for `hookmyapp channels webhook set <channel>` (D9). Also
- * invoked by the deprecated top-level `hookmyapp webhook set <channel>` alias.
+ * Canonical handler for `hookmyapp channels webhook set <channel>`.
  */
 export async function runChannelWebhookSet(
   channelRef: string,
@@ -84,8 +80,7 @@ export async function runChannelWebhookSet(
 }
 
 /**
- * Canonical handler for `hookmyapp channels webhook clear <channel>` (D9). Also
- * invoked by the deprecated top-level `hookmyapp webhook clear <channel>` alias.
+ * Canonical handler for `hookmyapp channels webhook clear <channel>`.
  * Reverts the channel to the HookMyApp CLI default destination by clearing the
  * configured webhook URL (DELETE /webhook-config/:channelId). Idempotent: a
  * no-op 204 when no URL is set, so it is safe to run unconditionally.
@@ -102,90 +97,4 @@ export async function runChannelWebhookClear(
       `✓ Webhook URL cleared for ${channelLabel(channel)} (now uses CLI tunnel)`,
     );
   }
-}
-
-/**
- * Deprecated top-level `hookmyapp webhook` alias. `show`, `set`, and `clear`
- * emit a stderr deprecation warning and delegate to their canonical handlers.
- * Canonical form is `hookmyapp channels webhook show|set|clear <channel>`.
- */
-export function registerWebhookCommand(program: Command): void {
-  const webhook = program
-    .command('webhook')
-    .description('[deprecated] Use `hookmyapp channels webhook ...` instead.');
-
-  const webhookShow = webhook
-    .command('show')
-    .description('[deprecated] Use `hookmyapp channels webhook show <channel>` instead.')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
-    .action(async (channelRef: string) => {
-      console.warn(
-        '[deprecated] `hookmyapp webhook show` will be removed in a future release. ' +
-          'Use: hookmyapp channels webhook show <channel>',
-      );
-      await runChannelWebhookShow(channelRef, { json: !!program.opts().json });
-    });
-
-  const webhookSet = webhook
-    .command('set')
-    .description('[deprecated] Use `hookmyapp channels webhook set <channel>` instead.')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
-    .option('--url <url>', 'Webhook URL')
-    .option('--verify-token <token>', 'Verify token')
-    .action(async (channelRef: string, opts: WebhookSetOptions) => {
-      console.warn(
-        '[deprecated] `hookmyapp webhook set` will be removed in a future release. ' +
-          'Use: hookmyapp channels webhook set <channel>',
-      );
-      await runChannelWebhookSet(channelRef, opts, { json: !!program.opts().json });
-    });
-
-  const webhookClear = webhook
-    .command('clear')
-    .description('[deprecated] Use `hookmyapp channels webhook clear <channel>` instead.')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
-    .action(async (channelRef: string) => {
-      console.warn(
-        '[deprecated] `hookmyapp webhook clear` will be removed in a future release. ' +
-          'Use: hookmyapp channels webhook clear <channel>',
-      );
-      await runChannelWebhookClear(channelRef, { json: !!program.opts().json });
-    });
-
-  addExamples(
-    webhook,
-    `
-EXAMPLES:
-  $ hookmyapp channels webhook show ch_AAAAAAAA
-  $ hookmyapp channels webhook set ch_AAAAAAAA --url https://example.com/hook
-  $ hookmyapp channels webhook clear ch_AAAAAAAA
-`,
-  );
-
-  addExamples(
-    webhookClear,
-    `
-EXAMPLES:
-  $ hookmyapp channels webhook clear ch_AAAAAAAA
-  $ hookmyapp channels webhook clear ch_AAAAAAAA --json
-`,
-  );
-
-  addExamples(
-    webhookShow,
-    `
-EXAMPLES:
-  $ hookmyapp channels webhook show ch_AAAAAAAA
-  $ hookmyapp channels webhook show ch_AAAAAAAA --json
-`,
-  );
-
-  addExamples(
-    webhookSet,
-    `
-EXAMPLES:
-  $ hookmyapp channels webhook set ch_AAAAAAAA --url https://example.com/hook
-  $ hookmyapp channels webhook set ch_AAAAAAAA --url https://example.com/hook --verify-token my-secret
-`,
-  );
 }
