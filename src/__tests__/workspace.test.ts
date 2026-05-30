@@ -678,18 +678,41 @@ describe('workspace members commands', () => {
   });
 
   describe('members remove', () => {
-    it('without --yes prints dry-run and exits 0', async () => {
+    it('without --yes prints dry-run and returns without process.exit', async () => {
       mockedApiClient.mockResolvedValue(fakeMembersResponse);
 
       const program = new Command();
       program.option('--human');
       registerWorkspaceCommand(program);
 
-      await expect(
-        program.parseAsync(['workspace', 'members', 'remove', 'member@co.com'], { from: 'user' }),
-      ).rejects.toThrow('process.exit called');
-      expect(mockExit).toHaveBeenCalledWith(0);
+      await program.parseAsync(['workspace', 'members', 'remove', 'member@co.com'], { from: 'user' });
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('Would remove'));
+      // Return, not process.exit — so the normal flushAndExit path runs.
+      expect(mockExit).not.toHaveBeenCalled();
+    });
+
+    it('without --yes in --json mode emits a structured dryRun envelope via output() (no human text)', async () => {
+      mockedApiClient.mockResolvedValue(fakeMembersResponse);
+      mockedOutput.mockClear();
+
+      const program = new Command();
+      program.option('--json');
+      registerWorkspaceCommand(program);
+
+      await program.parseAsync(
+        ['workspace', 'members', 'remove', 'member@co.com', '--json'],
+        { from: 'user' },
+      );
+      // output() is the structured-JSON path (mocked in this suite); the human
+      // "Would remove ..." console.log must NOT fire under --json.
+      expect(mockedOutput).toHaveBeenCalledWith(
+        expect.objectContaining({ dryRun: true, action: 'remove-member' }),
+        expect.objectContaining({ human: false }),
+      );
+      expect(mockConsoleLog).not.toHaveBeenCalledWith(
+        expect.stringContaining('Would remove'),
+      );
+      expect(mockExit).not.toHaveBeenCalled();
     });
 
     it('with --yes resolves email and sends DELETE', async () => {
@@ -765,18 +788,16 @@ describe('workspace invites commands', () => {
   });
 
   describe('invites cancel', () => {
-    it('without --yes prints dry-run and exits 0', async () => {
+    it('without --yes prints dry-run and returns without process.exit', async () => {
       mockedApiClient.mockResolvedValue(fakeMembersResponse);
 
       const program = new Command();
       program.option('--human');
       registerWorkspaceCommand(program);
 
-      await expect(
-        program.parseAsync(['workspace', 'invites', 'cancel', 'pending@co.com'], { from: 'user' }),
-      ).rejects.toThrow('process.exit called');
-      expect(mockExit).toHaveBeenCalledWith(0);
+      await program.parseAsync(['workspace', 'invites', 'cancel', 'pending@co.com'], { from: 'user' });
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('Would cancel'));
+      expect(mockExit).not.toHaveBeenCalled();
     });
 
     it('with --yes and email resolves invite and sends DELETE', async () => {

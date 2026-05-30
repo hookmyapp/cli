@@ -33,6 +33,7 @@ import {
 } from './lifecycle.js';
 import { checkForNewerCli } from './version-check.js';
 import { emit, getCliVersion } from '../../observability/posthog.js';
+import { parsePortArg } from '../../lib/validate.js';
 
 export interface ListenOpts {
   port: number;
@@ -292,7 +293,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
     .option(
       '--port <n>',
       'Local port your app listens on',
-      (v: string) => parseInt(v, 10),
+      parsePortArg,
       3000,
     )
     .option('--path <p>', 'Webhook path on your app', '/webhook')

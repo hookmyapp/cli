@@ -6,6 +6,7 @@
 
 import { confirm } from '@inquirer/prompts';
 import { apiClient } from '../../api/client.js';
+import { ValidationError } from '../../output/error.js';
 import {
   parseSandboxSessions,
 } from '../../api/sandbox-session.js';
@@ -37,7 +38,15 @@ export async function runSandboxStop(opts: {
     alwaysShowPicker: true,
   });
 
-  if (!opts.yes && isHuman) {
+  if (!opts.yes) {
+    // Non-interactive (--json or no TTY) can't show a prompt. Refuse a
+    // destructive DELETE without explicit consent rather than proceeding
+    // silently — mirrors `workspace members remove` / `invite cancel`.
+    if (!isHuman) {
+      throw new ValidationError(
+        'Refusing to delete a sandbox session non-interactively without confirmation. Re-run with --yes to proceed.',
+      );
+    }
     const ok = await confirm({
       message: `Delete ${sessionLabel(session)}?`,
       default: false,

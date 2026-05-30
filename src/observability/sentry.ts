@@ -308,8 +308,10 @@ export async function flushAndExit(exitCode: number): Promise<never> {
     shutdownPostHog(2000),
   ]);
   process.exit(exitCode);
-  // Unreachable; satisfies the `Promise<never>` return type for TS.
-  throw new Error('unreachable');
+  // Unreachable after process.exit; satisfies the `Promise<never>` return type
+  // for TS without a raw `throw new Error` (AppError discipline — see the
+  // monorepo CLAUDE.md rule the CLI mirrors).
+  return undefined as never;
 }
 
 // Test-only helpers — allow the sentry-init + telemetry-consent specs to

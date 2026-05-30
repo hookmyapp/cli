@@ -28,6 +28,7 @@ import { checkForNewerCli } from '../sandbox-listen/version-check.js';
 import { emit, getCliVersion } from '../../observability/posthog.js';
 import { pickChannel, type Channel } from './picker.js';
 import { startChannelHeartbeat } from './lifecycle.js';
+import { parsePortArg } from '../../lib/validate.js';
 
 export interface ChannelListenOpts {
   port: number;
@@ -248,7 +249,7 @@ export function registerChannelsListenCommand(
     .option(
       '--port <n>',
       'Local port your app listens on',
-      (v: string) => parseInt(v, 10),
+      parsePortArg,
       3000,
     )
     .option('--path <p>', 'Webhook path on your app', '/webhook')
