@@ -376,6 +376,42 @@ export async function runChannelsDisable(ref: string, json = false): Promise<voi
   }
 }
 
+/**
+ * Exported handler for `hookmyapp channels meta-retry <on|off> <ref>`.
+ * `off` disables Meta webhook retries for the channel (forwarder always 200s
+ * Meta); `on` restores the default. Best-effort at request granularity.
+ */
+export async function runChannelsMetaRetry(
+  mode: string,
+  ref: string,
+  json = false,
+): Promise<void> {
+  const normalized = mode.toLowerCase();
+  if (normalized !== 'on' && normalized !== 'off') {
+    throw new ValidationError(
+      'Usage: channels meta-retry <on|off> <channel>',
+      'INVALID_META_RETRY_MODE',
+    );
+  }
+  const enabled = normalized === 'on';
+  const channel = await resolveChannel(ref);
+  const result = await apiClient(`/meta/channels/${channel.id}/meta-retry`, {
+    method: 'POST',
+    workspaceId: channel.workspaceId,
+    body: JSON.stringify({ enabled }),
+  });
+  if (json) {
+    // Backend returns { metaRetryDisabled } (inverted semantics); pass through verbatim.
+    output(result, { human: false });
+  } else {
+    console.log(
+      enabled
+        ? `✓ Enabled Meta retries on ${channelLabel(channel)}`
+        : `✓ Disabled Meta retries on ${channelLabel(channel)} (forwarder will always ack Meta with 200)`,
+    );
+  }
+}
+
 export function registerChannelsCommand(program: Command): void {
   const channels = program.command('channels').description('Manage WhatsApp channels');
 
@@ -439,6 +475,15 @@ export function registerChannelsCommand(program: Command): void {
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       await runChannelsDisable(channelRef, !!program.opts().json);
+    });
+
+  const channelsMetaRetry = channels
+    .command('meta-retry')
+    .description('Enable or disable Meta webhook retries for a channel')
+    .argument('<mode>', '"on" or "off" (off = forwarder always acks Meta 200)')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .action(async (mode: string, channelRef: string) => {
+      await runChannelsMetaRetry(mode, channelRef, !!program.opts().json);
     });
 
   // ─── Channel-scoped utility commands ───────────────────────────────────
@@ -566,6 +611,15 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp channels disable ch_AAAAAAAA
   $ hookmyapp channels disable ch_AAAAAAAA --workspace acme-corp
+`,
+  );
+
+  addExamples(
+    channelsMetaRetry,
+    `
+EXAMPLES:
+  $ hookmyapp channels meta-retry off ch_AAAAAAAA
+  $ hookmyapp channels meta-retry on ch_AAAAAAAA
 `,
   );
 
