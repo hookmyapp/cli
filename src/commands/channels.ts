@@ -119,6 +119,13 @@ function throwNoMatch(needle: string, channels: Channel[]): never {
 
 interface ChannelsConnectOpts {
   type?: 'whatsapp' | 'instagram';
+  /**
+   * Print the OAuth sign-in URL to stdout instead of launching the browser.
+   * The flow is otherwise identical — we still snapshot + poll for the new
+   * channel after the user completes sign-in in whatever browser they choose.
+   * Useful over SSH / on headless boxes where `open()` opens nothing useful.
+   */
+  printUrl?: boolean;
 }
 
 /**
@@ -202,9 +209,15 @@ export async function runChannelsConnect(
     workspaceId,
   })) as { redirectUrl: string };
 
-  // 3. Open in browser.
-  console.log('\nOpening sign-in in browser...\nComplete the flow, then return here.\n');
-  await open(redirectUrl);
+  // 3. Hand the OAuth URL to the user — either by launching their browser
+  //    or, with --print-url, by printing it so they can open it elsewhere.
+  if (opts.printUrl) {
+    console.log('\nOpen this URL in your browser to continue:\n');
+    console.log(redirectUrl + '\n');
+  } else {
+    console.log('\nOpening sign-in in browser...\nComplete the flow, then return here.\n');
+    await open(redirectUrl);
+  }
   console.log('Waiting for channel(s)...');
 
   // 4. Poll for new/updated channels per D2 acceptance criteria.
@@ -393,14 +406,15 @@ export function registerChannelsCommand(program: Command): void {
     .command('connect')
     .description('Connect a channel via Meta OAuth (WhatsApp or Instagram)')
     .argument('[type]', 'Channel type: "whatsapp" or "instagram" (interactive if omitted)')
-    .action(async (type: string | undefined) => {
+    .option('--print-url', 'Print the sign-in URL instead of opening the browser')
+    .action(async (type: string | undefined, options: { printUrl?: boolean }) => {
       if (type !== undefined && type !== 'whatsapp' && type !== 'instagram') {
         throw new ValidationError(
           `Invalid type "${type}". Must be "whatsapp" or "instagram".`,
           'INVALID_CONNECT_TYPE',
         );
       }
-      await runChannelsConnect({ type });
+      await runChannelsConnect({ type, printUrl: options.printUrl });
     });
 
   const channelsDisconnect = channels

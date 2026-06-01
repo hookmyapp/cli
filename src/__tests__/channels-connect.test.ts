@@ -37,6 +37,7 @@ import {
 import { pollForNewChannels } from '../commands/channels-connect-poll.js';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { select } from '@inquirer/prompts';
+import open from 'open';
 import { ValidationError } from '../output/error.js';
 
 describe('buildConnectStartRequest — pure routing helper', () => {
@@ -164,6 +165,35 @@ describe('runChannelsConnect — reports all new channels by type (D7)', () => {
     expect(combined).toContain('+15551234567');
     expect(combined).toContain('Instagram');
     expect(combined).toContain('@newhandle');
+    logSpy.mockRestore();
+  });
+});
+
+describe('runChannelsConnect — --print-url', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(open).mockClear();
+    vi.mocked(forceTokenRefresh).mockClear();
+    vi.mocked(pollForNewChannels).mockResolvedValue([
+      {
+        id: 'ch_NEW_IG', type: 'instagram', workspaceId: 'ws_TEST0001',
+        metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
+        metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+        instagramUsername: 'newhandle', instagramName: 'New', instagramProfilePictureUrl: null,
+      } as any,
+    ]);
+    process.stdout.isTTY = true;
+  });
+
+  it('prints the OAuth URL and does NOT launch the browser', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ redirectUrl: 'https://meta.example/ig-print' });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsConnect({ type: 'instagram', printUrl: true });
+    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(combined).toContain('https://meta.example/ig-print');
+    expect(vi.mocked(open)).not.toHaveBeenCalled();
     logSpy.mockRestore();
   });
 });
