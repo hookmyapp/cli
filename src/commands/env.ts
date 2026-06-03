@@ -4,6 +4,7 @@ import { resolve as resolvePath } from 'node:path';
 import { apiClient } from '../api/client.js';
 import { isJsonMode } from '../output/format.js';
 import { resolveChannel } from './channels.js';
+import { createKeyForChannel } from './keys.js';
 
 export interface EnvOptions {
   write?: string | boolean;
@@ -15,11 +16,35 @@ export interface EnvOptions {
  * key names — when Instagram/Messenger ship, backend changes alone unlock
  * them. `values` is always overwritten on `--write`; `defaults` is
  * preserve-if-exists (only written when the key is absent locally).
+ *
+ * Gateway model: the GET NEVER returns the real Meta token. `values` carries
+ * the gateway base URL (`META_GRAPH_API_URL`) + non-secret keys (WABA id,
+ * phone number id, …). The channel-type's token key (`WHATSAPP_ACCESS_TOKEN`,
+ * `INSTAGRAM_ACCESS_TOKEN`, …) is NOT in `values`: on `--write` the CLI mints
+ * a gateway key and injects it; on stdout the token field shows a run-hint.
  */
 interface ChannelEnvPayload {
   channelType: 'whatsapp' | 'instagram' | 'messenger' | string;
   values: Record<string, string>;
   defaults: Record<string, string>;
+  /** Whether the channel's Meta connection already has at least one usable gateway key. */
+  hasActiveKey: boolean;
+}
+
+/**
+ * The dotenv key under which a channel type's gateway API key lives. The minted
+ * key is injected here on `--write`; the `<run: …>` hint is shown here on stdout.
+ */
+function tokenKeyFor(channelType: string): string {
+  switch (channelType) {
+    case 'instagram':
+      return 'INSTAGRAM_ACCESS_TOKEN';
+    case 'messenger':
+      return 'MESSENGER_ACCESS_TOKEN';
+    case 'whatsapp':
+    default:
+      return 'WHATSAPP_ACCESS_TOKEN';
+  }
 }
 
 function upsertEnvFile(targetPath: string, updates: Map<string, string>): void {
@@ -96,13 +121,18 @@ export async function runChannelEnv(
     return;
   }
 
-  const envText =
-    [
-      ...Object.entries(payload.values).map(([k, v]) => `${k}=${v}`),
-      ...Object.entries(payload.defaults).map(([k, v]) => `${k}=${v}`),
-    ].join('\n') + '\n';
+  const tokenKey = tokenKeyFor(payload.channelType);
 
+  // stdout (no --write): emit the gateway URL + non-secret values, plus the
+  // token field as a run-hint. NEVER a real token, NEVER a minted key — minting
+  // is a side-effecting write reserved for `--write` and `keys create`.
   if (options.write === undefined || options.write === false) {
+    const envText =
+      [
+        ...Object.entries(payload.values).map(([k, v]) => `${k}=${v}`),
+        `${tokenKey}=<run: hookmyapp keys create ${channelRef}>`,
+        ...Object.entries(payload.defaults).map(([k, v]) => `${k}=${v}`),
+      ].join('\n') + '\n';
     process.stdout.write(envText);
     return;
   }
@@ -111,8 +141,14 @@ export async function runChannelEnv(
     typeof options.write === 'string' ? options.write : '.env',
   );
 
+  // --write: mint a gateway key and inject it under the channel-type's token
+  // key. Uses the side-effect-free createKeyForChannel (NOT runKeysCreate, which
+  // would print the plaintext key to stdout). The key lands in the .env only.
+  const minted = await createKeyForChannel(channelRef);
+
   // values: always overwrite existing entries.
   const updates = new Map<string, string>(Object.entries(payload.values));
+  updates.set(tokenKey, minted.key);
 
   // defaults: preserve-if-exists. Inspect the target file ourselves and only
   // include defaults whose keys are absent — upsertEnvFile is overwrite-or-
