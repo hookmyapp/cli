@@ -22,6 +22,12 @@ interface ChannelBase {
    * older backends — poll falls back to id-diff only.
    */
   updatedAt?: string;
+  /**
+   * Meta-connection publicId (`conn_<8>`). Surfaced by Plan 1 backend DTOs so
+   * the CLI can build the gateway API-key path `/api-keys/connections/:connId`.
+   * Absent on older backends / channels with no Meta connection yet.
+   */
+  connectionId?: string;
 }
 
 export interface WhatsAppChannel extends ChannelBase {
@@ -100,6 +106,7 @@ function parseBase(d: Record<string, unknown>, id: string): ChannelBase {
     webhookUrl: d.webhookUrl,
     verifyToken: d.verifyToken,
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : undefined,
+    connectionId: typeof d.connectionId === 'string' ? d.connectionId : undefined,
   };
 }
 
