@@ -14,6 +14,9 @@ export interface EnvProfile {
   // Per-env: each env runs an isolated sandbox WABA under a separate Meta App
   // (staging IL, prod US). NEVER cross over.
   sandboxWhatsAppNumber: string;
+  // Base URL for the Meta gateway proxy — customers append the verbatim Graph
+  // path, e.g. `${gatewayUrl}/v22.0/{phone_number_id}/messages`.
+  gatewayUrl: string;
 }
 
 /**
@@ -31,6 +34,7 @@ export const ENV_PROFILES: Record<EnvName, EnvProfile> = {
     workosClientId: 'client_01KPB6HCD7Q26ATBM9ZNKX97GD',
     // local dev shares the staging sandbox WABA (+972 55 704 6276)
     sandboxWhatsAppNumber: '972557046276',
+    gatewayUrl: 'http://localhost:4317/meta',
   },
   staging: {
     apiUrl: 'https://staging-api.hookmyapp.com',
@@ -38,6 +42,7 @@ export const ENV_PROFILES: Record<EnvName, EnvProfile> = {
     workosClientId: 'client_01KM5S4CGX9M2M2P63JTA6AFEH',
     // staging sandbox WABA: +972 55 704 6276 (WABA 1276334778010256)
     sandboxWhatsAppNumber: '972557046276',
+    gatewayUrl: 'https://staging-gateway.hookmyapp.com/meta',
   },
   production: {
     apiUrl: 'https://api.hookmyapp.com',
@@ -46,6 +51,7 @@ export const ENV_PROFILES: Record<EnvName, EnvProfile> = {
     // prod sandbox WABA: +1 737-237-0900 (WABA 1703736267434336) — separate
     // Meta App from staging; do NOT use the IL number here.
     sandboxWhatsAppNumber: '17372370900',
+    gatewayUrl: 'https://gateway.hookmyapp.com/meta',
   },
 };
 
