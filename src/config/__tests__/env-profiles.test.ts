@@ -218,6 +218,14 @@ describe('env-profiles: getEffectiveSandboxProxyUrl', () => {
   });
 });
 
+describe('gateway URLs per env', () => {
+  it('points production at gateway.hookmyapp.com and staging at staging-gateway', () => {
+    expect(ENV_PROFILES.production.gatewayUrl).toBe('https://gateway.hookmyapp.com/meta');
+    expect(ENV_PROFILES.staging.gatewayUrl).toBe('https://staging-gateway.hookmyapp.com/meta');
+    expect(ENV_PROFILES.local.gatewayUrl).toBe('http://localhost:4317/meta');
+  });
+});
+
 describe('getEffectiveSandboxInstagramUsername', () => {
   const originalEnv = process.env.HOOKMYAPP_ENV;
   afterEach(() => {
