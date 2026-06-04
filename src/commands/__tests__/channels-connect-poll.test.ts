@@ -15,15 +15,15 @@ const wa = {
   id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
   metaWabaId: '1179', metaResourceId: '1080', connectionType: 'cloud_api',
   metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-  wabaName: 'New WABA', displayPhoneNumber: '+15551234567', phoneNumberId: '1080',
-  phoneVerifiedName: 'Test', qualityRating: null, qualityRatingCheckedAt: null,
+  whatsappWabaName: 'New WABA', whatsappDisplayPhoneNumber: '+15551234567', whatsappPhoneNumberId: '1080',
+  whatsappVerifiedName: 'Test', whatsappQualityRating: null, whatsappQualityRatingCheckedAt: null,
   updatedAt: '2026-05-26T18:30:00.000Z',
 };
 const ig = {
   id: 'ch_NEW_IG', type: 'instagram', workspaceId: 'ws_TEST0001',
   metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
   metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-  instagramUsername: 'newhandle', instagramName: 'New', instagramProfilePictureUrl: null,
+  instagramUsername: 'newhandle', instagramProfileName: 'New', instagramProfilePictureUrl: null,
   updatedAt: '2026-05-26T18:30:01.000Z',
 };
 
@@ -58,8 +58,8 @@ describe('pollForNewChannels — D2 acceptance criteria', () => {
       id: 'ch_PRE_EXISTING', type: 'whatsapp', workspaceId: 'ws_TEST0001',
       metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
       metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-      wabaName: null, displayPhoneNumber: null, phoneNumberId: null,
-      phoneVerifiedName: null, qualityRating: null, qualityRatingCheckedAt: null,
+      whatsappWabaName: null, whatsappDisplayPhoneNumber: null, whatsappPhoneNumberId: null,
+      whatsappVerifiedName: null, whatsappQualityRating: null, whatsappQualityRatingCheckedAt: null,
       updatedAt: '2026-05-26T18:00:00.000Z',
     };
     vi.mocked(apiClient)
@@ -83,8 +83,8 @@ describe('pollForNewChannels — D2 acceptance criteria', () => {
       id: 'ch_REAUTH', type: 'whatsapp', workspaceId: 'ws_TEST0001',
       metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
       metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-      wabaName: 'Existing WABA', displayPhoneNumber: '+15550000001', phoneNumberId: '999',
-      phoneVerifiedName: 'Existing', qualityRating: 'GREEN', qualityRatingCheckedAt: null,
+      whatsappWabaName: 'Existing WABA', whatsappDisplayPhoneNumber: '+15550000001', whatsappPhoneNumberId: '999',
+      whatsappVerifiedName: 'Existing', whatsappQualityRating: 'GREEN', whatsappQualityRatingCheckedAt: null,
       updatedAt: '2026-05-26T18:30:00.000Z', // BUMPED past snapshot
     };
     vi.mocked(apiClient)
@@ -107,8 +107,8 @@ describe('pollForNewChannels — D2 acceptance criteria', () => {
       id: 'ch_REAUTH', type: 'whatsapp', workspaceId: 'ws_TEST0001',
       metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
       metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-      wabaName: 'Existing WABA', displayPhoneNumber: '+15550000001', phoneNumberId: '999',
-      phoneVerifiedName: 'Existing', qualityRating: 'GREEN', qualityRatingCheckedAt: null,
+      whatsappWabaName: 'Existing WABA', whatsappDisplayPhoneNumber: '+15550000001', whatsappPhoneNumberId: '999',
+      whatsappVerifiedName: 'Existing', whatsappQualityRating: 'GREEN', whatsappQualityRatingCheckedAt: null,
       // updatedAt deliberately absent (older backend)
     };
     vi.mocked(apiClient).mockResolvedValue([reauthedNoTimestamp]);

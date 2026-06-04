@@ -3,7 +3,7 @@
 // Mirrors src/commands/__tests__/sandbox-listen-banner.test.ts in style but
 // targets the channels-listen banner with an InstagramChannel fixture. The
 // goal is to lock in the type-aware label (`Instagram @<handle>`) so a
-// future refactor that reverts to a WA-shaped pluck (e.g. displayPhoneNumber
+// future refactor that reverts to a WA-shaped pluck (e.g. whatsappDisplayPhoneNumber
 // fall-through) regresses visibly. WA + Messenger arms are exercised by
 // integration tests (channels-listen.test.ts + wizard.test.ts).
 import { describe, it, expect, vi } from 'vitest';
@@ -22,7 +22,7 @@ const ig: Channel = {
   webhookUrl: null,
   verifyToken: null,
   instagramUsername: 'ordvir',
-  instagramName: 'Or',
+  instagramProfileName: 'Or',
   instagramProfilePictureUrl: null,
 };
 

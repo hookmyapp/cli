@@ -40,7 +40,7 @@ const igDto = {
   webhookUrl: null,
   verifyToken: null,
   instagramUsername: 'ordvir',
-  instagramName: 'Or',
+  instagramProfileName: 'Or',
   instagramProfilePictureUrl: null,
 };
 

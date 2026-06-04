@@ -84,13 +84,13 @@ export async function selectChannel<T extends Channel>(
 
 function renderRow(c: Channel): string {
   if (c.type === 'whatsapp') {
-    const name = c.wabaName ?? '(no name)';
-    const phone = c.displayPhoneNumber ?? 'no phone';
+    const name = c.whatsappWabaName ?? '(no name)';
+    const phone = c.whatsappDisplayPhoneNumber ?? 'no phone';
     return `${c.id} (${name}, ${phone})`;
   }
   if (c.type === 'instagram') {
     const handle = c.instagramUsername ? `@${c.instagramUsername}` : '(no handle)';
-    const name = c.instagramName ?? '';
+    const name = c.instagramProfileName ?? '';
     return `${c.id} (${handle}${name ? `, ${name}` : ''})`;
   }
   return `${c.id} (Messenger)`;
