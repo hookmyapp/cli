@@ -65,15 +65,15 @@ const fakeChannels = [
     workspaceId: 'ws_TEST0010',
     metaWabaId: 'waba-1',
     metaResourceId: 'phone-1',
-    wabaName: 'Test WABA',
-    displayPhoneNumber: '+1 234 567 890',
-    phoneNumberId: 'phone-1',
-    phoneVerifiedName: 'Test Verified',
+    whatsappWabaName: 'Test WABA',
+    whatsappDisplayPhoneNumber: '+1 234 567 890',
+    whatsappPhoneNumberId: 'phone-1',
+    whatsappVerifiedName: 'Test Verified',
     connectionType: 'cloud_api',
     metaConnected: true,
     forwardingEnabled: true,
-    qualityRating: 'GREEN',
-    qualityRatingCheckedAt: null,
+    whatsappQualityRating: 'GREEN',
+    whatsappQualityRatingCheckedAt: null,
     webhookUrl: 'https://example.com/webhook',
     verifyToken: 'tok-123',
   },
@@ -83,15 +83,15 @@ const fakeChannels = [
     workspaceId: 'ws_TEST0020',
     metaWabaId: 'waba-2',
     metaResourceId: 'phone-2',
-    wabaName: 'Another WABA',
-    displayPhoneNumber: '+1 987 654 321',
-    phoneNumberId: 'phone-2',
-    phoneVerifiedName: null,
+    whatsappWabaName: 'Another WABA',
+    whatsappDisplayPhoneNumber: '+1 987 654 321',
+    whatsappPhoneNumberId: 'phone-2',
+    whatsappVerifiedName: null,
     connectionType: 'coexistence',
     metaConnected: true,
     forwardingEnabled: true,
-    qualityRating: null,
-    qualityRatingCheckedAt: null,
+    whatsappQualityRating: null,
+    whatsappQualityRatingCheckedAt: null,
     webhookUrl: null,
     verifyToken: null,
   },
@@ -103,18 +103,18 @@ const fakeDetailResponse = {
   workspaceId: 'ws_TEST0020',
   metaWabaId: 'waba-2',
   metaResourceId: 'phone-2',
-  wabaName: 'Another WABA',
-  displayPhoneNumber: '+1 987 654 321',
-  phoneVerifiedName: null,
+  whatsappWabaName: 'Another WABA',
+  whatsappDisplayPhoneNumber: '+1 987 654 321',
+  whatsappVerifiedName: null,
   connectionType: 'coexistence',
   metaConnected: true,
   forwardingEnabled: true,
-  qualityRating: null,
-  qualityRatingCheckedAt: null,
+  whatsappQualityRating: null,
+  whatsappQualityRatingCheckedAt: null,
   accessToken: 'real-token-value',
-  businessName: 'Acme Corp',
+  whatsappBusinessName: 'Acme Corp',
   metaBusinessId: 'biz-123',
-  phoneNumberId: 'phone-2',
+  whatsappPhoneNumberId: 'phone-2',
   webhookUrl: null,
   verifyToken: null,
 };
@@ -365,7 +365,7 @@ describe('resolveChannel — strict resolver order (Task 5)', () => {
   // Fixtures match the actual /meta/channels wire shape (and satisfy the
   // strict parseChannelListItem boundary parser — see src/api/channel.ts):
   //   `id` carries the publicId value (ch_xxxxxxxx)
-  //   `wabaName` (NOT displayName)
+  //   `whatsappWabaName` (NOT displayName)
   const fixtures = [
     {
       id: 'ch_abc12345',
@@ -373,12 +373,12 @@ describe('resolveChannel — strict resolver order (Task 5)', () => {
       workspaceId: 'ws_TEST0010',
       metaWabaId: '1248091060795230',
       metaResourceId: '979105081963262',
-      phoneNumberId: '979105081963262',
-      displayPhoneNumber: '+972 55-727-7945',
-      wabaName: 'tomer office',
-      phoneVerifiedName: null,
-      qualityRating: null,
-      qualityRatingCheckedAt: null,
+      whatsappPhoneNumberId: '979105081963262',
+      whatsappDisplayPhoneNumber: '+972 55-727-7945',
+      whatsappWabaName: 'tomer office',
+      whatsappVerifiedName: null,
+      whatsappQualityRating: null,
+      whatsappQualityRatingCheckedAt: null,
       connectionType: 'cloud_api',
       metaConnected: true,
       forwardingEnabled: true,
@@ -391,12 +391,12 @@ describe('resolveChannel — strict resolver order (Task 5)', () => {
       workspaceId: 'ws_TEST0010',
       metaWabaId: '9999999999999999',
       metaResourceId: '888888888888888',
-      phoneNumberId: '888888888888888',
-      displayPhoneNumber: '+1 555-000-0000',
-      wabaName: 'tomer second office',
-      phoneVerifiedName: null,
-      qualityRating: null,
-      qualityRatingCheckedAt: null,
+      whatsappPhoneNumberId: '888888888888888',
+      whatsappDisplayPhoneNumber: '+1 555-000-0000',
+      whatsappWabaName: 'tomer second office',
+      whatsappVerifiedName: null,
+      whatsappQualityRating: null,
+      whatsappQualityRatingCheckedAt: null,
       connectionType: 'cloud_api',
       metaConnected: true,
       forwardingEnabled: true,
@@ -451,7 +451,7 @@ describe('health command', () => {
   it('health command calls refresh with POST and workspaceId', async () => {
     mockedApiClient
       .mockResolvedValueOnce(fakeChannels) // channel lookup
-      .mockResolvedValueOnce({ metaConnected: true, forwardingEnabled: true, wabaName: 'Test' }); // health result
+      .mockResolvedValueOnce({ metaConnected: true, forwardingEnabled: true, whatsappWabaName: 'Test' }); // health result
 
     await runChannelHealth('ch_TEST0001');
 
@@ -461,7 +461,7 @@ describe('health command', () => {
       workspaceId: 'ws_TEST0010',
     });
     expect(mockedOutput).toHaveBeenCalledWith(
-      { metaConnected: true, forwardingEnabled: true, wabaName: 'Test' },
+      { metaConnected: true, forwardingEnabled: true, whatsappWabaName: 'Test' },
       expect.objectContaining({}),
     );
   });

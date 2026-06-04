@@ -22,12 +22,12 @@ const wa = {
   forwardingEnabled: true,
   webhookUrl: null,
   verifyToken: null,
-  wabaName: 'My WABA',
-  displayPhoneNumber: '+15551234567',
-  phoneNumberId: '1080',
-  phoneVerifiedName: 'Test',
-  qualityRating: null,
-  qualityRatingCheckedAt: null,
+  whatsappWabaName: 'My WABA',
+  whatsappDisplayPhoneNumber: '+15551234567',
+  whatsappPhoneNumberId: '1080',
+  whatsappVerifiedName: 'Test',
+  whatsappQualityRating: null,
+  whatsappQualityRatingCheckedAt: null,
 };
 const ig = {
   id: 'ch_IGaaaaaa',
@@ -41,14 +41,14 @@ const ig = {
   webhookUrl: null,
   verifyToken: null,
   instagramUsername: 'ordvir',
-  instagramName: 'Or',
+  instagramProfileName: 'Or',
   instagramProfilePictureUrl: null,
 };
 
 describe('resolveChannel — shape-detected positional', () => {
   beforeEach(() => vi.mocked(apiClient).mockReset());
 
-  it('+phone narrows to WA channel by displayPhoneNumber', async () => {
+  it('+phone narrows to WA channel by whatsappDisplayPhoneNumber', async () => {
     vi.mocked(apiClient).mockResolvedValueOnce([wa, ig]);
     const out = await resolveChannel('+15551234567');
     expect(out.id).toBe('ch_WAaaaaaa');

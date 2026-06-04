@@ -354,7 +354,7 @@ export function printBanner(args: {
   if (args.json) return;
   const subjectLabel =
     args.channel.type === 'whatsapp'
-      ? `WhatsApp ${args.channel.displayPhoneNumber ?? args.channel.wabaName ?? args.channel.id}`
+      ? `WhatsApp ${args.channel.whatsappDisplayPhoneNumber ?? args.channel.whatsappWabaName ?? args.channel.id}`
       : args.channel.type === 'instagram'
         ? `Instagram @${args.channel.instagramUsername ?? '(no handle)'}`
         : `Messenger ${args.channel.id}`;

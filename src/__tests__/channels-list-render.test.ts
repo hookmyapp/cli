@@ -14,14 +14,14 @@ const wa = {
   id: 'ch_WAaaaaaa', type: 'whatsapp', workspaceId: 'ws_TEST0001',
   metaWabaId: '1179', metaResourceId: '1080', connectionType: 'cloud_api',
   metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-  wabaName: 'My WABA', displayPhoneNumber: '+15551234567', phoneNumberId: '1080',
-  phoneVerifiedName: 'Test', qualityRating: null, qualityRatingCheckedAt: null,
+  whatsappWabaName: 'My WABA', whatsappDisplayPhoneNumber: '+15551234567', whatsappPhoneNumberId: '1080',
+  whatsappVerifiedName: 'Test', whatsappQualityRating: null, whatsappQualityRatingCheckedAt: null,
 };
 const ig = {
   id: 'ch_IGaaaaaa', type: 'instagram', workspaceId: 'ws_TEST0001',
   metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
   metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-  instagramUsername: 'ordvir', instagramName: 'Or', instagramProfilePictureUrl: null,
+  instagramUsername: 'ordvir', instagramProfileName: 'Or', instagramProfilePictureUrl: null,
 };
 
 describe('runChannelsList — IG rows are visible', () => {

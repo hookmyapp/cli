@@ -33,23 +33,23 @@ interface ChannelBase {
 
 export interface WhatsAppChannel extends ChannelBase {
   type: 'whatsapp';
-  wabaName: string | null;
-  displayPhoneNumber: string | null;
-  phoneNumberId: string | null;
+  whatsappWabaName: string | null;
+  whatsappDisplayPhoneNumber: string | null;
+  whatsappPhoneNumberId: string | null;
   /**
-   * Phone-number-verified sender display name. Independent of `wabaName`:
-   * the WABA may carry the parent business name while phoneVerifiedName
+   * Phone-number-verified sender display name. Independent of `whatsappWabaName`:
+   * the WABA may carry the parent business name while whatsappVerifiedName
    * is the customer-facing sender display. Backends < restore-commit may
    * still emit this absent; parser tolerates that.
    */
-  phoneVerifiedName: string | null;
-  qualityRating: string | null;
+  whatsappVerifiedName: string | null;
+  whatsappQualityRating: string | null;
 }
 
 export interface InstagramChannel extends ChannelBase {
   type: 'instagram';
   instagramUsername: string | null;
-  instagramName: string | null;
+  instagramProfileName: string | null;
   instagramProfilePictureUrl: string | null;
 }
 
@@ -62,7 +62,7 @@ export type Channel = WhatsAppChannel | InstagramChannel | MessengerChannel;
 /** Detail-only fields returned by GET /meta/channels/:id (not on list endpoint). */
 interface DetailExtras {
   accessToken?: string;
-  businessName?: string;
+  whatsappBusinessName?: string;
   metaBusinessId?: string;
 }
 
@@ -124,40 +124,41 @@ export function parseChannelListItem(dto: unknown): Channel {
   if (!isNonEmptyString(d.type)) malformed(id, 'type missing');
   switch (d.type) {
     case 'whatsapp': {
-      if (!isStringOrNull(d.wabaName)) malformed(id, 'WA channel: wabaName must be string or null');
-      if (!isStringOrNull(d.displayPhoneNumber))
-        malformed(id, 'WA channel: displayPhoneNumber must be string or null');
-      if (!isStringOrNull(d.phoneNumberId))
-        malformed(id, 'WA channel: phoneNumberId must be string or null');
-      // Tolerate absent phoneVerifiedName for backends predating the restore
+      if (!isStringOrNull(d.whatsappWabaName))
+        malformed(id, 'WA channel: whatsappWabaName must be string or null');
+      if (!isStringOrNull(d.whatsappDisplayPhoneNumber))
+        malformed(id, 'WA channel: whatsappDisplayPhoneNumber must be string or null');
+      if (!isStringOrNull(d.whatsappPhoneNumberId))
+        malformed(id, 'WA channel: whatsappPhoneNumberId must be string or null');
+      // Tolerate absent whatsappVerifiedName for backends predating the restore
       // commit — they simply omit the key. When present, must be string or null.
-      if (d.phoneVerifiedName !== undefined && !isStringOrNull(d.phoneVerifiedName))
-        malformed(id, 'WA channel: phoneVerifiedName must be string or null');
-      if (!isStringOrNull(d.qualityRating))
-        malformed(id, 'WA channel: qualityRating must be string or null');
+      if (d.whatsappVerifiedName !== undefined && !isStringOrNull(d.whatsappVerifiedName))
+        malformed(id, 'WA channel: whatsappVerifiedName must be string or null');
+      if (!isStringOrNull(d.whatsappQualityRating))
+        malformed(id, 'WA channel: whatsappQualityRating must be string or null');
       return {
         ...base,
         type: 'whatsapp',
-        wabaName: d.wabaName,
-        displayPhoneNumber: d.displayPhoneNumber,
-        phoneNumberId: d.phoneNumberId,
-        phoneVerifiedName:
-          d.phoneVerifiedName === undefined ? null : (d.phoneVerifiedName as string | null),
-        qualityRating: d.qualityRating,
+        whatsappWabaName: d.whatsappWabaName,
+        whatsappDisplayPhoneNumber: d.whatsappDisplayPhoneNumber,
+        whatsappPhoneNumberId: d.whatsappPhoneNumberId,
+        whatsappVerifiedName:
+          d.whatsappVerifiedName === undefined ? null : (d.whatsappVerifiedName as string | null),
+        whatsappQualityRating: d.whatsappQualityRating,
       };
     }
     case 'instagram': {
       if (!isStringOrNull(d.instagramUsername))
         malformed(id, 'IG channel: instagramUsername must be string or null');
-      if (!isStringOrNull(d.instagramName))
-        malformed(id, 'IG channel: instagramName must be string or null');
+      if (!isStringOrNull(d.instagramProfileName))
+        malformed(id, 'IG channel: instagramProfileName must be string or null');
       if (!isStringOrNull(d.instagramProfilePictureUrl))
         malformed(id, 'IG channel: instagramProfilePictureUrl must be string or null');
       return {
         ...base,
         type: 'instagram',
         instagramUsername: d.instagramUsername,
-        instagramName: d.instagramName,
+        instagramProfileName: d.instagramProfileName,
         instagramProfilePictureUrl: d.instagramProfilePictureUrl,
       };
     }
@@ -176,7 +177,8 @@ export function parseChannelDetail(dto: unknown): ChannelDetail {
   return {
     ...base,
     accessToken: typeof d.accessToken === 'string' ? d.accessToken : undefined,
-    businessName: typeof d.businessName === 'string' ? d.businessName : undefined,
+    whatsappBusinessName:
+      typeof d.whatsappBusinessName === 'string' ? d.whatsappBusinessName : undefined,
     metaBusinessId: typeof d.metaBusinessId === 'string' ? d.metaBusinessId : undefined,
   };
 }

@@ -18,7 +18,7 @@ const ig = {
   id: 'ch_IGaaaaaa', type: 'instagram', workspaceId: 'ws_TEST0001',
   metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
   metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-  instagramUsername: 'ordvir', instagramName: 'Or', instagramProfilePictureUrl: null,
+  instagramUsername: 'ordvir', instagramProfileName: 'Or', instagramProfilePictureUrl: null,
 };
 
 describe('channels toggle actions accept IG channels', () => {

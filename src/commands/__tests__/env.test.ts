@@ -79,7 +79,7 @@ beforeEach(() => {
     id: 'ch_1',
     workspaceId: 'ws_TEST0001',
     metaWabaId: '1234567890',
-    phoneNumberId: '15551234567',
+    whatsappPhoneNumberId: '15551234567',
   });
   mocks.apiClientMock.mockResolvedValue(ENV_PAYLOAD);
 });

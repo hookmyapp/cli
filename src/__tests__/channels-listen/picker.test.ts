@@ -34,11 +34,11 @@ function makeChannel(
     forwardingEnabled: true,
     webhookUrl: null,
     verifyToken: null,
-    wabaName: 'Test WABA',
-    displayPhoneNumber: '+1 (555) 111-1111',
-    phoneNumberId: null,
-    phoneVerifiedName: null,
-    qualityRating: null,
+    whatsappWabaName: 'Test WABA',
+    whatsappDisplayPhoneNumber: '+1 (555) 111-1111',
+    whatsappPhoneNumberId: null,
+    whatsappVerifiedName: null,
+    whatsappQualityRating: null,
     ...overrides,
   };
 }
@@ -68,8 +68,8 @@ describe('pickChannel', () => {
 
   describe('When channelFlag opt (positional channelRef) matches a forwarding-enabled channel', () => {
     it('then returns that channel without prompting', async () => {
-      const a = makeChannel({ id: 'ch_AAAAAAAA', wabaName: 'A' });
-      const b = makeChannel({ id: 'ch_BBBBBBBB', wabaName: 'B' });
+      const a = makeChannel({ id: 'ch_AAAAAAAA', whatsappWabaName: 'A' });
+      const b = makeChannel({ id: 'ch_BBBBBBBB', whatsappWabaName: 'B' });
 
       const picked = await pickChannel([a, b], { channelFlag: 'ch_BBBBBBBB' });
 
@@ -108,8 +108,8 @@ describe('pickChannel', () => {
 
   describe('When 2+ forwarding-enabled channels exist and no flag is set', () => {
     it('then prompts via @inquirer select', async () => {
-      const a = makeChannel({ id: 'ch_AAAAAAAA', wabaName: 'A' });
-      const b = makeChannel({ id: 'ch_BBBBBBBB', wabaName: 'B' });
+      const a = makeChannel({ id: 'ch_AAAAAAAA', whatsappWabaName: 'A' });
+      const b = makeChannel({ id: 'ch_BBBBBBBB', whatsappWabaName: 'B' });
       mockedSelect.mockResolvedValueOnce(a);
 
       const picked = await pickChannel([a, b]);
