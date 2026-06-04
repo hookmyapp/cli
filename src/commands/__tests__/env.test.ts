@@ -12,20 +12,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../api/client.js', () => ({ apiClient: mocks.apiClientMock, setWorkspaceContext: vi.fn() }));
 vi.mock('../channels.js', () => ({ resolveChannel: mocks.resolveChannelMock }));
-// The --write path calls createAccessTokenForChannel (in access-tokens.ts), which itself calls
-// resolveChannel + an apiClient POST. Mock it so the --write mint integration
-// doesn't fire an out-of-sequence POST / extra resolveChannel and break the
-// call-order assertions below. Path is `../access-tokens.js` — vi.mock resolves relative
-// to THIS test file at src/commands/__tests__/, so a sibling module in
-// src/commands/ is `../` (matches vi.mock('../channels.js') above).
-vi.mock('../access-tokens.js', () => ({
-  createAccessTokenForChannel: vi.fn(async () => ({
-    token: 'hmat_live_TESTKEY',
-    publicId: 'key_TEST0001',
-    tokenPrefix: 'hmat_live_TEST',
-    tokenSuffix: 'EY01',
-  })),
-}));
 // Mock isJsonMode so we can toggle per-test without commander gymnastics.
 // Mirrors the pattern in token.test.ts (Task 4). Existing human-mode tests
 // fall through to `() => false`.
@@ -45,20 +31,20 @@ vi.mock('node:fs', async () => {
 });
 
 // runChannelEnv now consumes the gateway /meta/channels/:id/env payload —
-// { channelType, values, defaults, hasActiveToken }. The GET NEVER returns the
-// real Meta token: `values` carries the gateway base URL (META_GRAPH_API_URL)
-// plus non-secret keys (WABA id, phone number id). On --write the CLI mints a
-// gateway access token (createAccessTokenForChannel) and injects it under the channel-type's
-// token key; without --write the token field shows a `<run: ...>` hint.
+// { channelType, values, defaults }. The GET NEVER returns the real Meta token:
+// `values` carries the gateway base URL (META_GRAPH_API_URL), non-secret keys
+// (WABA id, phone number id), AND the gateway access token under the channel
+// type's token key. Every connected channel has a token, so the CLI writes
+// `values` verbatim — no minting, no run-hint.
 const ENV_PAYLOAD = {
   channelType: 'whatsapp',
   values: {
     META_GRAPH_API_URL: 'https://gateway.hookmyapp.com/v22.0',
     WHATSAPP_WABA_ID: '1234567890',
     WHATSAPP_PHONE_NUMBER_ID: '15551234567',
+    WHATSAPP_ACCESS_TOKEN: 'hmat_live_VALUESTOKEN',
   },
   defaults: { PORT: '3000' },
-  hasActiveToken: false,
 };
 
 async function runEnv(args: string[]) {
@@ -85,16 +71,16 @@ beforeEach(() => {
 });
 
 describe('env <channel> — WHATSAPP_ prefix', () => {
-  it('prints gateway URL + non-secret keys, token field as a hint (never a real token)', async () => {
+  it('prints gateway URL + non-secret keys + the gateway access token (never the real Meta token)', async () => {
     const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await runEnv(['ch_1']);
     const out = writeSpy.mock.calls.flat().join('');
     expect(out).toContain('META_GRAPH_API_URL=https://gateway.hookmyapp.com/v22.0');
     expect(out).toContain('WHATSAPP_WABA_ID=1234567890');
     expect(out).toContain('WHATSAPP_PHONE_NUMBER_ID=15551234567');
-    // Token field present, but as a run-hint — never a real token, never the minted key.
-    expect(out).toContain('WHATSAPP_ACCESS_TOKEN=<run: hookmyapp access-tokens create ch_1>');
-    expect(out).not.toContain('hmat_live_TESTKEY');
+    // The gateway access token comes straight from `values` — no run-hint, no minting.
+    expect(out).toContain('WHATSAPP_ACCESS_TOKEN=hmat_live_VALUESTOKEN');
+    expect(out).not.toContain('<run:');
     expect(out).not.toMatch(/^WABA_ID=/m);
     expect(out).not.toMatch(/^ACCESS_TOKEN=/m);
     expect(out).not.toMatch(/^PHONE_NUMBER_ID=/m);
@@ -103,7 +89,7 @@ describe('env <channel> — WHATSAPP_ prefix', () => {
 });
 
 describe('env <channel> --write — upsert-merge', () => {
-  it('writes gateway URL + non-secret keys + minted key when target file is missing', async () => {
+  it('writes gateway URL + non-secret keys + the gateway access token when target file is missing', async () => {
     mocks.existsSyncMock.mockReturnValue(false);
     await runEnv(['ch_1', '--write', '.env']);
     expect(mocks.writeFileSyncMock).toHaveBeenCalledTimes(1);
@@ -111,7 +97,7 @@ describe('env <channel> --write — upsert-merge', () => {
     expect(String(tmpPath)).toMatch(/\.env\.tmp$/);
     expect(String(contents)).toContain('META_GRAPH_API_URL=https://gateway.hookmyapp.com/v22.0');
     expect(String(contents)).toContain('WHATSAPP_WABA_ID=1234567890');
-    expect(String(contents)).toContain('WHATSAPP_ACCESS_TOKEN=hmat_live_TESTKEY');
+    expect(String(contents)).toContain('WHATSAPP_ACCESS_TOKEN=hmat_live_VALUESTOKEN');
     expect(String(contents)).toContain('WHATSAPP_PHONE_NUMBER_ID=15551234567');
     expect(mocks.renameSyncMock).toHaveBeenCalledTimes(1);
     const [from, to] = mocks.renameSyncMock.mock.calls[0];
@@ -119,7 +105,7 @@ describe('env <channel> --write — upsert-merge', () => {
     expect(String(to)).toMatch(/\.env$/);
   });
 
-  it('preserves unrelated keys and appends the new keys (with the minted token)', async () => {
+  it('preserves unrelated keys and appends the new keys (with the gateway access token)', async () => {
     mocks.existsSyncMock.mockReturnValue(true);
     mocks.readFileSyncMock.mockReturnValue('PORT=4000\nVERIFY_TOKEN=abc\n');
     await runEnv(['ch_1', '--write', '.env']);
@@ -128,32 +114,32 @@ describe('env <channel> --write — upsert-merge', () => {
     expect(contents).toContain('VERIFY_TOKEN=abc');
     expect(contents).toContain('META_GRAPH_API_URL=https://gateway.hookmyapp.com/v22.0');
     expect(contents).toContain('WHATSAPP_WABA_ID=1234567890');
-    expect(contents).toContain('WHATSAPP_ACCESS_TOKEN=hmat_live_TESTKEY');
+    expect(contents).toContain('WHATSAPP_ACCESS_TOKEN=hmat_live_VALUESTOKEN');
     expect(contents).toContain('WHATSAPP_PHONE_NUMBER_ID=15551234567');
   });
 
-  it('replaces a prior WHATSAPP_ACCESS_TOKEN value with the minted key, leaves others alone', async () => {
+  it('replaces a prior WHATSAPP_ACCESS_TOKEN value with the gateway token, leaves others alone', async () => {
     mocks.existsSyncMock.mockReturnValue(true);
     mocks.readFileSyncMock.mockReturnValue(
       'PORT=4000\nWHATSAPP_ACCESS_TOKEN=old\nVERIFY_TOKEN=abc\n',
     );
     await runEnv(['ch_1', '--write', '.env']);
     const contents = String(mocks.writeFileSyncMock.mock.calls[0][1]);
-    expect(contents).toContain('WHATSAPP_ACCESS_TOKEN=hmat_live_TESTKEY');
+    expect(contents).toContain('WHATSAPP_ACCESS_TOKEN=hmat_live_VALUESTOKEN');
     expect(contents).not.toContain('WHATSAPP_ACCESS_TOKEN=old');
     expect(contents).toContain('PORT=4000');
     expect(contents).toContain('VERIFY_TOKEN=abc');
   });
 
-  it('mints the key on disk only — no stray plaintext key line on stdout', async () => {
+  it('writes the token to disk only — nothing on stdout under --write', async () => {
     mocks.existsSyncMock.mockReturnValue(false);
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await runEnv(['ch_1', '--write', '.env']);
     const stdout = stdoutSpy.mock.calls.flat().join('');
-    // The minted key lands in the written file, NOT as a stdout line.
-    expect(stdout).not.toContain('hmat_live_TESTKEY');
+    // --write does not print: the token lands in the written file, not stdout.
+    expect(stdout).not.toContain('hmat_live_VALUESTOKEN');
     const contents = String(mocks.writeFileSyncMock.mock.calls[0][1]);
-    expect(contents).toContain('WHATSAPP_ACCESS_TOKEN=hmat_live_TESTKEY');
+    expect(contents).toContain('WHATSAPP_ACCESS_TOKEN=hmat_live_VALUESTOKEN');
     stdoutSpy.mockRestore();
   });
 
