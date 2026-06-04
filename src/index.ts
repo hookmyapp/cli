@@ -5,7 +5,7 @@ import { loginCommand } from './auth/login.js';
 import { logoutCommand } from './auth/logout.js';
 import { registerChannelsCommand } from './commands/channels.js';
 import { registerBillingCommand } from './commands/billing.js';
-import { registerKeysCommand } from './commands/keys.js';
+import { registerAccessTokensCommand } from './commands/access-tokens.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerSandboxCommand } from './commands/sandbox/index.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
@@ -158,8 +158,8 @@ registerChannelsCommand(program);
 // Billing
 registerBillingCommand(program);
 
-// Gateway API keys (create/list/revoke)
-registerKeysCommand(program);
+// Gateway access tokens (create/list/revoke)
+registerAccessTokensCommand(program);
 
 // Workspace management
 registerWorkspaceCommand(program);

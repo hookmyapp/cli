@@ -46,7 +46,7 @@ const fakeChannels = [
 
 // Gateway model: the GET /env NEVER returns the real Meta token. `values`
 // carries the gateway base URL + non-secret keys; the token key is injected
-// on --write from the minted gateway key (createKeyForChannel).
+// on --write from the minted gateway access token (createAccessTokenForChannel).
 const mockPayload = {
   channelType: 'whatsapp',
   values: {
@@ -57,26 +57,26 @@ const mockPayload = {
     VERIFY_TOKEN: 'verify_secret_xyz',
   },
   defaults: { PORT: '3000' },
-  hasActiveKey: false,
+  hasActiveToken: false,
 };
 
 const mintedKey = {
-  key: 'hmp_live_MINTED',
+  token: 'hmat_live_MINTED',
   publicId: 'key_TEST0001',
-  keyPrefix: 'hmp_live_MINT',
-  keySuffix: 'NTED',
+  tokenPrefix: 'hmat_live_MINT',
+  tokenSuffix: 'NTED',
 };
 
 /**
  * Wire the apiClient mock so:
  *  - `/env` returns the gateway payload,
- *  - `/api-keys/credentials/...` POST (the --write mint) returns a minted key,
+ *  - `/access-tokens/credentials/...` POST (the --write mint) returns a minted token,
  *  - any other path (resolver `/meta/channels`) returns the fixture list.
  */
 function mockApiClientForEnv(): void {
   mockedApiClient.mockImplementation(async (path: string) => {
     if (path.includes('/env')) return mockPayload;
-    if (path.includes('/api-keys/credentials')) return mintedKey;
+    if (path.includes('/access-tokens/credentials')) return mintedKey;
     return fakeChannels;
   });
 }
@@ -117,8 +117,8 @@ describe('env command', () => {
     const written = mockWrite.mock.calls.map((c) => c[0]).join('');
     expect(written).toContain('META_GRAPH_API_URL=https://gateway.hookmyapp.com/v22.0');
     // stdout (no --write): token field is a run-hint, never a real/minted token.
-    expect(written).toContain('WHATSAPP_ACCESS_TOKEN=<run: hookmyapp keys create ch_abc12345>');
-    expect(written).not.toContain('hmp_live_MINTED');
+    expect(written).toContain('WHATSAPP_ACCESS_TOKEN=<run: hookmyapp access-tokens create ch_abc12345>');
+    expect(written).not.toContain('hmat_live_MINTED');
     expect(written).toContain('HOOKMYAPP_CHANNEL_ID=ch_abc12345');
     expect(written).toContain('PORT=3000');
     mockWrite.mockRestore();
@@ -144,9 +144,9 @@ describe('env command', () => {
     // Act
     await runEnvCommand(['ch_abc12345', '--write', envPath]);
 
-    // Assert — --write mints a gateway key and injects it under the token key.
+    // Assert — --write mints a gateway access token and injects it under the token key.
     const result = readFileSync(envPath, 'utf8');
-    expect(result).toContain('WHATSAPP_ACCESS_TOKEN=hmp_live_MINTED');
+    expect(result).toContain('WHATSAPP_ACCESS_TOKEN=hmat_live_MINTED');
     expect(result).not.toContain('WHATSAPP_ACCESS_TOKEN=stale');
     expect(result).toContain('META_GRAPH_API_URL=https://gateway.hookmyapp.com/v22.0');
     expect(result).toContain('HOOKMYAPP_CHANNEL_ID=ch_abc12345');

@@ -25,7 +25,7 @@ interface ChannelBase {
   /**
    * Integration credential publicId (`cred_<8>`). Surfaced by Plan 1 backend
    * DTOs so the CLI can build the gateway API-key path
-   * `/api-keys/credentials/:credentialPublicId`. Absent on older backends /
+   * `/access-tokens/credentials/:credentialPublicId`. Absent on older backends /
    * channels with no integration credential yet.
    */
   credentialPublicId?: string;
