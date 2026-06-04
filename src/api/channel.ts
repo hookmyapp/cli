@@ -27,7 +27,7 @@ interface ChannelBase {
    * the CLI can build the gateway API-key path `/api-keys/connections/:connId`.
    * Absent on older backends / channels with no Meta connection yet.
    */
-  connectionId?: string;
+  connectionPublicId?: string;
 }
 
 export interface WhatsAppChannel extends ChannelBase {
@@ -106,7 +106,7 @@ function parseBase(d: Record<string, unknown>, id: string): ChannelBase {
     webhookUrl: d.webhookUrl,
     verifyToken: d.verifyToken,
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : undefined,
-    connectionId: typeof d.connectionId === 'string' ? d.connectionId : undefined,
+    connectionPublicId: typeof d.connectionPublicId === 'string' ? d.connectionPublicId : undefined,
   };
 }
 

@@ -20,7 +20,7 @@ const channel = {
   id: 'ch_WAaaaaaa',
   type: 'whatsapp' as const,
   workspaceId: 'ws_TEST0001',
-  connectionId: 'conn_AAAA1111',
+  connectionPublicId: 'conn_AAAA1111',
 };
 
 const jsonCmd = { optsWithGlobals: () => ({ json: true }) } as never;

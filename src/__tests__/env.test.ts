@@ -36,7 +36,7 @@ const fakeChannels = [
     qualityRating: null,
     qualityRatingCheckedAt: null,
     connectionType: 'cloud_api',
-    connectionId: 'conn_TEST0001',
+    connectionPublicId: 'conn_TEST0001',
     metaConnected: true,
     forwardingEnabled: true,
     webhookUrl: null,
