@@ -20,7 +20,7 @@ const channel = {
   id: 'ch_WAaaaaaa',
   type: 'whatsapp' as const,
   workspaceId: 'ws_TEST0001',
-  connectionPublicId: 'conn_AAAA1111',
+  credentialPublicId: 'cred_AAAA1111',
 };
 
 const jsonCmd = { optsWithGlobals: () => ({ json: true }) } as never;
@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 describe('createKeyForChannel — side-effect-free helper', () => {
-  it('POSTs /api-keys/connections/:connId and returns the minted key without writing stdout', async () => {
+  it('POSTs /api-keys/credentials/:credentialPublicId and returns the minted key without writing stdout', async () => {
     // Arrange
     vi.mocked(apiClient).mockResolvedValueOnce({
       key: 'hmp_live_secret',
@@ -48,7 +48,7 @@ describe('createKeyForChannel — side-effect-free helper', () => {
 
     // Assert
     expect(vi.mocked(apiClient).mock.calls[0]).toEqual([
-      '/api-keys/connections/conn_AAAA1111',
+      '/api-keys/credentials/cred_AAAA1111',
       { method: 'POST', workspaceId: 'ws_TEST0001', body: JSON.stringify({ label: 'prod' }) },
     ]);
     expect(res.key).toBe('hmp_live_secret');
@@ -92,8 +92,8 @@ describe('runKeysCreate — prints the plaintext key once', () => {
   });
 });
 
-describe('runKeysList — GETs the connection path, never a full key', () => {
-  it('GETs /api-keys/connections/:connId and prints prefix…suffix rows', async () => {
+describe('runKeysList — GETs the credential path, never a full key', () => {
+  it('GETs /api-keys/credentials/:credentialPublicId and prints prefix…suffix rows', async () => {
     // Arrange
     vi.mocked(apiClient).mockResolvedValueOnce({
       keys: [{ publicId: 'key_AAAA1111', keyPrefix: 'hmp_live_AB', keySuffix: 'YZ', label: 'prod' }],
@@ -104,7 +104,7 @@ describe('runKeysList — GETs the connection path, never a full key', () => {
     await runKeysList('@ordvir');
 
     // Assert
-    expect(vi.mocked(apiClient).mock.calls[0][0]).toBe('/api-keys/connections/conn_AAAA1111');
+    expect(vi.mocked(apiClient).mock.calls[0][0]).toBe('/api-keys/credentials/cred_AAAA1111');
     const combined = outSpy.mock.calls.map((c) => c[0]).join('');
     expect(combined).toContain('hmp_live_AB…YZ');
     outSpy.mockRestore();
