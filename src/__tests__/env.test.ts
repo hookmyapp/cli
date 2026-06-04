@@ -36,7 +36,7 @@ const fakeChannels = [
     qualityRating: null,
     qualityRatingCheckedAt: null,
     connectionType: 'cloud_api',
-    connectionPublicId: 'conn_TEST0001',
+    credentialPublicId: 'cred_TEST0001',
     metaConnected: true,
     forwardingEnabled: true,
     webhookUrl: null,
@@ -70,13 +70,13 @@ const mintedKey = {
 /**
  * Wire the apiClient mock so:
  *  - `/env` returns the gateway payload,
- *  - `/api-keys/connections/...` POST (the --write mint) returns a minted key,
+ *  - `/api-keys/credentials/...` POST (the --write mint) returns a minted key,
  *  - any other path (resolver `/meta/channels`) returns the fixture list.
  */
 function mockApiClientForEnv(): void {
   mockedApiClient.mockImplementation(async (path: string) => {
     if (path.includes('/env')) return mockPayload;
-    if (path.includes('/api-keys/connections')) return mintedKey;
+    if (path.includes('/api-keys/credentials')) return mintedKey;
     return fakeChannels;
   });
 }

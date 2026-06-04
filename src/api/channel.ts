@@ -23,11 +23,12 @@ interface ChannelBase {
    */
   updatedAt?: string;
   /**
-   * Meta-connection publicId (`conn_<8>`). Surfaced by Plan 1 backend DTOs so
-   * the CLI can build the gateway API-key path `/api-keys/connections/:connId`.
-   * Absent on older backends / channels with no Meta connection yet.
+   * Integration credential publicId (`cred_<8>`). Surfaced by Plan 1 backend
+   * DTOs so the CLI can build the gateway API-key path
+   * `/api-keys/credentials/:credentialPublicId`. Absent on older backends /
+   * channels with no integration credential yet.
    */
-  connectionPublicId?: string;
+  credentialPublicId?: string;
 }
 
 export interface WhatsAppChannel extends ChannelBase {
@@ -106,7 +107,7 @@ function parseBase(d: Record<string, unknown>, id: string): ChannelBase {
     webhookUrl: d.webhookUrl,
     verifyToken: d.verifyToken,
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : undefined,
-    connectionPublicId: typeof d.connectionPublicId === 'string' ? d.connectionPublicId : undefined,
+    credentialPublicId: typeof d.credentialPublicId === 'string' ? d.credentialPublicId : undefined,
   };
 }
 

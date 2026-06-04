@@ -6,7 +6,7 @@ import { ValidationError } from '../output/error.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
 import { addExamples } from '../output/help.js';
 
-/** A minted gateway API key as returned by `POST /api-keys/connections/:connId`. */
+/** A minted gateway API key as returned by `POST /api-keys/credentials/:credentialPublicId`. */
 export interface MintedKey {
   key: string;
   publicId: string;
@@ -14,7 +14,7 @@ export interface MintedKey {
   keySuffix: string;
 }
 
-/** A key row as returned by `GET /api-keys/connections/:connId` (never the full secret). */
+/** A key row as returned by `GET /api-keys/credentials/:credentialPublicId` (never the full secret). */
 export interface KeyListRow {
   publicId: string;
   keyPrefix: string;
@@ -30,13 +30,13 @@ export async function createKeyForChannel(
   label?: string,
 ): Promise<MintedKey> {
   const channel = await resolveChannel(channelRef);
-  if (!channel.connectionPublicId) {
+  if (!channel.credentialPublicId) {
     throw new ValidationError(
-      `Channel ${channel.id} has no Meta connection yet — connect it first.`,
-      'NO_CONNECTION',
+      `Channel ${channel.id} has no integration credential yet. Connect it first.`,
+      'NO_CREDENTIAL',
     );
   }
-  return (await apiClient(`/api-keys/connections/${channel.connectionPublicId}`, {
+  return (await apiClient(`/api-keys/credentials/${channel.credentialPublicId}`, {
     method: 'POST',
     workspaceId: channel.workspaceId,
     body: JSON.stringify({ label }),
@@ -58,13 +58,13 @@ export async function runKeysCreate(
 
 export async function runKeysList(channelRef: string, cmd?: Command): Promise<void> {
   const channel = await resolveChannel(channelRef);
-  if (!channel.connectionPublicId) {
+  if (!channel.credentialPublicId) {
     throw new ValidationError(
-      `Channel ${channel.id} has no Meta connection yet.`,
-      'NO_CONNECTION',
+      `Channel ${channel.id} has no integration credential yet.`,
+      'NO_CREDENTIAL',
     );
   }
-  const { keys } = (await apiClient(`/api-keys/connections/${channel.connectionPublicId}`, {
+  const { keys } = (await apiClient(`/api-keys/credentials/${channel.credentialPublicId}`, {
     workspaceId: channel.workspaceId,
   })) as { keys: KeyListRow[] };
   if (cmd && isJsonMode(cmd)) {
