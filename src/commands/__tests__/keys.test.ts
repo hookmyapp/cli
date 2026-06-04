@@ -36,9 +36,9 @@ describe('createKeyForChannel — side-effect-free helper', () => {
   it('POSTs /api-keys/connections/:connId and returns the minted key without writing stdout', async () => {
     // Arrange
     vi.mocked(apiClient).mockResolvedValueOnce({
-      key: 'hmk_live_secret',
+      key: 'hmp_live_secret',
       publicId: 'key_AAAA1111',
-      keyPrefix: 'hmk_live_AB',
+      keyPrefix: 'hmp_live_AB',
       keySuffix: 'YZ',
     });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -51,7 +51,7 @@ describe('createKeyForChannel — side-effect-free helper', () => {
       '/api-keys/connections/conn_AAAA1111',
       { method: 'POST', workspaceId: 'ws_TEST0001', body: JSON.stringify({ label: 'prod' }) },
     ]);
-    expect(res.key).toBe('hmk_live_secret');
+    expect(res.key).toBe('hmp_live_secret');
     expect(outSpy).not.toHaveBeenCalled();
     outSpy.mockRestore();
   });
@@ -61,9 +61,9 @@ describe('runKeysCreate — prints the plaintext key once', () => {
   it('When human mode, then prints the returned key exactly once', async () => {
     // Arrange
     vi.mocked(apiClient).mockResolvedValueOnce({
-      key: 'hmk_live_secret',
+      key: 'hmp_live_secret',
       publicId: 'key_AAAA1111',
-      keyPrefix: 'hmk_live_AB',
+      keyPrefix: 'hmp_live_AB',
       keySuffix: 'YZ',
     });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -73,13 +73,13 @@ describe('runKeysCreate — prints the plaintext key once', () => {
 
     // Assert
     expect(outSpy).toHaveBeenCalledOnce();
-    expect(outSpy).toHaveBeenCalledWith('hmk_live_secret\n');
+    expect(outSpy).toHaveBeenCalledWith('hmp_live_secret\n');
     outSpy.mockRestore();
   });
 
   it('When --json, then emits { publicId, keyPrefix, keySuffix, key }', async () => {
     // Arrange
-    const minted = { publicId: 'key_AAAA1111', keyPrefix: 'hmk_live_AB', keySuffix: 'YZ', key: 'hmk_live_secret' };
+    const minted = { publicId: 'key_AAAA1111', keyPrefix: 'hmp_live_AB', keySuffix: 'YZ', key: 'hmp_live_secret' };
     vi.mocked(apiClient).mockResolvedValueOnce(minted);
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
@@ -96,7 +96,7 @@ describe('runKeysList — GETs the connection path, never a full key', () => {
   it('GETs /api-keys/connections/:connId and prints prefix…suffix rows', async () => {
     // Arrange
     vi.mocked(apiClient).mockResolvedValueOnce({
-      keys: [{ publicId: 'key_AAAA1111', keyPrefix: 'hmk_live_AB', keySuffix: 'YZ', label: 'prod' }],
+      keys: [{ publicId: 'key_AAAA1111', keyPrefix: 'hmp_live_AB', keySuffix: 'YZ', label: 'prod' }],
     });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
@@ -106,7 +106,7 @@ describe('runKeysList — GETs the connection path, never a full key', () => {
     // Assert
     expect(vi.mocked(apiClient).mock.calls[0][0]).toBe('/api-keys/connections/conn_AAAA1111');
     const combined = outSpy.mock.calls.map((c) => c[0]).join('');
-    expect(combined).toContain('hmk_live_AB…YZ');
+    expect(combined).toContain('hmp_live_AB…YZ');
     outSpy.mockRestore();
   });
 });
