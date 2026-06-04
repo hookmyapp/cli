@@ -5,7 +5,7 @@ import { resolveChannel } from './channels.js';
 
 /** Backend wire-shape for `GET /meta/channels/:publicId/token` (gateway model). */
 interface TokenSummary {
-  hasActiveToken: boolean;
+  token: string;
   tokenPrefix: string;
   tokenSuffix: string;
 }
@@ -13,13 +13,14 @@ interface TokenSummary {
 /**
  * Canonical handler for `hookmyapp channels token <channel>`.
  *
- * DEPRECATED surface — the real Meta token is no longer exposed by HookMyApp
- * (gateway model). This command now only summarises gateway access-token presence:
- * `GET /meta/channels/:id/token` returns `{ hasActiveToken, tokenPrefix, tokenSuffix }`.
- * To obtain a USABLE token, run `hookmyapp access-tokens create <channel>`.
+ * Prints the channel's HookMyApp gateway access token (`hmat_…`) — the bearer
+ * the customer sends to the gateway in place of the real Meta token. Every
+ * connected channel is born with its access token, so one always exists and is
+ * returned in FULL: it is the customer's to read any time (an access token, not
+ * a write-once API key). The real upstream Meta token is never exposed.
  *
- * Human mode prints a one-line key-presence summary. `--json` emits
- * `{ channelId, type, hasActiveToken, tokenPrefix, tokenSuffix }`.
+ * Human mode prints the token. `--json` emits
+ * `{ channelId, type, token, tokenPrefix, tokenSuffix }`.
  */
 export async function runChannelToken(channelRef: string, cmd?: Command): Promise<void> {
   const channel = await resolveChannel(channelRef);
@@ -30,7 +31,7 @@ export async function runChannelToken(channelRef: string, cmd?: Command): Promis
       JSON.stringify({
         channelId: channel.id,
         type: channel.type,
-        hasActiveToken: data.hasActiveToken,
+        token: data.token,
         tokenPrefix: data.tokenPrefix,
         tokenSuffix: data.tokenSuffix,
       }) + '\n',
@@ -38,14 +39,5 @@ export async function runChannelToken(channelRef: string, cmd?: Command): Promis
     return;
   }
 
-  if (!data.hasActiveToken) {
-    process.stdout.write(
-      `no access token present — run "hookmyapp access-tokens create ${channelRef}" to mint a usable token\n`,
-    );
-    return;
-  }
-
-  process.stdout.write(
-    `access token present: ${data.tokenPrefix}…${data.tokenSuffix} — run "hookmyapp access-tokens create ${channelRef}" for a new usable token\n`,
-  );
+  process.stdout.write(data.token + '\n');
 }
