@@ -15,20 +15,20 @@ const ig = {
   instagramUsername: 'ordvir', instagramProfileName: 'Or', instagramProfilePictureUrl: null,
 };
 
-describe('runChannelToken on IG channel — emits gateway key summary', () => {
+describe('runChannelToken on IG channel — emits gateway access-token summary', () => {
   beforeEach(() => vi.mocked(apiClient).mockReset());
 
   it('GETs /meta/channels/ch_IGaaaaaa/token and prints a key-presence summary (no token)', async () => {
     vi.mocked(apiClient)
       .mockResolvedValueOnce([ig])  // resolveChannel
-      .mockResolvedValueOnce({ hasActiveKey: true, keyPrefix: 'hmp_live_a1b2', keySuffix: 'ZZZZ' });
+      .mockResolvedValueOnce({ hasActiveToken: true, tokenPrefix: 'hmat_live_a1b2', tokenSuffix: 'ZZZZ' });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await runChannelToken('@ordvir');
     expect(vi.mocked(apiClient).mock.calls[1][0]).toBe('/meta/channels/ch_IGaaaaaa/token');
     const combined = outSpy.mock.calls.map((c) => c[0]).join('');
-    expect(combined).toContain('key present');
-    expect(combined).toContain('hmp_live_a1b2');
-    expect(combined).toContain('hookmyapp keys create @ordvir');
+    expect(combined).toContain('access token present');
+    expect(combined).toContain('hmat_live_a1b2');
+    expect(combined).toContain('hookmyapp access-tokens create @ordvir');
     outSpy.mockRestore();
   });
 });

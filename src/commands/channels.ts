@@ -508,7 +508,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsToken = channels
     .command('token')
     .description(
-      'DEPRECATED: summarise gateway-key presence (the real Meta token is no longer exposed). Use `hookmyapp keys create <channel>` for a usable key.',
+      'DEPRECATED: summarise gateway access-token presence (the real Meta token is no longer exposed). Use `hookmyapp access-tokens create <channel>` for a usable token.',
     )
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async function (this: Command, channelRef: string) {
@@ -639,11 +639,11 @@ EXAMPLES:
     channelsToken,
     `
 DEPRECATED: the real Meta token is no longer exposed. This only summarises
-gateway-key presence. To mint a usable key, run \`hookmyapp keys create <channel>\`.
+gateway access-token presence. To mint a usable token, run \`hookmyapp access-tokens create <channel>\`.
 
 EXAMPLES:
   $ hookmyapp channels token ch_AAAAAAAA
-  $ hookmyapp keys create ch_AAAAAAAA      # mint a usable gateway key
+  $ hookmyapp access-tokens create ch_AAAAAAAA      # mint a usable gateway access token
 `,
   );
 

@@ -5,21 +5,21 @@ import { resolveChannel } from './channels.js';
 
 /** Backend wire-shape for `GET /meta/channels/:publicId/token` (gateway model). */
 interface TokenSummary {
-  hasActiveKey: boolean;
-  keyPrefix: string;
-  keySuffix: string;
+  hasActiveToken: boolean;
+  tokenPrefix: string;
+  tokenSuffix: string;
 }
 
 /**
  * Canonical handler for `hookmyapp channels token <channel>`.
  *
  * DEPRECATED surface — the real Meta token is no longer exposed by HookMyApp
- * (gateway model). This command now only summarises gateway-key presence:
- * `GET /meta/channels/:id/token` returns `{ hasActiveKey, keyPrefix, keySuffix }`.
- * To obtain a USABLE key, run `hookmyapp keys create <channel>`.
+ * (gateway model). This command now only summarises gateway access-token presence:
+ * `GET /meta/channels/:id/token` returns `{ hasActiveToken, tokenPrefix, tokenSuffix }`.
+ * To obtain a USABLE token, run `hookmyapp access-tokens create <channel>`.
  *
  * Human mode prints a one-line key-presence summary. `--json` emits
- * `{ channelId, type, hasActiveKey, keyPrefix, keySuffix }`.
+ * `{ channelId, type, hasActiveToken, tokenPrefix, tokenSuffix }`.
  */
 export async function runChannelToken(channelRef: string, cmd?: Command): Promise<void> {
   const channel = await resolveChannel(channelRef);
@@ -30,22 +30,22 @@ export async function runChannelToken(channelRef: string, cmd?: Command): Promis
       JSON.stringify({
         channelId: channel.id,
         type: channel.type,
-        hasActiveKey: data.hasActiveKey,
-        keyPrefix: data.keyPrefix,
-        keySuffix: data.keySuffix,
+        hasActiveToken: data.hasActiveToken,
+        tokenPrefix: data.tokenPrefix,
+        tokenSuffix: data.tokenSuffix,
       }) + '\n',
     );
     return;
   }
 
-  if (!data.hasActiveKey) {
+  if (!data.hasActiveToken) {
     process.stdout.write(
-      `no key present — run "hookmyapp keys create ${channelRef}" to mint a usable key\n`,
+      `no access token present — run "hookmyapp access-tokens create ${channelRef}" to mint a usable token\n`,
     );
     return;
   }
 
   process.stdout.write(
-    `key present: ${data.keyPrefix}…${data.keySuffix} — run "hookmyapp keys create ${channelRef}" for a new usable key\n`,
+    `access token present: ${data.tokenPrefix}…${data.tokenSuffix} — run "hookmyapp access-tokens create ${channelRef}" for a new usable token\n`,
   );
 }
