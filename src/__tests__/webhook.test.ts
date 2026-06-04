@@ -147,11 +147,11 @@ describe('token command', () => {
     runChannelToken = mod.runChannelToken;
   });
 
-  it('token command calls apiClient /meta/channels/:id/token and writes a gateway access-token summary', async () => {
+  it('token command calls apiClient /meta/channels/:id/token and prints the gateway access token', async () => {
     // resolveChannel -> /meta/channels, then /meta/channels/:id/token (gateway summary)
     mockedApiClient
       .mockResolvedValueOnce(fakeChannels)
-      .mockResolvedValueOnce({ hasActiveToken: true, tokenPrefix: 'hmat_live_a1b2', tokenSuffix: 'ZZZZ' });
+      .mockResolvedValueOnce({ token: 'hmat_live_a1b2REVEALZZZZ', tokenPrefix: 'hmat_live_a1b2', tokenSuffix: 'ZZZZ' });
     const mockWrite = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
     await runChannelToken('ch_TEST0001');
@@ -159,8 +159,7 @@ describe('token command', () => {
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels/ch_TEST0001/token');
     const written = mockWrite.mock.calls.map((c) => c[0]).join('');
-    expect(written).toContain('access token present: hmat_live_a1b2…ZZZZ');
-    expect(written).toContain('hookmyapp access-tokens create ch_TEST0001');
+    expect(written.trim()).toBe('hmat_live_a1b2REVEALZZZZ');
     expect(written).not.toContain('accessToken');
     mockWrite.mockRestore();
   });

@@ -4,7 +4,6 @@ import { resolve as resolvePath } from 'node:path';
 import { apiClient } from '../api/client.js';
 import { isJsonMode } from '../output/format.js';
 import { resolveChannel } from './channels.js';
-import { createAccessTokenForChannel } from './access-tokens.js';
 
 export interface EnvOptions {
   write?: string | boolean;
@@ -19,32 +18,15 @@ export interface EnvOptions {
  *
  * Gateway model: the GET NEVER returns the real Meta token. `values` carries
  * the gateway base URL (`META_GRAPH_API_URL`) + non-secret keys (WABA id,
- * phone number id, …). The channel-type's token key (`WHATSAPP_ACCESS_TOKEN`,
- * `INSTAGRAM_ACCESS_TOKEN`, …) is NOT in `values`: on `--write` the CLI mints
- * a gateway access token and injects it; on stdout the token field shows a run-hint.
+ * phone number id, …) AND the channel-type's gateway access token key
+ * (`WHATSAPP_ACCESS_TOKEN`, `INSTAGRAM_ACCESS_TOKEN`, …). Every connected
+ * channel is born with its access token, so the token key is always present —
+ * the CLI writes `values` verbatim, never minting.
  */
 interface ChannelEnvPayload {
   channelType: 'whatsapp' | 'instagram' | 'messenger' | string;
   values: Record<string, string>;
   defaults: Record<string, string>;
-  /** Whether the channel's Meta connection already has at least one usable gateway access token. */
-  hasActiveToken: boolean;
-}
-
-/**
- * The dotenv key under which a channel type's gateway access token lives. The minted
- * key is injected here on `--write`; the `<run: …>` hint is shown here on stdout.
- */
-function tokenKeyFor(channelType: string): string {
-  switch (channelType) {
-    case 'instagram':
-      return 'INSTAGRAM_ACCESS_TOKEN';
-    case 'messenger':
-      return 'MESSENGER_ACCESS_TOKEN';
-    case 'whatsapp':
-    default:
-      return 'WHATSAPP_ACCESS_TOKEN';
-  }
 }
 
 function upsertEnvFile(targetPath: string, updates: Map<string, string>): void {
@@ -121,19 +103,13 @@ export async function runChannelEnv(
     return;
   }
 
-  const tokenKey = tokenKeyFor(payload.channelType);
-
-  // stdout (no --write): emit the gateway URL + non-secret values, plus the
-  // token field as a run-hint. NEVER a real token, NEVER a minted key — minting
-  // is a side-effecting write reserved for `--write` and `keys create`.
+  // stdout (no --write): emit the gateway URL + values. `values` always carries
+  // the gateway access token (fetched from the backend, decrypted) — a connected
+  // channel always has one, so there is nothing to mint and no run-hint.
   if (options.write === undefined || options.write === false) {
-    const envText =
-      [
-        ...Object.entries(payload.values).map(([k, v]) => `${k}=${v}`),
-        `${tokenKey}=<run: hookmyapp access-tokens create ${channelRef}>`,
-        ...Object.entries(payload.defaults).map(([k, v]) => `${k}=${v}`),
-      ].join('\n') + '\n';
-    process.stdout.write(envText);
+    const lines = Object.entries(payload.values).map(([k, v]) => `${k}=${v}`);
+    lines.push(...Object.entries(payload.defaults).map(([k, v]) => `${k}=${v}`));
+    process.stdout.write(lines.join('\n') + '\n');
     return;
   }
 
@@ -141,15 +117,10 @@ export async function runChannelEnv(
     typeof options.write === 'string' ? options.write : '.env',
   );
 
-  // --write: mint a gateway access token and inject it under the channel-type's token
-  // key. Uses createAccessTokenForChannel, which mints + returns the token WITHOUT
-  // printing it (NOT runAccessTokensCreate, which writes the plaintext to stdout).
-  // The minted token lands in the .env only.
-  const minted = await createAccessTokenForChannel(channelRef);
-
-  // values: always overwrite existing entries.
+  // --write: `payload.values` already carries the gateway access token (fetched
+  // + decrypted by the backend), so --write just writes it — no minting, and
+  // re-running reuses the same token.
   const updates = new Map<string, string>(Object.entries(payload.values));
-  updates.set(tokenKey, minted.token);
 
   // defaults: preserve-if-exists. Inspect the target file ourselves and only
   // include defaults whose keys are absent — upsertEnvFile is overwrite-or-
