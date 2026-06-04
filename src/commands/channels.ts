@@ -33,7 +33,7 @@ export type { Channel, ChannelDetail };
 /**
  * Resolve a CLI channel reference (D3 — shape-detected positional) to a parsed
  * Channel. Accepted shapes:
- *   +E164          → WA channel by displayPhoneNumber
+ *   +E164          → WA channel by whatsappDisplayPhoneNumber
  *   @handle        → IG channel by instagramUsername
  *   ch_XXXXXXXX    → exact publicId match
  *
@@ -52,8 +52,8 @@ export async function resolveChannel(ref: string): Promise<Channel> {
       const match = channels.find(
         (c): c is Channel & { type: 'whatsapp' } =>
           c.type === 'whatsapp' &&
-          c.displayPhoneNumber !== null &&
-          c.displayPhoneNumber.replace(/[^\d]/g, '') === needle,
+          c.whatsappDisplayPhoneNumber !== null &&
+          c.whatsappDisplayPhoneNumber.replace(/[^\d]/g, '') === needle,
       );
       if (match) return match;
       return throwNoMatch(`+${needle}`, channels);
@@ -90,7 +90,8 @@ export async function resolveChannel(ref: string): Promise<Channel> {
  *   messenger → "Messenger ch_XXXXXXXX"
  */
 export function channelLabel(c: Channel): string {
-  if (c.type === 'whatsapp') return `WhatsApp ${c.displayPhoneNumber ?? c.wabaName ?? c.id}`;
+  if (c.type === 'whatsapp')
+    return `WhatsApp ${c.whatsappDisplayPhoneNumber ?? c.whatsappWabaName ?? c.id}`;
   if (c.type === 'instagram') return `Instagram @${c.instagramUsername ?? c.id}`;
   return `Messenger ${c.id}`;
 }
@@ -98,7 +99,7 @@ export function channelLabel(c: Channel): string {
 function throwNoMatch(needle: string, channels: Channel[]): never {
   const available = channels
     .map((c) => {
-      if (c.type === 'whatsapp') return c.displayPhoneNumber ?? c.id;
+      if (c.type === 'whatsapp') return c.whatsappDisplayPhoneNumber ?? c.id;
       if (c.type === 'instagram') return c.instagramUsername ? `@${c.instagramUsername}` : c.id;
       return c.id;
     })
@@ -228,7 +229,7 @@ export async function runChannelsConnect(
   for (const ch of newChannels) {
     const label =
       ch.type === 'whatsapp'
-        ? `  WhatsApp  ${ch.displayPhoneNumber ?? '(no phone)'}  (${ch.id})`
+        ? `  WhatsApp  ${ch.whatsappDisplayPhoneNumber ?? '(no phone)'}  (${ch.id})`
         : ch.type === 'instagram'
           ? `  Instagram @${ch.instagramUsername ?? '(no handle)'}  (${ch.id})`
           : `  Messenger (${ch.id})`;
@@ -271,7 +272,7 @@ export async function runChannelsList(opts: { json?: boolean }): Promise<void> {
     Type: ch.type === 'whatsapp' ? 'WhatsApp' : ch.type === 'instagram' ? 'Instagram' : 'Messenger',
     Identifier:
       ch.type === 'whatsapp'
-        ? ch.displayPhoneNumber ?? ch.wabaName ?? ch.id
+        ? ch.whatsappDisplayPhoneNumber ?? ch.whatsappWabaName ?? ch.id
         : ch.type === 'instagram'
           ? ch.instagramUsername
             ? `@${ch.instagramUsername}`
@@ -286,9 +287,9 @@ export async function runChannelsList(opts: { json?: boolean }): Promise<void> {
 /**
  * Exported handler for `hookmyapp channels show <ref>` (Task B4).
  *
- * Type-aware detail render: WA channels print wabaName/+phone/phoneNumberId/
- * qualityRating; IG channels print @handle/display name. Common fields (type,
- * id, forwarding, webhookUrl, businessName) render for both. JSON mode emits
+ * Type-aware detail render: WA channels print whatsappWabaName/+phone/whatsappPhoneNumberId/
+ * whatsappQualityRating; IG channels print @handle/display name. Common fields (type,
+ * id, forwarding, webhookUrl, whatsappBusinessName) render for both. JSON mode emits
  * the parsed `ChannelDetail` verbatim. Bypasses `output(...)` and writes
  * directly via `process.stdout.write` / `console.log` so tests can spy on
  * exact bytes (mirroring B3's `runChannelsList` style).
@@ -308,18 +309,18 @@ export async function runChannelsShow(
   console.log(`Type: ${detail.type}`);
   console.log(`ID: ${detail.id}`);
   if (detail.type === 'whatsapp') {
-    console.log(`WABA: ${detail.wabaName ?? '(unnamed)'}`);
-    console.log(`Phone: ${detail.displayPhoneNumber ?? '(none)'}`);
-    console.log(`Phone Number ID: ${detail.phoneNumberId ?? '(none)'}`);
-    console.log(`Phone-verified name: ${detail.phoneVerifiedName ?? '(none)'}`);
-    console.log(`Quality rating: ${detail.qualityRating ?? '(unknown)'}`);
+    console.log(`WABA: ${detail.whatsappWabaName ?? '(unnamed)'}`);
+    console.log(`Phone: ${detail.whatsappDisplayPhoneNumber ?? '(none)'}`);
+    console.log(`Phone Number ID: ${detail.whatsappPhoneNumberId ?? '(none)'}`);
+    console.log(`Phone-verified name: ${detail.whatsappVerifiedName ?? '(none)'}`);
+    console.log(`Quality rating: ${detail.whatsappQualityRating ?? '(unknown)'}`);
   } else if (detail.type === 'instagram') {
     console.log(`Instagram: @${detail.instagramUsername ?? '(no handle)'}`);
-    console.log(`Display name: ${detail.instagramName ?? '(none)'}`);
+    console.log(`Display name: ${detail.instagramProfileName ?? '(none)'}`);
   }
   console.log(`Forwarding: ${detail.forwardingEnabled ? 'on' : 'off'}`);
   console.log(`Webhook URL: ${detail.webhookUrl ?? '(uses CLI tunnel)'}`);
-  if (detail.businessName) console.log(`Business: ${detail.businessName}`);
+  if (detail.whatsappBusinessName) console.log(`Business: ${detail.whatsappBusinessName}`);
 }
 
 /**

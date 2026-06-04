@@ -14,8 +14,8 @@ import { ValidationError } from '../output/error.js';
 const ch = {
   id: 'ch_WAaaaaaa', type: 'whatsapp', workspaceId: 'ws_TEST0001',
   metaResourceId: '123', metaConnected: true, forwardingEnabled: true,
-  displayPhoneNumber: '+972500000000', wabaName: 'Test WABA',
-  phoneNumberId: '1080996501762047', qualityRating: 'GREEN',
+  whatsappDisplayPhoneNumber: '+972500000000', whatsappWabaName: 'Test WABA',
+  whatsappPhoneNumberId: '1080996501762047', whatsappQualityRating: 'GREEN',
   metaWabaId: '123', connectionType: 'whatsapp', webhookUrl: null, verifyToken: null,
 };
 

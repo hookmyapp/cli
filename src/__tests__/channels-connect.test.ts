@@ -78,8 +78,8 @@ describe('runChannelsConnect — integration (D2)', () => {
         id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
         metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
         metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-        wabaName: null, displayPhoneNumber: null, phoneNumberId: null,
-        phoneVerifiedName: null, qualityRating: null, qualityRatingCheckedAt: null,
+        whatsappWabaName: null, whatsappDisplayPhoneNumber: null, whatsappPhoneNumberId: null,
+        whatsappVerifiedName: null, whatsappQualityRating: null, whatsappQualityRatingCheckedAt: null,
       } as any,
     ]);
     process.stdout.isTTY = true;
@@ -141,14 +141,14 @@ describe('runChannelsConnect — reports all new channels by type (D7)', () => {
         id: 'ch_NEW_WA', type: 'whatsapp', workspaceId: 'ws_TEST0001',
         metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
         metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-        wabaName: null, displayPhoneNumber: '+15551234567', phoneNumberId: '1',
-        phoneVerifiedName: null, qualityRating: null, qualityRatingCheckedAt: null,
+        whatsappWabaName: null, whatsappDisplayPhoneNumber: '+15551234567', whatsappPhoneNumberId: '1',
+        whatsappVerifiedName: null, whatsappQualityRating: null, whatsappQualityRatingCheckedAt: null,
       } as any,
       {
         id: 'ch_NEW_IG', type: 'instagram', workspaceId: 'ws_TEST0001',
         metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
         metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-        instagramUsername: 'newhandle', instagramName: 'New', instagramProfilePictureUrl: null,
+        instagramUsername: 'newhandle', instagramProfileName: 'New', instagramProfilePictureUrl: null,
       } as any,
     ]);
     process.stdout.isTTY = true;
@@ -179,7 +179,7 @@ describe('runChannelsConnect — --print-url', () => {
         id: 'ch_NEW_IG', type: 'instagram', workspaceId: 'ws_TEST0001',
         metaWabaId: '', metaResourceId: '17841', connectionType: 'instagram_login',
         metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-        instagramUsername: 'newhandle', instagramName: 'New', instagramProfilePictureUrl: null,
+        instagramUsername: 'newhandle', instagramProfileName: 'New', instagramProfilePictureUrl: null,
       } as any,
     ]);
     process.stdout.isTTY = true;

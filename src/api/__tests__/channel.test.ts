@@ -18,12 +18,12 @@ const baseValidWa = {
   forwardingEnabled: true,
   webhookUrl: 'https://my.example/hook',
   verifyToken: 'vt_xxx',
-  wabaName: 'My WABA',
-  displayPhoneNumber: '+15551234567',
-  phoneNumberId: '1080996501762047',
-  phoneVerifiedName: 'Test Co.',
-  qualityRating: 'GREEN',
-  qualityRatingCheckedAt: '2026-05-26T12:00:00Z',
+  whatsappWabaName: 'My WABA',
+  whatsappDisplayPhoneNumber: '+15551234567',
+  whatsappPhoneNumberId: '1080996501762047',
+  whatsappVerifiedName: 'Test Co.',
+  whatsappQualityRating: 'GREEN',
+  whatsappQualityRatingCheckedAt: '2026-05-26T12:00:00Z',
 };
 
 const baseValidIg = {
@@ -38,7 +38,7 @@ const baseValidIg = {
   webhookUrl: null,
   verifyToken: 'vt_yyy',
   instagramUsername: 'ordvir',
-  instagramName: 'Or Dvir',
+  instagramProfileName: 'Or Dvir',
   instagramProfilePictureUrl: 'https://cdninstagram.com/...',
 };
 
@@ -47,8 +47,8 @@ describe('parseChannelListItem', () => {
     const out: Channel = parseChannelListItem(baseValidWa);
     expect(out.type).toBe('whatsapp');
     if (out.type === 'whatsapp') {
-      expect(out.wabaName).toBe('My WABA');
-      expect(out.displayPhoneNumber).toBe('+15551234567');
+      expect(out.whatsappWabaName).toBe('My WABA');
+      expect(out.whatsappDisplayPhoneNumber).toBe('+15551234567');
     }
   });
 
@@ -72,9 +72,9 @@ describe('parseChannelListItem', () => {
     expect(() => parseChannelListItem(broken)).toThrow(/MALFORMED_CHANNEL/);
   });
 
-  it('throws when WA channel is missing required wabaName', () => {
-    const { wabaName: _w, ...broken } = baseValidWa;
-    expect(() => parseChannelListItem(broken)).toThrow(/wabaName/);
+  it('throws when WA channel is missing required whatsappWabaName', () => {
+    const { whatsappWabaName: _w, ...broken } = baseValidWa;
+    expect(() => parseChannelListItem(broken)).toThrow(/whatsappWabaName/);
   });
 
   it('throws when type is "messenger" (forward-compat: union allows it)', () => {
@@ -108,14 +108,14 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
       verifyToken: null,
       type: 'instagram',
       instagramUsername: 'test',
-      instagramName: 'Test',
+      instagramProfileName: 'Test',
       instagramProfilePictureUrl: null,
     };
     const parsed = parseChannelListItem(dto);
     expect(parsed.metaWabaId).toBeNull();
   });
 
-  it('When WA channel omits phoneVerifiedName + qualityRatingCheckedAt, then parser tolerates (older backends)', () => {
+  it('When WA channel omits whatsappVerifiedName + whatsappQualityRatingCheckedAt, then parser tolerates (older backends)', () => {
     const dto = {
       id: 'ch_TEST0002',
       workspaceId: 'ws_TEST0001',
@@ -127,22 +127,22 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
       webhookUrl: null,
       verifyToken: null,
       type: 'whatsapp',
-      wabaName: 'tomer office',
-      displayPhoneNumber: '+972 55-727-7945',
-      phoneNumberId: '979105081963262',
-      qualityRating: 'GREEN',
-      // phoneVerifiedName: ABSENT (older backend that didn't emit it)
-      // qualityRatingCheckedAt: ABSENT (Phase A drops it)
+      whatsappWabaName: 'tomer office',
+      whatsappDisplayPhoneNumber: '+972 55-727-7945',
+      whatsappPhoneNumberId: '979105081963262',
+      whatsappQualityRating: 'GREEN',
+      // whatsappVerifiedName: ABSENT (older backend that didn't emit it)
+      // whatsappQualityRatingCheckedAt: ABSENT (Phase A drops it)
     };
     const parsed = parseChannelListItem(dto);
     expect(parsed.type).toBe('whatsapp');
     if (parsed.type === 'whatsapp') {
       // Absent on the wire normalizes to null on the parsed shape.
-      expect(parsed.phoneVerifiedName).toBeNull();
+      expect(parsed.whatsappVerifiedName).toBeNull();
     }
   });
 
-  it('When WA channel has phoneVerifiedName distinct from wabaName, then parser preserves both', () => {
+  it('When WA channel has whatsappVerifiedName distinct from whatsappWabaName, then parser preserves both', () => {
     const dto = {
       id: 'ch_TEST0004',
       workspaceId: 'ws_TEST0001',
@@ -154,17 +154,17 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
       webhookUrl: null,
       verifyToken: null,
       type: 'whatsapp',
-      wabaName: 'Acme Holdings',
-      phoneVerifiedName: 'Acme Sales Team', // distinct from wabaName
-      displayPhoneNumber: '+1 555-100-1000',
-      phoneNumberId: '979105081963262',
-      qualityRating: 'GREEN',
+      whatsappWabaName: 'Acme Holdings',
+      whatsappVerifiedName: 'Acme Sales Team', // distinct from whatsappWabaName
+      whatsappDisplayPhoneNumber: '+1 555-100-1000',
+      whatsappPhoneNumberId: '979105081963262',
+      whatsappQualityRating: 'GREEN',
     };
     const parsed = parseChannelListItem(dto);
     expect(parsed.type).toBe('whatsapp');
     if (parsed.type === 'whatsapp') {
-      expect(parsed.wabaName).toBe('Acme Holdings');
-      expect(parsed.phoneVerifiedName).toBe('Acme Sales Team');
+      expect(parsed.whatsappWabaName).toBe('Acme Holdings');
+      expect(parsed.whatsappVerifiedName).toBe('Acme Sales Team');
     }
   });
 
@@ -181,7 +181,7 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
       verifyToken: null,
       type: 'instagram',
       instagramUsername: 'test',
-      instagramName: 'Test',
+      instagramProfileName: 'Test',
       instagramProfilePictureUrl: null,
       // hostname/lastHeartbeatAt/hasActiveCliTunnel: ABSENT (Phase A drops them)
     };
@@ -215,7 +215,7 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
       verifyToken: null,
       type: 'instagram',
       instagramUsername: 'test',
-      instagramName: 'Test',
+      instagramProfileName: 'Test',
       instagramProfilePictureUrl: null,
       updatedAt: '2026-05-28T08:00:00.000Z',
     };
@@ -225,21 +225,21 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
 });
 
 describe('parseChannelDetail', () => {
-  it('extends list-item with detail-only fields (accessToken, businessName, metaBusinessId)', () => {
+  it('extends list-item with detail-only fields (accessToken, whatsappBusinessName, metaBusinessId)', () => {
     const detail: ChannelDetail = parseChannelDetail({
       ...baseValidWa,
       accessToken: 'EAAxxx...',
-      businessName: 'Test Business',
+      whatsappBusinessName: 'Test Business',
       metaBusinessId: '100000000000000',
     });
     expect(detail.accessToken).toBe('EAAxxx...');
-    expect(detail.businessName).toBe('Test Business');
+    expect(detail.whatsappBusinessName).toBe('Test Business');
     expect(detail.metaBusinessId).toBe('100000000000000');
   });
 
   it('list-item shape (without detail fields) parses with detail-only fields undefined', () => {
     const detail = parseChannelDetail(baseValidIg);
     expect(detail.accessToken).toBeUndefined();
-    expect(detail.businessName).toBeUndefined();
+    expect(detail.whatsappBusinessName).toBeUndefined();
   });
 });
