@@ -30,13 +30,13 @@ export async function createKeyForChannel(
   label?: string,
 ): Promise<MintedKey> {
   const channel = await resolveChannel(channelRef);
-  if (!channel.connectionId) {
+  if (!channel.connectionPublicId) {
     throw new ValidationError(
       `Channel ${channel.id} has no Meta connection yet — connect it first.`,
       'NO_CONNECTION',
     );
   }
-  return (await apiClient(`/api-keys/connections/${channel.connectionId}`, {
+  return (await apiClient(`/api-keys/connections/${channel.connectionPublicId}`, {
     method: 'POST',
     workspaceId: channel.workspaceId,
     body: JSON.stringify({ label }),
@@ -58,13 +58,13 @@ export async function runKeysCreate(
 
 export async function runKeysList(channelRef: string, cmd?: Command): Promise<void> {
   const channel = await resolveChannel(channelRef);
-  if (!channel.connectionId) {
+  if (!channel.connectionPublicId) {
     throw new ValidationError(
       `Channel ${channel.id} has no Meta connection yet.`,
       'NO_CONNECTION',
     );
   }
-  const { keys } = (await apiClient(`/api-keys/connections/${channel.connectionId}`, {
+  const { keys } = (await apiClient(`/api-keys/connections/${channel.connectionPublicId}`, {
     workspaceId: channel.workspaceId,
   })) as { keys: KeyListRow[] };
   if (cmd && isJsonMode(cmd)) {

@@ -192,14 +192,14 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
     expect(parsed).not.toHaveProperty('hasActiveCliTunnel');
   });
 
-  it('When channel includes connectionId, then the parser surfaces it (gateway key path)', () => {
-    const parsed = parseChannelListItem({ ...baseValidWa, connectionId: 'conn_AAAA1111' });
-    expect(parsed.connectionId).toBe('conn_AAAA1111');
+  it('When channel includes connectionPublicId, then the parser surfaces it (gateway key path)', () => {
+    const parsed = parseChannelListItem({ ...baseValidWa, connectionPublicId: 'conn_AAAA1111' });
+    expect(parsed.connectionPublicId).toBe('conn_AAAA1111');
   });
 
-  it('When channel omits connectionId, then parsed.connectionId is undefined', () => {
+  it('When channel omits connectionPublicId, then parsed.connectionPublicId is undefined', () => {
     const parsed = parseChannelListItem(baseValidWa);
-    expect(parsed.connectionId).toBeUndefined();
+    expect(parsed.connectionPublicId).toBeUndefined();
   });
 
   it('When channel includes updatedAt, then the parser carries it through (CLI re-auth signal)', () => {
