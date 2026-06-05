@@ -4,6 +4,7 @@ import { readCredentials } from '../auth/store.js';
 import { isJsonMode } from '../output/format.js';
 import { getEffectiveApiUrl, getPersistedDefaultChannel } from '../config/env-profiles.js';
 import { readWorkspaceConfig } from './workspace.js';
+import { addExamples } from '../output/help.js';
 
 // `hard` checks gate the prereq (a FAIL → non-zero exit). Informational checks
 // (auth/workspace/default-channel) are reported, never a crash or exit failure.
@@ -62,7 +63,7 @@ export async function collectDoctorReport(
 }
 
 export function registerDoctorCommand(program: Command): void {
-  program
+  const doctor = program
     .command('doctor')
     .description('Check prerequisites (Node, npm/npx, network) and login state')
     .action(async function (this: Command) {
@@ -78,4 +79,13 @@ export function registerDoctorCommand(program: Command): void {
       // Informational checks (auth/workspace/default-channel) never set this.
       if (!report.ok) process.exitCode = 1;
     });
+
+  addExamples(
+    doctor,
+    `
+EXAMPLES:
+  $ hookmyapp doctor
+  $ hookmyapp doctor --json
+`,
+  );
 }
