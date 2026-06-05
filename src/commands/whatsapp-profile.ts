@@ -79,6 +79,15 @@ export async function runWhatsappProfileUpdate(opts: WaProfileUpdateOpts, cmd?: 
 export function registerWhatsappProfile(whatsapp: Command): void {
   const profile = whatsapp.command('profile').description('View and update the WhatsApp business profile');
 
+  addExamples(
+    profile,
+    `
+EXAMPLES:
+  $ hookmyapp whatsapp profile get --channel +1555
+  $ hookmyapp whatsapp profile update --channel +1555 --about "We ship fast"
+`,
+  );
+
   const get = profile
     .command('get')
     .description('Get the business profile')
