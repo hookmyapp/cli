@@ -5,6 +5,9 @@ import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import { emit, shouldEmitCommandInvoked } from '../observability/posthog.js';
 import type { CliExitCode } from '../analytics/events.js';
 import { getCliVersion } from '../observability/posthog.js';
+import { resolveChannel } from './channels.js';
+import { getPersistedDefaultChannel } from '../config/env-profiles.js';
+import type { Channel } from '../api/channel.js';
 
 /**
  * Fetch /workspaces while propagating auth + network errors (so callers bubble
@@ -117,6 +120,44 @@ export async function getDefaultWorkspaceId(): Promise<string> {
   throw new ValidationError(
     'You are not a member of any workspace. Contact your workspace admin for an invite.',
   );
+}
+
+/**
+ * Resolve the channel a typed command should act on. Precedence (D6):
+ *   1. explicit --channel <+phone|@handle|ch_id>
+ *   2. persisted default channel (`config set default-channel`)
+ *   3. error — never guess.
+ * When `expectedType` is given (e.g. 'whatsapp' from a `whatsapp …` command),
+ * the resolved channel's type MUST match, else a clear ValidationError (D6:
+ * platform prefix selects the command set; --channel selects the account; the
+ * two must agree).
+ */
+export async function resolveChannelRefOrDefault(
+  ref: string | undefined,
+  expectedType?: Channel['type'],
+): Promise<Channel> {
+  let channel: Channel;
+  if (ref) {
+    channel = await resolveChannel(ref);
+  } else {
+    const def = getPersistedDefaultChannel();
+    if (!def) {
+      throw new ValidationError(
+        'No channel specified. Pass --channel <+phone|@handle|ch_id>, ' +
+          'or set a default: hookmyapp config set default-channel <ch_id>.',
+        'NO_CHANNEL',
+      );
+    }
+    channel = await resolveChannel(def);
+  }
+  if (expectedType && channel.type !== expectedType) {
+    throw new ValidationError(
+      `Channel ${channel.id} is a ${channel.type} channel, but this is an ${expectedType} command. ` +
+        `Pass an ${expectedType} channel via --channel.`,
+      'CHANNEL_TYPE_MISMATCH',
+    );
+  }
+  return channel;
 }
 
 /**
