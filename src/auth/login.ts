@@ -562,10 +562,22 @@ export function loginCommand(program: Command): void {
           throw new AuthError('Failed to initiate login. Try again later.');
         }
 
-        const { device_code, user_code, verification_uri_complete, interval, expires_in } =
-          await res.json();
+        const {
+          device_code,
+          user_code,
+          verification_uri,
+          verification_uri_complete,
+          interval,
+          expires_in,
+        } = await res.json();
 
         console.log(`\nOpening browser to authenticate...\nCode: ${user_code}\n`);
+
+        // Print the verification URL as text so a headless/browserless host
+        // (CI, SSH, agent) can relay it instead of being stuck waiting on a
+        // browser that never opened (D5).
+        const verifyUrl = verification_uri_complete ?? verification_uri;
+        process.stdout.write(`To finish signing in, open:\n${verifyUrl}\n`);
 
         // Integration-test hook: when set, write the verification URI to a file
         // so the integration suite can drive a headless browser through it.
@@ -574,9 +586,14 @@ export function loginCommand(program: Command): void {
           await fs.writeFile(process.env.HOOKMYAPP_LOGIN_URL_FILE, verification_uri_complete);
         }
 
-        // Open browser
+        // Open browser — wrapped so a browserless/headless host degrades to the
+        // URL printed above instead of throwing (review finding 8).
         const open = (await import('open')).default;
-        await open(verification_uri_complete);
+        try {
+          await open(verification_uri_complete);
+        } catch {
+          /* no browser — verification URL already printed above */
+        }
 
         await pollForTokens({
           clientId: getEffectiveWorkosClientId(),
