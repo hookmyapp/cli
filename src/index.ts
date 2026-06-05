@@ -36,7 +36,7 @@ const program = new Command();
 
 program
   .name('hookmyapp')
-  .description('HookMyApp CLI: manage WhatsApp Business channels')
+  .description('HookMyApp CLI: manage WhatsApp & Instagram channels')
   .version(pkg.version);
 
 program.option('--json', 'Machine-readable JSON output (scripts/CI)');
@@ -111,15 +111,18 @@ USAGE:
 
 COMMON COMMANDS:
   login             Browser sign-in + workspace picker and next-steps guide
+  channels connect  Connect a channel via Meta OAuth (WhatsApp or Instagram)
+  channels list     List your connected channels
+  channels env      Print or write a channel's .env (gateway URL + access token)
+  channels token    Print a channel's gateway access token (hmat_…)
+  channels listen   Stream a real channel's Meta webhooks to your local server
   sandbox start     Create or resume a sandbox session (tunnel + credentials)
-  sandbox status    Show the active sandbox session for this workspace
-  sandbox stop      End the active sandbox session
   sandbox listen    Stream Meta webhooks to your local server through a sandbox tunnel
-  sandbox env       Print or write the .env values for a sandbox session
-  sandbox send      Send a test WhatsApp message via sandbox-proxy
-  channels connect  Connect a WhatsApp Business channel (embedded signup)
+  sandbox send      Send a test message via sandbox-proxy
   workspace list    List workspaces you belong to
   billing           View or change your plan
+
+Run "hookmyapp channels --help" for the full channel command list.
 
 GLOBAL FLAGS:
   --json              Emit JSON output (machine-readable; silences colors + spinners)
