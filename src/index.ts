@@ -167,12 +167,11 @@ registerChannelsCommand(program);
 // Typed messaging command groups (subcommands added by Plans 02/03). Keep the
 // returned Command refs so those plans can mount their subcommands onto them.
 const whatsappCmd = registerWhatsappCommand(program);
-const instagramCmd = registerInstagramCommand(program);
+registerInstagramCommand(program);
 registerWhatsappMessages(whatsappCmd);
 registerWhatsappTemplates(whatsappCmd);
 registerWhatsappMedia(whatsappCmd);
 registerWhatsappProfile(whatsappCmd);
-void instagramCmd;
 
 // Environment / prerequisite checker (Node, npm/npx, network, login state).
 registerDoctorCommand(program);
