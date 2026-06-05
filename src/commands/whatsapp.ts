@@ -92,6 +92,15 @@ export async function runWhatsappMessagesRead(
 export function registerWhatsappMessages(whatsapp: Command): void {
   const messages = whatsapp.command('messages').description('Send WhatsApp messages and mark them read');
 
+  addExamples(
+    messages,
+    `
+EXAMPLES:
+  $ hookmyapp whatsapp messages send --channel +1555 --to +1444 --text "hi"
+  $ hookmyapp whatsapp messages read wamid.ABC --channel +1555
+`,
+  );
+
   const send = messages
     .command('send')
     .description('Send a WhatsApp message (--text shortcut, or complete --body)')
@@ -127,6 +136,7 @@ EXAMPLES:
     `
 EXAMPLES:
   $ hookmyapp whatsapp messages read wamid.ABC --channel +1555
+  $ hookmyapp whatsapp messages read wamid.ABC --channel +1555 --json
 `,
   );
 }
