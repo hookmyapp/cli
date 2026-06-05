@@ -26,8 +26,10 @@ import { runChannelsConnect } from '../channels.js';
 import { apiClient } from '../../api/client.js';
 
 describe('channels connect — headless URL courier', () => {
-  let write: ReturnType<typeof vi.spyOn>;
-  let log: ReturnType<typeof vi.spyOn>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let write: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let log: any;
   beforeEach(() => {
     write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -44,14 +46,14 @@ describe('channels connect — headless URL courier', () => {
     await runChannelsConnect({ type: 'whatsapp' });
     (process.stdout as any).isTTY = prev;
     // Non-TTY human mode prints the URL as text via console.log.
-    const out = log.mock.calls.map((c) => c.join(' ')).join('\n');
+    const out = log.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
     expect(out).toMatch(/https:\/\//);
   });
 
   it('emits a connectUrl field in --json mode', async () => {
     await runChannelsConnect({ type: 'whatsapp', json: true });
     // JSON mode emits exactly one { connectUrl } object on stdout.
-    const out = write.mock.calls.map((c) => String(c[0])).join('');
+    const out = write.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(JSON.parse(out)).toHaveProperty('connectUrl');
   });
 });
