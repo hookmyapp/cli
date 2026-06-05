@@ -5,6 +5,7 @@ import { loginCommand } from './auth/login.js';
 import { logoutCommand } from './auth/logout.js';
 import { registerChannelsCommand } from './commands/channels.js';
 import { registerWhatsappCommand, registerWhatsappMessages } from './commands/whatsapp.js';
+import { registerWhatsappTemplates } from './commands/whatsapp-templates.js';
 import { registerInstagramCommand } from './commands/instagram.js';
 import { registerDoctorCommand } from './commands/doctor.js';
 import { registerBillingCommand } from './commands/billing.js';
@@ -166,6 +167,7 @@ registerChannelsCommand(program);
 const whatsappCmd = registerWhatsappCommand(program);
 const instagramCmd = registerInstagramCommand(program);
 registerWhatsappMessages(whatsappCmd);
+registerWhatsappTemplates(whatsappCmd);
 void instagramCmd;
 
 // Environment / prerequisite checker (Node, npm/npx, network, login state).
