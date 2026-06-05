@@ -51,6 +51,11 @@ describe('whatsapp templates', () => {
     }));
   });
 
+  it('rejects create with no --body/--data with a MISSING_BODY error', async () => {
+    await expect(runWhatsappTemplatesCreate({ channel: '+1' })).rejects.toThrow(/requires --body/);
+    expect(gatewayRequest).not.toHaveBeenCalled();
+  });
+
   it('deletes a template by name with method DELETE', async () => {
     await runWhatsappTemplatesDelete({ channel: '+1' }, 'hello_world');
     const call = vi.mocked(gatewayRequest).mock.calls[0][0];
