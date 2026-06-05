@@ -4,6 +4,7 @@ import { gatewayRequest } from '../api/gateway.js';
 import { resolveChannelRefOrDefault } from './_helpers.js';
 import { isJsonMode } from '../output/format.js';
 import { readBodyFlag } from './whatsapp.js';
+import { ValidationError } from '../output/error.js';
 
 export interface WaTemplatesListOpts {
   channel?: string;
@@ -73,7 +74,8 @@ export interface WaTemplatesCreateOpts {
 export async function runWhatsappTemplatesCreate(opts: WaTemplatesCreateOpts, cmd?: Command): Promise<void> {
   const channel = await resolveChannelRefOrDefault(opts.channel, 'whatsapp');
   const bodyRaw = opts.body ?? opts.data; // -d/--data alias of --body (D2)
-  const body = await readBodyFlag(bodyRaw ?? '');
+  if (!bodyRaw) throw new ValidationError('templates create requires --body <json|@file|->.', 'MISSING_BODY');
+  const body = await readBodyFlag(bodyRaw);
   const res = await gatewayRequest({ channel, method: 'POST', path: `/{waba_id}/message_templates`, body });
   process.stdout.write((cmd && isJsonMode(cmd) ? JSON.stringify(res) : 'Template created.') + '\n');
 }
