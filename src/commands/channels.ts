@@ -414,7 +414,7 @@ export async function runChannelsMetaRetry(
 }
 
 export function registerChannelsCommand(program: Command): void {
-  const channels = program.command('channels').description('Manage WhatsApp channels');
+  const channels = program.command('channels').description('Manage channels (WhatsApp & Instagram)');
 
   // `hookmyapp channels listen` — spec 2026-05-15. Mounts under the existing
   // plural parent (D10): real-channel CLI tunnel mirroring `sandbox listen`.
