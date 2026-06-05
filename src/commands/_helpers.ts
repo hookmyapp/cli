@@ -6,7 +6,6 @@ import { emit, shouldEmitCommandInvoked } from '../observability/posthog.js';
 import type { CliExitCode } from '../analytics/events.js';
 import { getCliVersion } from '../observability/posthog.js';
 import { resolveChannel } from './channels.js';
-import { getPersistedDefaultChannel } from '../config/env-profiles.js';
 import type { Channel } from '../api/channel.js';
 
 /**
@@ -125,7 +124,8 @@ export async function getDefaultWorkspaceId(): Promise<string> {
 /**
  * Resolve the channel a typed command should act on. Precedence (D6):
  *   1. explicit --channel <+phone|@handle|ch_id>
- *   2. persisted default channel (`config set default-channel`)
+ *   2. `HOOKMYAPP_CHANNEL_ID` env var (non-empty) — written into each project's
+ *      .env by `channels env`, so a project directory has a per-project default.
  *   3. error — never guess.
  * When `expectedType` is given (e.g. 'whatsapp' from a `whatsapp …` command),
  * the resolved channel's type MUST match, else a clear ValidationError (D6:
@@ -140,15 +140,15 @@ export async function resolveChannelRefOrDefault(
   if (ref) {
     channel = await resolveChannel(ref);
   } else {
-    const def = getPersistedDefaultChannel();
-    if (!def) {
+    const envChannel = process.env.HOOKMYAPP_CHANNEL_ID;
+    if (!envChannel) {
       throw new ValidationError(
         'No channel specified. Pass --channel <+phone|@handle|ch_id>, ' +
-          'or set a default: hookmyapp config set default-channel <ch_id>.',
+          'or set HOOKMYAPP_CHANNEL_ID in your environment (e.g. your project .env).',
         'NO_CHANNEL',
       );
     }
-    channel = await resolveChannel(def);
+    channel = await resolveChannel(envChannel);
   }
   if (expectedType && channel.type !== expectedType) {
     throw new ValidationError(

@@ -62,7 +62,7 @@ EXAMPLES:
   const send = messages
     .command('send')
     .description('Send an Instagram DM (--text shortcut, or complete --body)')
-    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--to <igsid>', 'Recipient IGSID (from the inbound webhook)')
     .option('--text <text>', 'Text body')
     .option('--body <json|@file|->', 'Complete Meta {recipient,message} body (verbatim)')
@@ -74,7 +74,7 @@ EXAMPLES:
   const read = messages
     .command('read')
     .description('Mark an Instagram DM thread as seen')
-    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--to <igsid>', 'Sender IGSID (from the inbound webhook)')
     .action(async function (this: Command, opts: IgReadOpts) {
       await runInstagramMessagesRead(opts, this);

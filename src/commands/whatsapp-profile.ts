@@ -91,7 +91,7 @@ EXAMPLES:
   const get = profile
     .command('get')
     .description('Get the business profile')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--fields <list>', `Comma-separated fields (default: ${DEFAULT_FIELDS})`)
     .action(async function (this: Command, opts: WaProfileGetOpts) {
       await runWhatsappProfileGet(opts, this);
@@ -100,7 +100,7 @@ EXAMPLES:
   const update = profile
     .command('update')
     .description('Update the business profile (builder flags, or complete --body)')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--about <text>', 'About text')
     .option('--description <text>', 'Description')
     .option('--address <text>', 'Address')

@@ -10,9 +10,6 @@ import {
   getPersistedEnv,
   setPersistedEnv,
   unsetPersistedEnv,
-  setPersistedDefaultChannel,
-  unsetPersistedDefaultChannel,
-  getPersistedDefaultChannel,
 } from '../config/env-profiles.js';
 import {
   getPersistedTelemetry,
@@ -20,33 +17,16 @@ import {
   unsetPersistedTelemetry,
   isTelemetryEnabled,
 } from '../observability/telemetry.js';
-import { resolveChannel } from './channels.js';
 
-const VALID_CONFIG_KEYS = ['env', 'telemetry', 'default-channel'] as const;
+const VALID_CONFIG_KEYS = ['env', 'telemetry'] as const;
 type ConfigKey = (typeof VALID_CONFIG_KEYS)[number];
 
 function assertConfigKey(key: string): asserts key is ConfigKey {
-  if (key !== 'env' && key !== 'telemetry' && key !== 'default-channel') {
+  if (key !== 'env' && key !== 'telemetry') {
     throw new ValidationError(
       `Unknown config key "${key}". Valid keys: ${VALID_CONFIG_KEYS.join(', ')}.`,
     );
   }
-}
-
-/**
- * `config set default-channel <ref>` handler. Accepts a +phone / @handle / ch_
- * ref, resolves it to a ch_ publicId, and persists the publicId (so the stored
- * value is always a canonical id). Exported for unit testing.
- */
-export async function runConfigSetDefaultChannel(ref: string): Promise<void> {
-  const channel = await resolveChannel(ref);
-  setPersistedDefaultChannel(channel.id);
-  process.stdout.write(`Default channel set to ${channel.id}\n`);
-}
-
-export function runConfigUnsetDefaultChannel(): void {
-  unsetPersistedDefaultChannel();
-  process.stdout.write('Default channel cleared\n');
 }
 
 /**
@@ -80,10 +60,6 @@ EXAMPLES:
     .description('Set a persistent config value')
     .action(async function (this: Command, key: string, value: string) {
       assertConfigKey(key);
-      if (key === 'default-channel') {
-        await runConfigSetDefaultChannel(value);
-        return;
-      }
       if (key === 'env') {
         if (!isValidEnv(value)) {
           throw new ValidationError(
@@ -121,8 +97,6 @@ EXAMPLES:
   $ hookmyapp config set env local
   $ hookmyapp config set telemetry off       # disable Sentry crash reporting
   $ hookmyapp config set telemetry on        # re-enable
-  $ hookmyapp config set default-channel ch_AAAAAAAA   # or +<phone> / @<handle>
-  $ hookmyapp config unset default-channel
 `,
   );
 
@@ -132,15 +106,6 @@ EXAMPLES:
     .description('Print a persistent config value')
     .action(function (this: Command, key: string) {
       assertConfigKey(key);
-      if (key === 'default-channel') {
-        const value = getPersistedDefaultChannel();
-        if (isJsonMode(this)) {
-          console.log(JSON.stringify({ value: value ?? null }));
-        } else {
-          console.log(value ?? '(none)');
-        }
-        return;
-      }
       if (key === 'env') {
         const persisted = getPersistedEnv();
         const active = resolveEnv();
@@ -184,15 +149,6 @@ EXAMPLES:
     .description('Remove a persistent config value (revert to default)')
     .action(function (this: Command, key: string) {
       assertConfigKey(key);
-      if (key === 'default-channel') {
-        unsetPersistedDefaultChannel();
-        if (isJsonMode(this)) {
-          console.log(JSON.stringify({ key, unset: true }));
-        } else {
-          console.log('Default channel cleared');
-        }
-        return;
-      }
       if (key === 'env') {
         unsetPersistedEnv();
         if (isJsonMode(this)) {
@@ -250,12 +206,9 @@ EXAMPLES:
           ? 'config.json'
           : 'default';
 
-      const defaultChannel = getPersistedDefaultChannel();
-
       if (isJsonMode(this)) {
         // D7: the JSON `config show` envelope is a frozen {env, telemetry}
-        // contract. The default channel surfaces via `config get default-channel`
-        // (and the human dump below) rather than widening this object.
+        // contract.
         console.log(JSON.stringify({ env, telemetry: telemetryActive }));
       } else {
         console.log(`env:               ${env}`);
@@ -271,7 +224,6 @@ EXAMPLES:
         );
         console.log(`telemetry:         ${telemetryActive}`);
         console.log(`  source:          ${telemetrySource}`);
-        console.log(`default-channel:   ${defaultChannel ?? '(none)'}`);
       }
     });
 
