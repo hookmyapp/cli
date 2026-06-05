@@ -127,6 +127,13 @@ interface ChannelsConnectOpts {
    * Useful over SSH / on headless boxes where `open()` opens nothing useful.
    */
   printUrl?: boolean;
+  /**
+   * Machine-readable mode (global --json). Emit exactly one
+   * `{ connectUrl }` object on stdout; route every status line to stderr so
+   * the stdout stream stays parseable. Success → exit 0, failure → the
+   * existing non-zero error path.
+   */
+  json?: boolean;
 }
 
 /**
@@ -164,11 +171,18 @@ export async function runChannelsConnect(
   opts: ChannelsConnectOpts = {},
 ): Promise<void> {
   const isTty = Boolean(process.stdout.isTTY);
-  if (!isTty) {
+  const jsonMode = !!opts.json;
+  // Status output: in JSON mode every non-payload line goes to stderr so the
+  // single { connectUrl } object stays the only thing on stdout.
+  const status = jsonMode ? console.error : console.log;
+
+  // The interactive type-picker (select) can't run without a TTY. Only that
+  // path hard-requires a TTY now — with an explicit --type, a non-TTY shell
+  // proceeds to the headless URL courier below.
+  if (!isTty && opts.type === undefined) {
     throw new ValidationError(
-      'channels connect requires a TTY (browser launch + OAuth). ' +
-        'In CI, call the backend API directly.',
-      'CONNECT_REQUIRES_TTY',
+      'Specify a channel type in a non-interactive shell: channels connect whatsapp|instagram.',
+      'CONNECT_TYPE_REQUIRED',
     );
   }
 
@@ -210,22 +224,30 @@ export async function runChannelsConnect(
     workspaceId,
   })) as { redirectUrl: string };
 
-  // 3. Hand the OAuth URL to the user — either by launching their browser
-  //    or, with --print-url, by printing it so they can open it elsewhere.
-  if (opts.printUrl) {
+  // 3. Hand the OAuth URL to the user. The headless URL courier (D5):
+  //    - JSON mode  → one { connectUrl } object on stdout, nothing else there.
+  //    - non-TTY or --print-url → print the URL as text (agent/SSH relays it).
+  //    - TTY (human, no --print-url) → open() in try/catch AND print the URL,
+  //      so a browserless host degrades gracefully instead of throwing.
+  if (jsonMode) {
+    process.stdout.write(JSON.stringify({ connectUrl: redirectUrl }) + '\n');
+  } else if (opts.printUrl || !isTty) {
     console.log('\nOpen this URL in your browser to continue:\n');
     console.log(redirectUrl + '\n');
   } else {
-    console.log('\nOpening sign-in in browser...\nComplete the flow, then return here.\n');
-    await open(redirectUrl);
+    console.log('\nOpening sign-in in browser. If it does not open, visit:\n');
+    console.log(redirectUrl + '\n');
+    try { await open(redirectUrl); } catch { /* no browser — URL already printed */ }
   }
-  console.log('Waiting for channel(s)...');
+  status('Waiting for channel(s)...');
 
   // 4. Poll for new/updated channels per D2 acceptance criteria.
   const newChannels = await pollForNewChannels(workspaceId, snapshot);
 
-  // 5. Report all new channels by type (D7 coexistence shape).
-  console.log('\n✓ Connected:');
+  // 5. Report all new channels by type (D7 coexistence shape). In JSON mode
+  //    these go to stderr (via `status`) so stdout stays the single
+  //    { connectUrl } object.
+  status('\n✓ Connected:');
   for (const ch of newChannels) {
     const label =
       ch.type === 'whatsapp'
@@ -233,7 +255,7 @@ export async function runChannelsConnect(
         : ch.type === 'instagram'
           ? `  Instagram @${ch.instagramUsername ?? '(no handle)'}  (${ch.id})`
           : `  Messenger (${ch.id})`;
-    console.log(label);
+    status(label);
   }
 }
 
@@ -451,7 +473,11 @@ export function registerChannelsCommand(program: Command): void {
           'INVALID_CONNECT_TYPE',
         );
       }
-      await runChannelsConnect({ type, printUrl: options.printUrl });
+      await runChannelsConnect({
+        type,
+        printUrl: options.printUrl,
+        json: !!program.opts().json,
+      });
     });
 
   const channelsDisconnect = channels

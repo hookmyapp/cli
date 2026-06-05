@@ -125,10 +125,15 @@ describe('runChannelsConnect — integration (D2)', () => {
     expect(vi.mocked(select)).toHaveBeenCalled();
   });
 
-  it('bare in non-TTY → ValidationError CONNECT_REQUIRES_TTY (D6)', async () => {
+  it('bare (no type) in non-TTY → ValidationError CONNECT_TYPE_REQUIRED (D5 courier)', async () => {
+    // Only the interactive type-picker hard-requires a TTY now. With --type set
+    // a non-TTY shell proceeds to the headless URL courier (see
+    // connect-courier.test.ts); bare (no type) still errors.
     process.stdout.isTTY = false;
     await expect(runChannelsConnect({})).rejects.toThrow(ValidationError);
-    await expect(runChannelsConnect({})).rejects.toThrow(/CONNECT_REQUIRES_TTY|connect requires/);
+    await expect(runChannelsConnect({})).rejects.toThrow(
+      /Specify a channel type|non-interactive shell/,
+    );
   });
 });
 
