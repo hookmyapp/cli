@@ -32,6 +32,7 @@ describe('instagram comments', () => {
       method: 'GET',
       path: '/cmt_1?fields=id%2Ctext%2Cusername%2Ctimestamp%2Creplies%7Bid%2Ctext%2Cusername%7D',
     }));
+    expect(resolveChannelRefOrDefault).toHaveBeenCalledWith('@acme', 'instagram');
   });
 
   it('reply POSTs the replies edge with {message}', async () => {
@@ -39,6 +40,7 @@ describe('instagram comments', () => {
     expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({
       method: 'POST', path: '/cmt_1/replies', body: { message: 'thanks!' },
     }));
+    expect(resolveChannelRefOrDefault).toHaveBeenCalledWith('@acme', 'instagram');
   });
 
   it('hide POSTs {hide:true}', async () => {
@@ -46,6 +48,7 @@ describe('instagram comments', () => {
     expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({
       method: 'POST', path: '/cmt_1', body: { hide: true },
     }));
+    expect(resolveChannelRefOrDefault).toHaveBeenCalledWith('@acme', 'instagram');
   });
 
   it('hide --unhide POSTs {hide:false}', async () => {
@@ -53,6 +56,7 @@ describe('instagram comments', () => {
     expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({
       method: 'POST', path: '/cmt_1', body: { hide: false },
     }));
+    expect(resolveChannelRefOrDefault).toHaveBeenCalledWith('@acme', 'instagram');
   });
 
   it('delete DELETEs the comment node', async () => {
@@ -60,6 +64,7 @@ describe('instagram comments', () => {
     expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({
       method: 'DELETE', path: '/cmt_1',
     }));
+    expect(resolveChannelRefOrDefault).toHaveBeenCalledWith('@acme', 'instagram');
   });
 
   it('private-reply DMs the commenter via {ig_id}/messages', async () => {
@@ -68,5 +73,6 @@ describe('instagram comments', () => {
       method: 'POST', path: '/{ig_id}/messages',
       body: { recipient: { comment_id: 'cmt_1' }, message: { text: 'hi' } },
     }));
+    expect(resolveChannelRefOrDefault).toHaveBeenCalledWith('@acme', 'instagram');
   });
 });
