@@ -7,6 +7,7 @@ import { registerChannelsCommand } from './commands/channels.js';
 import { registerWhatsappCommand, registerWhatsappMessages } from './commands/whatsapp.js';
 import { registerWhatsappTemplates } from './commands/whatsapp-templates.js';
 import { registerWhatsappMedia } from './commands/whatsapp-media.js';
+import { registerWhatsappProfile } from './commands/whatsapp-profile.js';
 import { registerInstagramCommand } from './commands/instagram.js';
 import { registerDoctorCommand } from './commands/doctor.js';
 import { registerBillingCommand } from './commands/billing.js';
@@ -170,6 +171,7 @@ const instagramCmd = registerInstagramCommand(program);
 registerWhatsappMessages(whatsappCmd);
 registerWhatsappTemplates(whatsappCmd);
 registerWhatsappMedia(whatsappCmd);
+registerWhatsappProfile(whatsappCmd);
 void instagramCmd;
 
 // Environment / prerequisite checker (Node, npm/npx, network, login state).
