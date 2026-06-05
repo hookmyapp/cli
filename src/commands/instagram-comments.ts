@@ -157,7 +157,7 @@ EXAMPLES:
   const list = comments
     .command('list')
     .description('List comments on an Instagram media object')
-    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--media <ig-media-id>', 'Instagram media id (from the inbound webhook)')
     .option('--limit <n>', 'Max comments to return')
     .action(async function (this: Command, opts: IgCommentsListOpts) {
@@ -168,7 +168,7 @@ EXAMPLES:
     .command('get')
     .description('Get a single comment with its replies')
     .argument('<comment-id>', 'Instagram comment id')
-    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--fields <list>', `Comma-separated fields (default: ${DEFAULT_GET_FIELDS})`)
     .action(async function (this: Command, commentId: string, opts: IgCommentsGetOpts) {
       await runInstagramCommentsGet(opts, commentId, this);
@@ -177,7 +177,7 @@ EXAMPLES:
   const reply = comments
     .command('reply')
     .description('Reply publicly to a comment')
-    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--comment <id>', 'Instagram comment id to reply to')
     .option('--text <text>', 'Reply text')
     .action(async function (this: Command, opts: IgCommentsReplyOpts) {
@@ -187,7 +187,7 @@ EXAMPLES:
   const hide = comments
     .command('hide')
     .description('Hide (or --unhide) a comment')
-    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--comment <id>', 'Instagram comment id')
     .option('--unhide', 'Unhide instead of hide')
     .action(async function (this: Command, opts: IgCommentsHideOpts) {
@@ -198,7 +198,7 @@ EXAMPLES:
     .command('delete')
     .description('Delete a comment')
     .argument('<comment-id>', 'Instagram comment id')
-    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .action(async function (this: Command, commentId: string, opts: IgCommentsDeleteOpts) {
       await runInstagramCommentsDelete(opts, commentId, this);
     });
@@ -206,7 +206,7 @@ EXAMPLES:
   const privateReply = comments
     .command('private-reply')
     .description('Send a private DM in response to a comment')
-    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--comment <id>', 'Instagram comment id to privately reply to')
     .option('--text <text>', 'DM text')
     .action(async function (this: Command, opts: IgCommentsPrivateReplyOpts) {

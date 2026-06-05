@@ -110,7 +110,7 @@ EXAMPLES:
   const upload = media
     .command('upload')
     .description('Upload a media file (returns its media id)')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--file <path>', 'Path to the file to upload')
     .option('--type <mime>', 'Override the MIME type (default: guessed from extension)')
     .action(async function (this: Command, opts: WaMediaUploadOpts) {
@@ -121,7 +121,7 @@ EXAMPLES:
     .command('get')
     .description('Get media metadata (incl. the gateway-signed download url)')
     .argument('<media-id>', 'Media id')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .action(async function (this: Command, mediaId: string, opts: WaMediaGetOpts) {
       await runWhatsappMediaGet(opts, mediaId, this);
     });
@@ -130,7 +130,7 @@ EXAMPLES:
     .command('download')
     .description('Download media bytes to a file (--out <path>) or stdout (--out -)')
     .argument('<media-id>', 'Media id')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--out <path|->', 'Destination file path, or - for stdout')
     .action(async function (this: Command, mediaId: string, opts: WaMediaDownloadOpts) {
       await runWhatsappMediaDownload(opts, mediaId, this);
@@ -140,7 +140,7 @@ EXAMPLES:
     .command('delete')
     .description('Delete media by id')
     .argument('<media-id>', 'Media id')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .action(async function (this: Command, mediaId: string, opts: WaMediaDeleteOpts) {
       await runWhatsappMediaDelete(opts, mediaId, this);
     });

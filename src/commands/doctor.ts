@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { spawnSync } from 'node:child_process';
 import { readCredentials } from '../auth/store.js';
 import { isJsonMode } from '../output/format.js';
-import { getEffectiveApiUrl, getPersistedDefaultChannel } from '../config/env-profiles.js';
+import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import { readWorkspaceConfig } from './workspace.js';
 import { addExamples } from '../output/help.js';
 
@@ -55,8 +55,8 @@ export async function collectDoctorReport(
   let activeWs: string | undefined;
   try { activeWs = readWorkspaceConfig().activeWorkspaceSlug ?? undefined; } catch { /* ignore */ }
   checks.push({ id: 'workspace', label: 'Active workspace', ok: true, hard: false, detail: activeWs ?? '(none — auto-resolves on first call)' });
-  const defChannel = getPersistedDefaultChannel();
-  checks.push({ id: 'default-channel', label: 'Default channel', ok: true, hard: false, detail: defChannel ?? '(none — pass --channel per command)' });
+  const envChannel = process.env.HOOKMYAPP_CHANNEL_ID;
+  checks.push({ id: 'default-channel', label: 'Default channel (HOOKMYAPP_CHANNEL_ID)', ok: true, hard: false, detail: envChannel || '(none — pass --channel or set HOOKMYAPP_CHANNEL_ID)' });
 
   const ok = checks.every((c) => !c.hard || c.ok);
   return { checks, loggedIn, ok };
