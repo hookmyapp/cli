@@ -4,7 +4,7 @@ import { Command, CommanderError, Option } from 'commander';
 import { loginCommand } from './auth/login.js';
 import { logoutCommand } from './auth/logout.js';
 import { registerChannelsCommand } from './commands/channels.js';
-import { registerWhatsappCommand } from './commands/whatsapp.js';
+import { registerWhatsappCommand, registerWhatsappMessages } from './commands/whatsapp.js';
 import { registerInstagramCommand } from './commands/instagram.js';
 import { registerDoctorCommand } from './commands/doctor.js';
 import { registerBillingCommand } from './commands/billing.js';
@@ -165,7 +165,7 @@ registerChannelsCommand(program);
 // returned Command refs so those plans can mount their subcommands onto them.
 const whatsappCmd = registerWhatsappCommand(program);
 const instagramCmd = registerInstagramCommand(program);
-void whatsappCmd;
+registerWhatsappMessages(whatsappCmd);
 void instagramCmd;
 
 // Environment / prerequisite checker (Node, npm/npx, network, login state).
