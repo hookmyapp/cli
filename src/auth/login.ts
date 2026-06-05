@@ -583,14 +583,14 @@ export function loginCommand(program: Command): void {
         // so the integration suite can drive a headless browser through it.
         if (process.env.HOOKMYAPP_LOGIN_URL_FILE) {
           const fs = await import('node:fs/promises');
-          await fs.writeFile(process.env.HOOKMYAPP_LOGIN_URL_FILE, verification_uri_complete);
+          await fs.writeFile(process.env.HOOKMYAPP_LOGIN_URL_FILE, verifyUrl);
         }
 
         // Open browser — wrapped so a browserless/headless host degrades to the
         // URL printed above instead of throwing (review finding 8).
         const open = (await import('open')).default;
         try {
-          await open(verification_uri_complete);
+          await open(verifyUrl);
         } catch {
           /* no browser — verification URL already printed above */
         }
