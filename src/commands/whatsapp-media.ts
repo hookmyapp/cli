@@ -98,6 +98,15 @@ export async function runWhatsappMediaDelete(
 export function registerWhatsappMedia(whatsapp: Command): void {
   const media = whatsapp.command('media').description('Upload, fetch, download, and delete WhatsApp media');
 
+  addExamples(
+    media,
+    `
+EXAMPLES:
+  $ hookmyapp whatsapp media upload --channel +1555 --file ./a.jpg
+  $ hookmyapp whatsapp media download media_123 --channel +1555 --out ./a.jpg
+`,
+  );
+
   const upload = media
     .command('upload')
     .description('Upload a media file (returns its media id)')
@@ -141,6 +150,7 @@ export function registerWhatsappMedia(whatsapp: Command): void {
     `
 EXAMPLES:
   $ hookmyapp whatsapp media upload --channel +1555 --file ./a.jpg
+  $ hookmyapp whatsapp media upload --channel +1555 --file ./a.pdf --type application/pdf
 `,
   );
   addExamples(
@@ -148,6 +158,7 @@ EXAMPLES:
     `
 EXAMPLES:
   $ hookmyapp whatsapp media get media_123 --channel +1555
+  $ hookmyapp whatsapp media get media_123 --channel +1555 --json
 `,
   );
   addExamples(
@@ -163,6 +174,7 @@ EXAMPLES:
     `
 EXAMPLES:
   $ hookmyapp whatsapp media delete media_123 --channel +1555
+  $ hookmyapp whatsapp media delete media_123 --channel +1555 --json
 `,
   );
 }

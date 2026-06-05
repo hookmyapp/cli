@@ -101,6 +101,15 @@ export async function runWhatsappTemplatesDelete(
 export function registerWhatsappTemplates(whatsapp: Command): void {
   const templates = whatsapp.command('templates').description('Manage WhatsApp message templates (WABA-scoped)');
 
+  addExamples(
+    templates,
+    `
+EXAMPLES:
+  $ hookmyapp whatsapp templates list --channel +1555
+  $ hookmyapp whatsapp templates get hello_world --channel +1555
+`,
+  );
+
   const list = templates
     .command('list')
     .description('List message templates')
@@ -153,6 +162,7 @@ EXAMPLES:
     `
 EXAMPLES:
   $ hookmyapp whatsapp templates get hello_world --channel +1555
+  $ hookmyapp whatsapp templates get hello_world --channel +1555 --json
 `,
   );
   addExamples(
@@ -160,6 +170,7 @@ EXAMPLES:
     `
 EXAMPLES:
   $ hookmyapp whatsapp templates create --channel +1555 --body @template.json
+  $ hookmyapp whatsapp templates create --channel +1555 -d @template.json
 `,
   );
   addExamples(
@@ -167,6 +178,7 @@ EXAMPLES:
     `
 EXAMPLES:
   $ hookmyapp whatsapp templates delete hello_world --channel +1555
+  $ hookmyapp whatsapp templates delete hello_world --channel +1555 --json
 `,
   );
 }
