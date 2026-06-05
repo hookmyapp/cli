@@ -75,7 +75,7 @@ EXAMPLES:
   const send = messages
     .command('send')
     .description('Send a WhatsApp message (--text shortcut, or complete --body)')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--to <phone>', 'Recipient phone (E.164)')
     .option('--text <text>', 'Text body (shortcut for a text message)')
     .option('--body <json|@file|->', 'Complete Meta message body (verbatim)')
@@ -88,7 +88,7 @@ EXAMPLES:
     .command('read')
     .description('Mark a received WhatsApp message as read')
     .argument('<message-id>', 'WhatsApp message id (wamid.…)')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to config default-channel)')
+    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .action(async function (this: Command, messageId: string, opts: WaReadOpts) {
       await runWhatsappMessagesRead(opts, messageId, this);
     });
