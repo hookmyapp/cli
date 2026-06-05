@@ -149,7 +149,13 @@ export async function gatewayUpload(up: GatewayUpload): Promise<any> {
 export async function gatewayDownloadToStream(signedUrl: string, sink: Writable): Promise<number> {
   let res: Response;
   try { res = await fetch(signedUrl); } catch (err) { if (isNetworkFailure(err)) throw new NetworkError(); throw err; }
-  if (!res.ok || !res.body) mapGatewayError(res.status || 502, undefined);
+  if (!res.ok || !res.body) {
+    // The download target is a gateway-signed media/CDN URL, NOT a Meta Graph
+    // endpoint — so the Meta `{error:{message}}` mapper does not apply. Drain
+    // the body before throwing to avoid leaking the response stream.
+    await res.body?.cancel();
+    throw new ApiError(`Media download failed (HTTP ${res.status}).`, res.status || 502);
+  }
   let bytes = 0;
   const reader = res.body.getReader();
   for (;;) {
