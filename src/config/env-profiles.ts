@@ -66,6 +66,7 @@ interface PersistedConfig {
   activeWorkspaceId?: string;
   activeWorkspaceSlug?: string;
   env?: EnvName;
+  defaultChannel?: string; // ch_ publicId
 }
 
 function readConfig(): PersistedConfig {
@@ -113,6 +114,37 @@ export function setPersistedEnv(env: EnvName): void {
 export function unsetPersistedEnv(): void {
   const cfg = readConfig();
   delete cfg.env;
+  writeConfig(cfg);
+}
+
+/**
+ * Persisted default channel (D6). Stored as a `ch_` publicId only — a stale or
+ * malformed value is silently dropped (callers see `undefined` and must pass
+ * `--channel`). Mirrors the validate-on-read posture of
+ * {@link getValidPersistedWorkspaceId}.
+ */
+export function getPersistedDefaultChannel(): string | undefined {
+  const cfg = readConfig();
+  return cfg.defaultChannel && isValidPublicId(cfg.defaultChannel, 'ch')
+    ? cfg.defaultChannel
+    : undefined;
+}
+
+export function setPersistedDefaultChannel(channelId: string): void {
+  if (!isValidPublicId(channelId, 'ch')) {
+    throw new ConfigurationError(
+      `Default channel must be a ch_ publicId, got "${channelId}".`,
+      'INVALID_DEFAULT_CHANNEL',
+    );
+  }
+  const cfg = readConfig();
+  cfg.defaultChannel = channelId;
+  writeConfig(cfg);
+}
+
+export function unsetPersistedDefaultChannel(): void {
+  const cfg = readConfig();
+  delete cfg.defaultChannel;
   writeConfig(cfg);
 }
 
