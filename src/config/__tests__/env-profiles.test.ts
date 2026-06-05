@@ -251,3 +251,18 @@ describe('getEffectiveSandboxInstagramUsername', () => {
     );
   });
 });
+
+describe('getGatewayBaseOverride', () => {
+  afterEach(() => { delete process.env.HOOKMYAPP_GATEWAY_URL; });
+
+  it('returns undefined when no override is set (backend baseUrl is authoritative)', async () => {
+    const { getGatewayBaseOverride } = await import('../env-profiles.js');
+    expect(getGatewayBaseOverride()).toBeUndefined();
+  });
+
+  it('returns the HOOKMYAPP_GATEWAY_URL override, trailing slash stripped', async () => {
+    process.env.HOOKMYAPP_GATEWAY_URL = 'http://localhost:4317/meta/v22.0/';
+    const { getGatewayBaseOverride } = await import('../env-profiles.js');
+    expect(getGatewayBaseOverride()).toBe('http://localhost:4317/meta/v22.0');
+  });
+});

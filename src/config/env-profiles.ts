@@ -267,6 +267,18 @@ export function getEffectiveSandboxInstagramUsername(): string {
  * Meta Apps: staging proxies to +972 55 704 6276 / WABA 1276334778010256,
  * production proxies to +1 737-237-0900 / WABA 1703736267434336.
  */
+/**
+ * OPTIONAL surgical override of the gateway base URL (host + /meta + version) for
+ * local dev / CI. When unset (the normal case) the base comes from the backend
+ * token endpoint (see src/api/gateway.ts), which is env-aware and version-aware —
+ * so the CLI never hardcodes a Graph version. When set, this complete base wins
+ * verbatim (the dev is responsible for including the right version).
+ */
+export function getGatewayBaseOverride(): string | undefined {
+  const raw = process.env.HOOKMYAPP_GATEWAY_URL;
+  return raw ? raw.replace(/\/$/, '') : undefined;
+}
+
 export function getEffectiveSandboxProxyUrl(): string {
   const override = process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
   if (override) return override.replace(/\/$/, '');
