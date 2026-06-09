@@ -537,8 +537,9 @@ export function registerChannelsCommand(program: Command): void {
       "Print the channel's HookMyApp gateway access token (hmat_…) — the bearer you send to the gateway in place of the real Meta token.",
     )
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
-    .action(async function (this: Command, channelRef: string) {
-      await runChannelToken(channelRef, this);
+    .option('--rotate', 'Revoke the current token and issue a new one, then print it')
+    .action(async function (this: Command, channelRef: string, opts: { rotate?: boolean }) {
+      await runChannelToken(channelRef, this, opts.rotate ?? false);
     });
 
   const channelsHealth = channels
@@ -668,9 +669,13 @@ Prints the channel's HookMyApp gateway access token (hmat_…) in full — the
 bearer you send to the gateway in place of the real Meta token. The token is
 yours to read any time; the real upstream Meta token is never exposed.
 
+Use --rotate to revoke the current token and issue a new one. The old token
+stops working immediately, so update your integration with the printed value.
+
 EXAMPLES:
   $ hookmyapp channels token ch_AAAAAAAA
   $ hookmyapp channels token ch_AAAAAAAA --json
+  $ hookmyapp channels token ch_AAAAAAAA --rotate
 `,
   );
 

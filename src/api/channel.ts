@@ -22,13 +22,6 @@ interface ChannelBase {
    * older backends — poll falls back to id-diff only.
    */
   updatedAt?: string;
-  /**
-   * Integration credential publicId (`cred_<8>`). Surfaced by Plan 1 backend
-   * DTOs so the CLI can build the gateway API-key path
-   * `/access-tokens/credentials/:credentialPublicId`. Absent on older backends /
-   * channels with no integration credential yet.
-   */
-  credentialPublicId?: string;
 }
 
 export interface WhatsAppChannel extends ChannelBase {
@@ -107,7 +100,6 @@ function parseBase(d: Record<string, unknown>, id: string): ChannelBase {
     webhookUrl: d.webhookUrl,
     verifyToken: d.verifyToken,
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : undefined,
-    credentialPublicId: typeof d.credentialPublicId === 'string' ? d.credentialPublicId : undefined,
   };
 }
 
