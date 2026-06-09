@@ -57,3 +57,31 @@ describe('runChannelsList — IG rows are visible', () => {
     logSpy.mockRestore();
   });
 });
+
+describe('runChannelsList — two numbers on one WABA', () => {
+  beforeEach(() => vi.mocked(apiClient).mockReset());
+
+  const WABA_SENTINEL = 'WABA_LIST_SENTINEL_77';
+  const numberOne = {
+    id: 'ch_LISTNUM1', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+    metaWabaId: WABA_SENTINEL, metaResourceId: WABA_SENTINEL, connectionType: 'cloud_api',
+    metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+    whatsappWabaName: 'Shared WABA', whatsappDisplayPhoneNumber: '+1 555-111-1111', whatsappPhoneNumberId: 'pn_AAA',
+    whatsappVerifiedName: null, whatsappQualityRating: null, whatsappQualityRatingCheckedAt: null,
+  };
+  const numberTwo = {
+    ...numberOne,
+    id: 'ch_LISTNUM2', whatsappDisplayPhoneNumber: '+1 555-222-2222', whatsappPhoneNumberId: 'pn_BBB',
+  };
+
+  it('human-table mode shows both phones and never the shared WABA id', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([numberOne, numberTwo]);
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runChannelsList({ json: false });
+    const combined = outSpy.mock.calls.map((c) => c[0]).join('');
+    expect(combined).toContain('+1 555-111-1111');
+    expect(combined).toContain('+1 555-222-2222');
+    expect(combined).not.toContain(WABA_SENTINEL);
+    outSpy.mockRestore();
+  });
+});
