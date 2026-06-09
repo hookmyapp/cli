@@ -11,7 +11,6 @@ import { registerWhatsappProfile } from './commands/whatsapp-profile.js';
 import { registerInstagramCommand } from './commands/instagram.js';
 import { registerDoctorCommand } from './commands/doctor.js';
 import { registerBillingCommand } from './commands/billing.js';
-import { registerAccessTokensCommand } from './commands/access-tokens.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerSandboxCommand } from './commands/sandbox/index.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
@@ -178,9 +177,6 @@ registerDoctorCommand(program);
 
 // Billing
 registerBillingCommand(program);
-
-// Gateway access tokens (create/list/revoke)
-registerAccessTokensCommand(program);
 
 // Workspace management
 registerWorkspaceCommand(program);
