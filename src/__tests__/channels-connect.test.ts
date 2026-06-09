@@ -174,6 +174,40 @@ describe('runChannelsConnect — reports all new channels by type (D7)', () => {
   });
 });
 
+describe('runChannelsConnect — names the newly-added 2nd number on an existing WABA (D7)', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(forceTokenRefresh).mockClear();
+    // The poll returns ONLY the new number (new ch_ id), as a 2nd number on
+    // an existing WABA: same whatsappWabaName, distinct display phone + id.
+    vi.mocked(pollForNewChannels).mockResolvedValue([
+      {
+        id: 'ch_NUM2NEW', type: 'whatsapp', workspaceId: 'ws_TEST0001',
+        metaWabaId: 'WABA_CONNECT_SENTINEL', metaResourceId: 'WABA_CONNECT_SENTINEL',
+        connectionType: 'embedded_signup', metaConnected: true, forwardingEnabled: true,
+        webhookUrl: null, verifyToken: null,
+        whatsappWabaName: 'Shared WABA', whatsappDisplayPhoneNumber: '+1 555-777-7777',
+        whatsappPhoneNumberId: 'pn_NEW2', whatsappVerifiedName: null,
+        whatsappQualityRating: null, whatsappQualityRatingCheckedAt: null,
+      } as any,
+    ]);
+    process.stdout.isTTY = true;
+  });
+
+  it('prints the new number display phone and its new ch_ id, not the WABA id', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])                                              // snapshot
+      .mockResolvedValueOnce({ state: 's', redirectUrl: 'https://meta.example', codeChallenge: 'c' });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsConnect({ type: 'whatsapp' });
+    const combined = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(combined).toContain('+1 555-777-7777');
+    expect(combined).toContain('ch_NUM2NEW');
+    expect(combined).not.toContain('WABA_CONNECT_SENTINEL');
+    logSpy.mockRestore();
+  });
+});
+
 describe('runChannelsConnect — --print-url', () => {
   beforeEach(() => {
     vi.mocked(apiClient).mockReset();
