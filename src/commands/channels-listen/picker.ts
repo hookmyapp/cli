@@ -82,7 +82,7 @@ export async function selectChannel<T extends Channel>(
   });
 }
 
-function renderRow(c: Channel): string {
+export function renderRow(c: Channel): string {
   if (c.type === 'whatsapp') {
     const name = c.whatsappWabaName ?? '(no name)';
     const phone = c.whatsappDisplayPhoneNumber ?? 'no phone';
