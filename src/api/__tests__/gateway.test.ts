@@ -28,6 +28,28 @@ describe('substitutePath', () => {
   });
 });
 
+describe('substitutePath — two numbers on one WABA (D7 passthrough)', () => {
+  const numberOne = {
+    id: 'ch_PNUM01', type: 'whatsapp', workspaceId: 'ws_T0000001',
+    whatsappPhoneNumberId: 'pn_AAA', metaWabaId: 'SHARED_WABA_77', metaResourceId: 'SHARED_WABA_77',
+  } as any;
+  const numberTwo = { ...numberOne, id: 'ch_PNUM02', whatsappPhoneNumberId: 'pn_BBB' } as any;
+
+  it('resolves {waba_id} identically for both numbers', () => {
+    expect(substitutePath('/{waba_id}/message_templates', numberOne))
+      .toBe(substitutePath('/{waba_id}/message_templates', numberTwo));
+    expect(substitutePath('/{waba_id}/message_templates', numberOne))
+      .toBe('/SHARED_WABA_77/message_templates');
+  });
+
+  it('resolves {phone_number_id} distinctly per number', () => {
+    expect(substitutePath('/{phone_number_id}/messages', numberOne))
+      .not.toBe(substitutePath('/{phone_number_id}/messages', numberTwo));
+    expect(substitutePath('/{phone_number_id}/messages', numberOne)).toBe('/pn_AAA/messages');
+    expect(substitutePath('/{phone_number_id}/messages', numberTwo)).toBe('/pn_BBB/messages');
+  });
+});
+
 describe('gatewayRequest', () => {
   beforeEach(() => vi.restoreAllMocks());
 
