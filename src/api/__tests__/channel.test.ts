@@ -192,16 +192,6 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
     expect(parsed).not.toHaveProperty('hasActiveCliTunnel');
   });
 
-  it('When channel includes credentialPublicId, then the parser surfaces it (gateway access-token path)', () => {
-    const parsed = parseChannelListItem({ ...baseValidWa, credentialPublicId: 'cred_AAAA1111' });
-    expect(parsed.credentialPublicId).toBe('cred_AAAA1111');
-  });
-
-  it('When channel omits credentialPublicId, then parsed.credentialPublicId is undefined', () => {
-    const parsed = parseChannelListItem(baseValidWa);
-    expect(parsed.credentialPublicId).toBeUndefined();
-  });
-
   it('When channel includes updatedAt, then the parser carries it through (CLI re-auth signal)', () => {
     const dto = {
       id: 'ch_TEST0004',

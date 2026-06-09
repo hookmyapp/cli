@@ -11,7 +11,7 @@ interface TokenSummary {
 }
 
 /**
- * Canonical handler for `hookmyapp channels token <channel>`.
+ * Canonical handler for `hookmyapp channels token <channel> [--rotate]`.
  *
  * Prints the channel's HookMyApp gateway access token (`hmat_…`) — the bearer
  * the customer sends to the gateway in place of the real Meta token. Every
@@ -19,12 +19,26 @@ interface TokenSummary {
  * returned in FULL: it is the customer's to read any time (an access token, not
  * a write-once API key). The real upstream Meta token is never exposed.
  *
- * Human mode prints the token. `--json` emits
- * `{ channelId, type, token, tokenPrefix, tokenSuffix }`.
+ * With `--rotate`, the current token is revoked and a fresh one is minted
+ * atomically (`POST /meta/channels/:id/token/rotate`); the NEW token is then
+ * printed. The old token stops working immediately. Without it, the existing
+ * token is read (`GET /meta/channels/:id/token`).
+ *
+ * Human mode prints the (new) token. `--json` emits
+ * `{ channelId, type, token, tokenPrefix, tokenSuffix }` identically on both
+ * paths.
  */
-export async function runChannelToken(channelRef: string, cmd?: Command): Promise<void> {
+export async function runChannelToken(
+  channelRef: string,
+  cmd?: Command,
+  rotate = false,
+): Promise<void> {
   const channel = await resolveChannel(channelRef);
-  const data = (await apiClient(`/meta/channels/${channel.id}/token`)) as TokenSummary;
+  const data = (
+    rotate
+      ? await apiClient(`/meta/channels/${channel.id}/token/rotate`, { method: 'POST' })
+      : await apiClient(`/meta/channels/${channel.id}/token`)
+  ) as TokenSummary;
 
   if (cmd && isJsonMode(cmd)) {
     process.stdout.write(
