@@ -19,6 +19,11 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npm test
+      # Build BEFORE npm test: cli-error-integration.test.ts spawns
+      # bin/hookmyapp.js, which imports ../dist/cli.js. Testing before the
+      # build made those 4 tests fail on every CI run since 0.12.6 (empty
+      # stderr instead of the JSON envelope) while passing locally, where a
+      # dev build of dist/ always exists.
       - run: node build.mjs
+      - run: npm test
       - run: node bin/hookmyapp.js --version
