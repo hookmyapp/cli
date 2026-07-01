@@ -17,6 +17,11 @@ jobs:
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    # Browsers + system deps are pre-baked in this image, pinned to the same
+    # playwright version we depend on (1.59.1 → chromium v1217). This replaces
+    # the flaky `npx playwright install` CDN download that hung for the full
+    # 15m timeout every night since 2026-05-29.
+    container: mcr.microsoft.com/playwright:v1.59.1-noble
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -27,18 +32,6 @@ jobs:
         run: npm ci
       - name: Build CLI
         run: node build.mjs
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
       - name: Run nightly CLI login spec against staging
         env:
           HOOKMYAPP_API_URL: https://staging-api.hookmyapp.com
