@@ -10,3 +10,13 @@ if (!process.env.HOOKMYAPP_CONFIG_DIR) {
   process.env.HOOKMYAPP_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'hookmyapp-cli-test-'));
 }
 
+// Pin color output OFF for the whole suite. picocolors latches color support
+// from process.stdout.isTTY at first import; several tests toggle isTTY to
+// exercise interactive paths, which — combined with lazy dynamic imports —
+// could latch color ON in a worker and make plain-string assertions on
+// rendered output (e.g. `POST <url>`) flake. NO_COLOR forces picocolors off
+// regardless of isTTY, matching the color-off state the assertions assume.
+// (NO_COLOR disables; FORCE_COLOR would ENABLE, since picocolors only checks
+// for the key's presence.)
+process.env.NO_COLOR = '1';
+
