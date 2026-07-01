@@ -32,3 +32,20 @@ jobs:
         run: node bin/hookmyapp.js --version
       - name: Publish to npm (OIDC + provenance)
         run: npm publish --provenance --access public
+
+  notify-failure:
+    needs: [publish]
+    if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify maintainers of workflow failure
+        env:
+          MAINTAINER_ALERT_URL_CRITICAL: ${{ secrets.MAINTAINER_ALERT_URL_CRITICAL }}
+          MAINTAINER_ALERT_TOKEN: ${{ secrets.MAINTAINER_ALERT_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$MAINTAINER_ALERT_URL_CRITICAL" ] && { echo "no maintainer alert configured"; exit 0; }
+          curl -fsS -X POST "$MAINTAINER_ALERT_URL_CRITICAL" \
+            -H "authorization: Bearer $MAINTAINER_ALERT_TOKEN" \
+            -H 'content-type: application/json' \
+            -d "$(jq -nc --arg u "$RUN_URL" '{title:"publish.yml failed",text:"a tagged release did not publish",url:$u}')"
