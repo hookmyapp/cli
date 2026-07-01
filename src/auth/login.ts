@@ -762,6 +762,9 @@ export function loginCommand(program: Command): void {
     `
 EXAMPLES:
   $ hookmyapp login
+  $ hookmyapp login --email you@example.com                # browser-free (prompts for a code)
+  $ hookmyapp login --email you@example.com --json         # step 1: prints registrationId
+  $ hookmyapp login --email you@example.com --registration-id <id> --otp 123456 --json  # step 2
   $ hookmyapp login --code hma_boot_xxx                    # zero-browser AI paste
   $ hookmyapp login --workspace acme-corp                  # preselect workspace
   $ hookmyapp login --next sandbox --phone +15551234567    # scripts / CI

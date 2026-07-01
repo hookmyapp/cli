@@ -13,7 +13,7 @@ export function registerCredentialsCommand(program: Command): void {
     .command('credentials')
     .description('List and revoke agent credentials');
 
-  credentials
+  const list = credentials
     .command('list')
     .description('List your agent credentials')
     .action(async () => {
@@ -34,7 +34,7 @@ export function registerCredentialsCommand(program: Command): void {
       }
     });
 
-  credentials
+  const revoke = credentials
     .command('revoke <publicId>')
     .description('Revoke an agent credential')
     .option('-y, --yes', 'Skip the confirmation prompt')
@@ -64,7 +64,24 @@ export function registerCredentialsCommand(program: Command): void {
     `
 EXAMPLES:
   $ hookmyapp credentials list
+  $ hookmyapp credentials revoke ac_ab12cd34 -y
+`,
+  );
+
+  addExamples(
+    list,
+    `
+EXAMPLES:
+  $ hookmyapp credentials list
   $ hookmyapp credentials list --json
+`,
+  );
+
+  addExamples(
+    revoke,
+    `
+EXAMPLES:
+  $ hookmyapp credentials revoke ac_ab12cd34
   $ hookmyapp credentials revoke ac_ab12cd34 -y
 `,
   );
