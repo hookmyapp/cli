@@ -37,6 +37,7 @@ jobs:
     needs: [publish]
     if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Notify maintainers of workflow failure
         env:
@@ -45,7 +46,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           [ -z "$MAINTAINER_ALERT_URL_CRITICAL" ] && { echo "no maintainer alert configured"; exit 0; }
-          curl -fsS -X POST "$MAINTAINER_ALERT_URL_CRITICAL" \
+          curl -fsS --connect-timeout 5 --max-time 15 -X POST "$MAINTAINER_ALERT_URL_CRITICAL" \
             -H "authorization: Bearer $MAINTAINER_ALERT_TOKEN" \
             -H 'content-type: application/json' \
             -d "$(jq -nc --arg u "$RUN_URL" '{title:"publish.yml failed",text:"a tagged release did not publish",url:$u}')"
