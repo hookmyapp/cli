@@ -60,6 +60,13 @@ describe('hookmyapp login (nightly only — real WorkOS UI puppeting)', () => {
           HOOKMYAPP_LOGIN_URL_FILE: urlFile,
           // Prevent `open` from spawning a real browser on the host OS.
           BROWSER: 'none',
+          // Strip VITEST — src/index.ts gates main() behind `!process.env.VITEST`
+          // so the bundle is import-safe in unit tests. Leaked into this SPAWNED
+          // child, it makes the CLI exit 0 with no output (login never runs).
+          // Same reason runCli.ts sets this; execa v9 extendEnv re-injects it,
+          // so an explicit `undefined` is required. (This spec bypasses runCli
+          // because it needs the streaming child + HOOKMYAPP_LOGIN_URL_FILE.)
+          VITEST: undefined,
         },
         reject: false,
         timeout: 110_000,
