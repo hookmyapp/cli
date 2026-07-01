@@ -27,6 +27,34 @@ hookmyapp channels connect whatsapp     # or name the type directly
 hookmyapp channels connect instagram
 ```
 
+## Authentication
+
+`hookmyapp login` signs you in through your browser and is the default for
+interactive use.
+
+**Browser-free sign-in** (for headless environments and AI agents) uses an
+emailed one-time code instead of a browser:
+
+```bash
+# Interactive terminal: prompts you for the 6-digit code from your email
+hookmyapp login --email you@example.com
+
+# Non-interactive / agent: two steps, because the code arrives out of band
+hookmyapp login --email you@example.com --json
+# -> { "registrationId": "...", "expiresAt": "..." }
+hookmyapp login --email you@example.com --registration-id <id> --otp 123456 --json
+```
+
+This stores an organization-scoped credential (`ac_…`). Pass `--scope <name>`
+(repeatable) to request a narrower set than the default full access.
+
+Manage those credentials:
+
+```bash
+hookmyapp credentials list
+hookmyapp credentials revoke ac_ab12cd34 -y
+```
+
 ## Listening for webhooks on localhost
 
 Two flavors — pick based on which channel you have.
