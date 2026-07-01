@@ -1,4 +1,10 @@
 import { expect, test, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+let DIR: string;
+const SAVED_DIR = process.env.HOOKMYAPP_CONFIG_DIR;
 
 const apiClientMock = vi.fn();
 vi.mock('../../api/client.js', () => ({ apiClient: (...a: unknown[]) => apiClientMock(...a) }));
@@ -20,10 +26,17 @@ async function run(argv: string[]): Promise<void> {
 }
 
 beforeEach(() => {
+  DIR = mkdtempSync(join(tmpdir(), 'hma-creds-cmd-'));
+  process.env.HOOKMYAPP_CONFIG_DIR = DIR;
   apiClientMock.mockReset();
   confirmMock.mockReset();
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  rmSync(DIR, { recursive: true, force: true });
+  if (SAVED_DIR) process.env.HOOKMYAPP_CONFIG_DIR = SAVED_DIR;
+  else delete process.env.HOOKMYAPP_CONFIG_DIR;
+  vi.restoreAllMocks();
+});
 
 test('list --json prints the credentials array', async () => {
   apiClientMock.mockResolvedValue([{ publicId: 'ac_pub1', scopes: ['workspace.read'] }]);
@@ -45,4 +58,24 @@ test('revoke <id> aborts when the user declines the prompt', async () => {
   confirmMock.mockResolvedValue(false);
   await run(['credentials', 'revoke', 'ac_pub1']);
   expect(apiClientMock).not.toHaveBeenCalled();
+});
+
+test('revoking the currently stored credential clears it from disk', async () => {
+  writeFileSync(
+    join(DIR, 'credentials.json'),
+    JSON.stringify({ accessToken: 'ac_x', refreshToken: '', expiresAt: 0, kind: 'agent', credentialPublicId: 'ac_pub1', scopes: [] }),
+  );
+  apiClientMock.mockResolvedValue(undefined);
+  await run(['credentials', 'revoke', 'ac_pub1', '-y', '--json']);
+  expect(existsSync(join(DIR, 'credentials.json'))).toBe(false);
+});
+
+test('revoking a different credential leaves the stored one intact', async () => {
+  writeFileSync(
+    join(DIR, 'credentials.json'),
+    JSON.stringify({ accessToken: 'ac_x', refreshToken: '', expiresAt: 0, kind: 'agent', credentialPublicId: 'ac_pub1', scopes: [] }),
+  );
+  apiClientMock.mockResolvedValue(undefined);
+  await run(['credentials', 'revoke', 'ac_other', '-y', '--json']);
+  expect(existsSync(join(DIR, 'credentials.json'))).toBe(true);
 });

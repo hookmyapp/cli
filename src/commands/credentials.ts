@@ -1,5 +1,7 @@
 import { Command } from 'commander';
 import { apiClient } from '../api/client.js';
+import { readCredentials, deleteCredentials } from '../auth/store.js';
+import { isAgentCredential } from '../storage/secrets.js';
 import { addExamples } from '../output/help.js';
 
 interface AgentCredentialRow {
@@ -51,7 +53,15 @@ export function registerCredentialsCommand(program: Command): void {
           return;
         }
       }
-      await apiClient(`/agent/credentials/${publicId}`, { method: 'DELETE' });
+      await apiClient(`/agent/credentials/${encodeURIComponent(publicId)}`, {
+        method: 'DELETE',
+      });
+      // If this is the credential we're currently authenticated with, drop the
+      // now-dead token from disk so the next command doesn't send a 401.
+      const creds = await readCredentials();
+      if (creds && isAgentCredential(creds) && creds.credentialPublicId === publicId) {
+        await deleteCredentials();
+      }
       if (isJson) {
         console.log(JSON.stringify({ ok: true, revoked: publicId }));
         return;

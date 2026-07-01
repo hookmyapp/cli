@@ -504,8 +504,16 @@ export async function runAgentClaimLogin(opts: {
     );
   }
 
+  // Prompting is only possible on an interactive terminal and not in --json.
+  const interactive = Boolean(process.stdin.isTTY) && !opts.json;
+
   // Split step 2 (or interactive completion): registrationId already known.
   if (opts.registrationId) {
+    if (!opts.otp && !interactive) {
+      throw new ValidationError(
+        '--otp is required with --registration-id in non-interactive or --json mode.',
+      );
+    }
     const otp = opts.otp ?? (await promptOtp());
     await persistAgentCredential(
       await completeClaim({ registrationId: opts.registrationId, otp }),
@@ -529,7 +537,6 @@ export async function runAgentClaimLogin(opts: {
 
   // Non-interactive: cannot prompt. Emit the handle and stop; caller completes
   // with --registration-id + --otp.
-  const interactive = Boolean(process.stdin.isTTY) && !opts.json;
   if (!interactive) {
     process.stdout.write(
       JSON.stringify({
@@ -653,6 +660,17 @@ export function loginCommand(program: Command): void {
           | 'exit'
           | undefined;
         const json = program.opts().json === true;
+
+        // auth.md completion flags are meaningless without --email; reject them
+        // up front instead of silently falling through to the browser flow.
+        if (
+          !opts.email &&
+          (opts.otp || opts.registrationId || (opts.scope?.length ?? 0) > 0)
+        ) {
+          throw new ValidationError(
+            '--otp, --registration-id, and --scope require --email.',
+          );
+        }
 
         // auth.md browser-free branch. Mutually exclusive with --code/--wizard;
         // runs before them so a bad combination is rejected up front.

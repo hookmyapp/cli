@@ -18,33 +18,38 @@ export interface AgentCredentialResponse {
   orgId?: string;
 }
 
-async function postJson(path: string, body: unknown): Promise<unknown> {
-  const url = `${getEffectiveApiUrl()}${path}`;
-  let res: Response;
+// Auth requests must not hang an agent or CI job forever; bound every call.
+const AUTH_FETCH_TIMEOUT_MS = 30_000;
+
+async function timedFetch(url: string, init: RequestInit): Promise<Response> {
   try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(AUTH_FETCH_TIMEOUT_MS) });
   } catch (err) {
-    if (isNetworkFailure(err)) throw new NetworkError();
+    // AbortSignal.timeout aborts with a TimeoutError; treat it, and any
+    // transport failure, as a NetworkError so the CLI exits cleanly (exit 5).
+    if (isNetworkFailure(err) || (err instanceof Error && err.name === 'TimeoutError')) {
+      throw new NetworkError();
+    }
     throw err;
   }
+}
+
+async function postJson(path: string, body: unknown): Promise<unknown> {
+  const res = await timedFetch(`${getEffectiveApiUrl()}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) throw await mapApiError(res);
   return res.json();
 }
 
 /** Full scope vocabulary advertised by the backend (drift-free default). */
 export async function fetchSupportedScopes(): Promise<string[]> {
-  const url = `${getEffectiveApiUrl()}/.well-known/oauth-protected-resource`;
-  let res: Response;
-  try {
-    res = await fetch(url, { method: 'GET' });
-  } catch (err) {
-    if (isNetworkFailure(err)) throw new NetworkError();
-    throw err;
-  }
+  const res = await timedFetch(
+    `${getEffectiveApiUrl()}/.well-known/oauth-protected-resource`,
+    { method: 'GET' },
+  );
   if (!res.ok) throw await mapApiError(res);
   const body = (await res.json()) as { scopes_supported?: string[] };
   return Array.isArray(body.scopes_supported) ? body.scopes_supported : [];

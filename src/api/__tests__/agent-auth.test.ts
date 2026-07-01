@@ -51,3 +51,18 @@ test('completeClaim maps a 429 to a typed rate-limit error (exitCode 6)', async 
   const { completeClaim } = await import('../agent-auth.js');
   await expect(completeClaim({ registrationId: '11111111-1111-1111-1111-111111111111', otp: '000000' })).rejects.toMatchObject({ exitCode: 6 });
 });
+
+test('a request timeout maps to a NetworkError (exitCode 5)', async () => {
+  const timeout = Object.assign(new Error('timed out'), { name: 'TimeoutError' });
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(timeout));
+  const { initiateClaim } = await import('../agent-auth.js');
+  await expect(initiateClaim({ email: 'a@b.com', scopes: ['workspace.read'] })).rejects.toMatchObject({ exitCode: 5 });
+});
+
+test('the auth fetch is bounded by an abort signal', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(okJson({ scopes_supported: [] }));
+  vi.stubGlobal('fetch', fetchMock);
+  const { fetchSupportedScopes } = await import('../agent-auth.js');
+  await fetchSupportedScopes();
+  expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+});
