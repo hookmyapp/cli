@@ -477,6 +477,128 @@ export async function runBootstrapCodeExchange(
   await runWizard({ phone: opts.phone, next: opts.next, json: opts.json });
 }
 
+/**
+ * Browser-free login over the auth.md user-claimed email-OTP flow.
+ *
+ * TTY: claim -> prompt the 6-digit code -> complete, all in one call.
+ * Non-interactive / --json: the OTP arrives out-of-band, so this splits into
+ * two invocations keyed by registrationId:
+ *   1. `login --email <e> --json`        -> prints { registrationId, expiresAt }
+ *   2. `login --email <e> --registration-id <id> --otp <code> --json` -> completes
+ * Persists an org-scoped `ac_` credential (no refresh token).
+ */
+export async function runAgentClaimLogin(opts: {
+  email: string;
+  otp?: string;
+  registrationId?: string;
+  scopes?: string[];
+  json?: boolean;
+}): Promise<void> {
+  const { fetchSupportedScopes, initiateClaim, completeClaim } = await import(
+    '../api/agent-auth.js'
+  );
+
+  if (opts.otp && !opts.registrationId) {
+    throw new ValidationError(
+      '--otp requires --registration-id (from the first `login --email` call).',
+    );
+  }
+
+  // Prompting is only possible on an interactive terminal and not in --json.
+  const interactive = Boolean(process.stdin.isTTY) && !opts.json;
+
+  // Split step 2 (or interactive completion): registrationId already known.
+  if (opts.registrationId) {
+    if (!opts.otp && !interactive) {
+      throw new ValidationError(
+        '--otp is required with --registration-id in non-interactive or --json mode.',
+      );
+    }
+    const otp = opts.otp ?? (await promptOtp());
+    await persistAgentCredential(
+      await completeClaim({ registrationId: opts.registrationId, otp }),
+      opts.email,
+      opts.json,
+    );
+    return;
+  }
+
+  // Step 1: request scopes (full vocabulary unless narrowed) and initiate.
+  const scopes =
+    opts.scopes && opts.scopes.length > 0
+      ? opts.scopes
+      : await fetchSupportedScopes();
+  if (scopes.length === 0) {
+    throw new ValidationError(
+      'Could not resolve any scopes to request. Pass --scope <name> explicitly.',
+    );
+  }
+  const claim = await initiateClaim({ email: opts.email, scopes });
+
+  // Non-interactive: cannot prompt. Emit the handle and stop; caller completes
+  // with --registration-id + --otp.
+  if (!interactive) {
+    process.stdout.write(
+      JSON.stringify({
+        ok: true,
+        registrationId: claim.registrationId,
+        expiresAt: claim.expiresAt,
+        next: 'login --email <e> --registration-id <id> --otp <code>',
+      }) + '\n',
+    );
+    return;
+  }
+
+  console.log(
+    `\n${c.success(icon.success)} We emailed a 6-digit code to ${opts.email}\n`,
+  );
+  const otp = await promptOtp();
+  await persistAgentCredential(
+    await completeClaim({ registrationId: claim.registrationId, otp }),
+    opts.email,
+    opts.json,
+  );
+}
+
+async function promptOtp(): Promise<string> {
+  const { input } = await import('@inquirer/prompts');
+  const value = await input({
+    message: 'Enter the 6-digit code',
+    validate: (v: string) =>
+      /^\d{6}$/.test(v.trim()) ? true : 'Enter the 6-digit code from the email.',
+  });
+  return value.trim();
+}
+
+async function persistAgentCredential(
+  cred: { accessToken: string; scopes: string[]; credentialPublicId: string },
+  email: string,
+  json?: boolean,
+): Promise<void> {
+  await saveCredentials({
+    accessToken: cred.accessToken,
+    refreshToken: '',
+    expiresAt: 0,
+    kind: 'agent',
+    credentialPublicId: cred.credentialPublicId,
+    scopes: cred.scopes,
+  });
+  if (json) {
+    process.stdout.write(
+      JSON.stringify({
+        ok: true,
+        credentialPublicId: cred.credentialPublicId,
+        scopes: cred.scopes,
+      }) + '\n',
+    );
+    return;
+  }
+  const n = cred.scopes.length;
+  console.log(
+    `${c.success(icon.success)} Logged in as ${email} (${n} scope${n === 1 ? '' : 's'})`,
+  );
+}
+
 export function loginCommand(program: Command): void {
   const login = program
     .command('login')
@@ -495,12 +617,29 @@ export function loginCommand(program: Command): void {
       '--code <code>',
       'Exchange a dashboard-minted bootstrap code (zero browser interaction)',
     )
+    .option('--email <email>', 'Browser-free sign-in via auth.md email code')
+    .option(
+      '--otp <code>',
+      'The 6-digit code (with --registration-id, for non-interactive login)',
+    )
+    .option(
+      '--registration-id <id>',
+      'Registration id from the first `login --email` call',
+    )
+    .option(
+      '--scope <scope...>',
+      'Request specific scopes instead of the full set (repeatable)',
+    )
     .action(
       async (opts: {
         phone?: string;
         wizard?: boolean;
         next?: string;
         code?: string;
+        email?: string;
+        otp?: string;
+        registrationId?: string;
+        scope?: string[];
       }) => {
         // Reject an invalid --next locally (exit 2) instead of silently
         // coercing it to undefined — `login --next bogus` previously ran the
@@ -521,6 +660,35 @@ export function loginCommand(program: Command): void {
           | 'exit'
           | undefined;
         const json = program.opts().json === true;
+
+        // auth.md completion flags are meaningless without --email; reject them
+        // up front instead of silently falling through to the browser flow.
+        if (
+          !opts.email &&
+          (opts.otp || opts.registrationId || (opts.scope?.length ?? 0) > 0)
+        ) {
+          throw new ValidationError(
+            '--otp, --registration-id, and --scope require --email.',
+          );
+        }
+
+        // auth.md browser-free branch. Mutually exclusive with --code/--wizard;
+        // runs before them so a bad combination is rejected up front.
+        if (opts.email) {
+          if (opts.wizard || opts.code) {
+            throw new ValidationError(
+              '--email cannot be combined with --code or --wizard.',
+            );
+          }
+          await runAgentClaimLogin({
+            email: opts.email,
+            otp: opts.otp,
+            registrationId: opts.registrationId,
+            scopes: opts.scope,
+            json,
+          });
+          return;
+        }
 
         // Phase 122 — bootstrap-code branch. MUST run BEFORE the wizard
         // fast-path and BEFORE device-flow initiation so --code --wizard is
@@ -612,6 +780,9 @@ export function loginCommand(program: Command): void {
     `
 EXAMPLES:
   $ hookmyapp login
+  $ hookmyapp login --email you@example.com                # browser-free (prompts for a code)
+  $ hookmyapp login --email you@example.com --json         # step 1: prints registrationId
+  $ hookmyapp login --email you@example.com --registration-id <id> --otp 123456 --json  # step 2
   $ hookmyapp login --code hma_boot_xxx                    # zero-browser AI paste
   $ hookmyapp login --workspace acme-corp                  # preselect workspace
   $ hookmyapp login --next sandbox --phone +15551234567    # scripts / CI

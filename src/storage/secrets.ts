@@ -24,6 +24,17 @@ export interface Secrets {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
+  /** Credential kind. Undefined = legacy WorkOS session (device-code / bootstrap). */
+  kind?: 'workos' | 'agent';
+  /** Agent credentials only: the ac_ credential's public id (for revoke). */
+  credentialPublicId?: string;
+  /** Agent credentials only: scopes granted at issue time. */
+  scopes?: string[];
+}
+
+/** True for an auth.md-issued org-scoped `ac_` credential (no refresh token). */
+export function isAgentCredential(creds: Secrets): boolean {
+  return creds.kind === 'agent';
 }
 
 export async function writeSecrets(secrets: Secrets): Promise<void> {

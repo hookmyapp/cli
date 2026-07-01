@@ -1,4 +1,5 @@
 import { readCredentials, saveCredentials } from '../auth/store.js';
+import { isAgentCredential } from '../storage/secrets.js';
 import {
   AuthError,
   ApiError,
@@ -76,6 +77,11 @@ export async function forceTokenRefresh(organizationId?: string): Promise<void> 
   const creds = await readCredentials();
   if (!creds) {
     throw new AuthError('Not logged in. Run: hookmyapp login');
+  }
+  // Agent (auth.md) credentials are org-scoped Bearer tokens with no refresh
+  // token; there is nothing to refresh and no org re-scope to perform.
+  if (isAgentCredential(creds)) {
+    return;
   }
   try {
     const refreshed = await refreshToken(creds.refreshToken, organizationId);

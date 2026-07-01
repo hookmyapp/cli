@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, Option } from 'commander';
 import { loginCommand } from './auth/login.js';
 import { logoutCommand } from './auth/logout.js';
+import { registerCredentialsCommand } from './commands/credentials.js';
 import { registerChannelsCommand } from './commands/channels.js';
 import { registerWhatsappCommand, registerWhatsappMessages } from './commands/whatsapp.js';
 import { registerWhatsappTemplates } from './commands/whatsapp-templates.js';
@@ -159,6 +160,7 @@ program.configureOutput({
 // Auth commands
 loginCommand(program);
 logoutCommand(program);
+registerCredentialsCommand(program);
 
 // Channel management
 registerChannelsCommand(program);
