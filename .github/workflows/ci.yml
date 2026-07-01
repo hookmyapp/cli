@@ -27,3 +27,20 @@ jobs:
       - run: node build.mjs
       - run: npm test
       - run: node bin/hookmyapp.js --version
+
+  notify-failure:
+    needs: [test]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify maintainers of workflow failure
+        env:
+          MAINTAINER_ALERT_URL: ${{ secrets.MAINTAINER_ALERT_URL }}
+          MAINTAINER_ALERT_TOKEN: ${{ secrets.MAINTAINER_ALERT_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$MAINTAINER_ALERT_URL" ] && { echo "no maintainer alert configured"; exit 0; }
+          curl -fsS -X POST "$MAINTAINER_ALERT_URL" \
+            -H "authorization: Bearer $MAINTAINER_ALERT_TOKEN" \
+            -H 'content-type: application/json' \
+            -d "$(jq -nc --arg u "$RUN_URL" '{title:"ci.yml failed on main",text:"main-branch build/tests are red",url:$u}')"
