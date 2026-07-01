@@ -57,6 +57,7 @@ jobs:
     needs: [nightly-cli-login]
     if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Notify maintainers of workflow failure
         env:
@@ -65,7 +66,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           [ -z "$MAINTAINER_ALERT_URL" ] && { echo "no maintainer alert configured"; exit 0; }
-          curl -fsS -X POST "$MAINTAINER_ALERT_URL" \
+          curl -fsS --connect-timeout 5 --max-time 15 -X POST "$MAINTAINER_ALERT_URL" \
             -H "authorization: Bearer $MAINTAINER_ALERT_TOKEN" \
             -H 'content-type: application/json' \
             -d "$(jq -nc --arg u "$RUN_URL" '{title:"nightly.yml failed or cancelled",text:"scheduled workflow did not pass",url:$u}')"
