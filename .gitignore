@@ -18,3 +18,7 @@ pnpm-lock.yaml
 
 # superpowers skill worktrees
 .worktrees/
+
+# Internal planning artifacts — never publish to this public repo
+docs/superpowers/
+.superpowers/
