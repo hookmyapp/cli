@@ -39,8 +39,8 @@ const mockedRefresh = vi.mocked(forceTokenRefresh);
 const CONFIG_PATH = path.join(TMP_HOME, '.hookmyapp', 'config.json');
 
 const fakeWorkspaces = [
-  { id: 'ws_TEST0001', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01' },
-  { id: 'ws_TEST0002', name: 'Globex', workosOrganizationId: 'org_01B', role: 'member', createdAt: '2026-02-01' },
+  { id: 'ws_TEST0001', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
+  { id: 'ws_TEST0002', name: 'Globex', workosOrganizationId: 'org_01B', role: 'member', createdAt: '2026-02-01', kind: 'team' },
 ];
 
 let originalIsTTY: boolean | undefined;
@@ -123,5 +123,14 @@ describe('workspace use (RBAC-UX-01/02/03)', () => {
       exitCode: 2,
       code: 'VALIDATION_ERROR',
     });
+  });
+
+  it('refuses to switch into a customer workspace (customers use owns that)', async () => {
+    mockedApi.mockResolvedValue([
+      ...fakeWorkspaces,
+      { id: 'ws_TEST0009', name: 'Client Co', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-03-01', kind: 'customer' },
+    ]);
+
+    await expect(runWorkspaceUse(['Client Co'])).rejects.toThrow(/workspace "Client Co" not found/);
   });
 });
