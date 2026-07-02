@@ -7,6 +7,7 @@ vi.mock('../commands/_helpers.js', () => ({
 vi.mock('../output/format.js', () => ({ output: vi.fn() }));
 
 import { apiClient } from '../api/client.js';
+import { output } from '../output/format.js';
 import { runChannelsMove } from '../commands/channels.js';
 
 const wa = {
@@ -40,6 +41,24 @@ describe('channels move — cross-kind (team → customer)', () => {
       targetWorkspacePublicId: 'ws_CUST0001',
     });
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Acme Cafe'));
+    logSpy.mockRestore();
+  });
+
+  it('--json emits the raw result, no human text', async () => {
+    vi.mocked(output).mockReset();
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([wa])
+      .mockResolvedValueOnce([customer])
+      .mockResolvedValueOnce({ ok: true });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runChannelsMove('ch_WAaaaaaa', 'Acme Cafe', true);
+
+    expect(output).toHaveBeenCalledWith(
+      { channelId: 'ch_WAaaaaaa', targetWorkspacePublicId: 'ws_CUST0001' },
+      { human: false },
+    );
+    expect(logSpy).not.toHaveBeenCalled();
     logSpy.mockRestore();
   });
 });
