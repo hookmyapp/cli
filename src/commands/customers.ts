@@ -1,9 +1,17 @@
 import type { Command } from 'commander';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
+import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import type { Workspace } from '../types/workspace.js';
 import { readWorkspaceConfig, switchActiveWorkspace } from './workspace.js';
+
+interface OnboardingLinkRow {
+  publicId: string;
+  label: string;
+  channelType: string;
+  status: string;
+}
 
 /**
  * SaaS customers surface. A customer IS a workspace (`kind='customer'`) —
@@ -71,6 +79,83 @@ export function registerCustomersCommand(program: Command): void {
         { json },
       );
     });
+
+  // Connect links minted for customers (the app's SaaS -> Onboarding links).
+  // Plural to match the CLI's other collection groups (members, invites);
+  // singular kept as an alias.
+  const links = cust.command('onboarding-links')
+    .alias('onboarding-link')
+    .description('Manage customer connect links');
+
+  const linksList = links.command('list')
+    .description('List onboarding links')
+    .option('--json', 'Output machine-readable JSON')
+    .action(async (opts: { json?: boolean }) => {
+      const res = (await apiClient('/org/onboarding-links')) as { links: OnboardingLinkRow[] };
+      const json = !!(opts.json || program.opts().json);
+      if (json) {
+        console.log(JSON.stringify(res.links.map((l) => ({
+          id: l.publicId, label: l.label, channelType: l.channelType, status: l.status,
+        })), null, 2));
+        return;
+      }
+      output(res.links.map((l) => ({
+        ID: l.publicId,
+        LABEL: l.label,
+        CHANNEL: l.channelType,
+        STATUS: l.status,
+      })), { human: true });
+    });
+
+  const linksCreate = links.command('create')
+    .description('Create a customer connect link')
+    .requiredOption('--label <label>', 'Label for the link')
+    .requiredOption('--channel-type <type>', 'whatsapp or instagram')
+    .option('--json', 'Output machine-readable JSON')
+    .action(async (opts: { label: string; channelType: string; json?: boolean }) => {
+      if (opts.channelType !== 'whatsapp' && opts.channelType !== 'instagram') {
+        throw new ValidationError(`--channel-type must be "whatsapp" or "instagram", got "${opts.channelType}"`);
+      }
+      const created = await apiClient('/org/onboarding-links', {
+        method: 'POST',
+        body: JSON.stringify({ label: opts.label, channelType: opts.channelType }),
+      });
+      output(
+        { id: created.publicId, url: created.url, verifyToken: created.verifyToken },
+        {
+          json: !!(opts.json || program.opts().json),
+          kind: 'mutation',
+          nudge: 'Share this URL with your customer to connect their channel.',
+        },
+      );
+    });
+
+  addExamples(
+    links,
+    `
+EXAMPLES:
+  $ hookmyapp customers onboarding-links list
+  $ hookmyapp customers onboarding-links create --label "Acme" --channel-type whatsapp
+`,
+  );
+
+  addExamples(
+    linksList,
+    `
+EXAMPLES:
+  $ hookmyapp customers onboarding-links list
+  $ hookmyapp customers onboarding-links list --json
+`,
+  );
+
+  addExamples(
+    linksCreate,
+    `
+EXAMPLES:
+  $ hookmyapp customers onboarding-links create --label "Acme" --channel-type whatsapp
+  $ hookmyapp customers onboarding-links create --label "Globex" --channel-type instagram --json
+`,
+  );
 
   addExamples(
     cust,

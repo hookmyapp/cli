@@ -104,6 +104,48 @@ describe('customers use', () => {
   });
 });
 
+describe('customers onboarding-links', () => {
+  it('list renders the org onboarding links', async () => {
+    mockedApi.mockResolvedValue({
+      links: [
+        { publicId: 'ol_LINK0001', label: 'Acme', channelType: 'whatsapp', status: 'active' },
+        { publicId: 'ol_LINK0002', label: 'Globex', channelType: 'instagram', status: 'revoked' },
+      ],
+    });
+    await runCustomers(['onboarding-links', 'list']);
+
+    expect(mockedApi).toHaveBeenCalledWith('/org/onboarding-links');
+    const logs = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logs).toContain('Acme');
+    expect(logs).toContain('revoked');
+  });
+
+  it('create posts label + channelType and prints the connect URL', async () => {
+    mockedApi.mockResolvedValue({ publicId: 'ol_LINK0003', url: 'https://app.example/connect/tok123', token: 'tok123', verifyToken: 'vt' });
+    await runCustomers(['onboarding-links', 'create', '--label', 'Acme', '--channel-type', 'whatsapp']);
+
+    expect(mockedApi).toHaveBeenCalledWith('/org/onboarding-links', {
+      method: 'POST',
+      body: JSON.stringify({ label: 'Acme', channelType: 'whatsapp' }),
+    });
+    const logs = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logs).toContain('https://app.example/connect/tok123');
+  });
+
+  it('create rejects an invalid --channel-type', async () => {
+    await expect(
+      runCustomers(['onboarding-links', 'create', '--label', 'Acme', '--channel-type', 'sms']),
+    ).rejects.toThrow(/--channel-type must be "whatsapp" or "instagram"/);
+    expect(mockedApi).not.toHaveBeenCalled();
+  });
+
+  it('singular onboarding-link alias works', async () => {
+    mockedApi.mockResolvedValue({ links: [] });
+    await runCustomers(['onboarding-link', 'list']);
+    expect(mockedApi).toHaveBeenCalledWith('/org/onboarding-links');
+  });
+});
+
 describe('customers current', () => {
   it('shows the active workspace when it is a customer', async () => {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'ws_CUST0001', activeWorkspaceSlug: 'Acme' }));
