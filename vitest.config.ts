@@ -7,5 +7,8 @@ export default defineConfig({
     // test module loads — prevents tests from clobbering the developer's
     // real ~/.hookmyapp credentials + active workspace config.
     setupFiles: ['./vitest.setup.ts'],
+    coverage: {
+      include: ['src/**'],
+    },
   },
 });
