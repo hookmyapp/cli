@@ -65,7 +65,16 @@ async function refreshToken(
     throw new UnexpectedError('refresh failed', 'WORKOS_REFRESH_FAILED');
   }
 
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
+  // Shape guard — a 200 with missing/empty tokens must NOT be persisted, or
+  // saveCredentials would corrupt the store (JSON.stringify drops undefined
+  // fields, leaving a credentials.json with no tokens at all).
+  if (
+    typeof data?.access_token !== 'string' || data.access_token === '' ||
+    typeof data?.refresh_token !== 'string' || data.refresh_token === ''
+  ) {
+    throw new UnexpectedError('refresh response malformed', 'WORKOS_REFRESH_FAILED');
+  }
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
