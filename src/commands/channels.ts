@@ -27,6 +27,7 @@ import {
   type ChannelDetail,
 } from '../api/channel.js';
 import { parseIdentifier } from '../lib/parseIdentifier.js';
+import { resolveWorkspace } from './workspace.js';
 
 export type { Channel, ChannelDetail };
 
@@ -400,6 +401,32 @@ export async function runChannelsDisable(ref: string, json = false): Promise<voi
 }
 
 /**
+ * Exported handler for `hookmyapp channels move <channel> <target>`.
+ * Moves a channel to another workspace OR customer in the same organization.
+ * Cross-kind is allowed (team ↔ customer) — the fix for a channel connected
+ * under the wrong side. Org-admin only. `--json` emits
+ * `{ channelId, targetWorkspacePublicId }`.
+ */
+export async function runChannelsMove(
+  channelRef: string,
+  targetRef: string,
+  json = false,
+): Promise<void> {
+  const channel = await resolveChannel(channelRef);
+  // No kind restriction: the target may be a team workspace or a customer.
+  const target = await resolveWorkspace(targetRef);
+  await apiClient(`/channels/${channel.id}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ targetWorkspacePublicId: target.id }),
+  });
+  if (json) {
+    output({ channelId: channel.id, targetWorkspacePublicId: target.id }, { human: false });
+  } else {
+    console.log(`✓ Moved ${channelLabel(channel)} to ${target.name}`);
+  }
+}
+
+/**
  * Exported handler for `hookmyapp channels meta-retry <on|off> <ref>`.
  * `off` disables Meta webhook retries for the channel (forwarder always 200s
  * Meta); `on` restores the default. Best-effort at request granularity.
@@ -502,6 +529,15 @@ export function registerChannelsCommand(program: Command): void {
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
     .action(async (channelRef: string) => {
       await runChannelsDisable(channelRef, !!program.opts().json);
+    });
+
+  const channelsMove = channels
+    .command('move')
+    .description('Move a channel to another workspace or customer in this organization')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<target>', 'Target workspace/customer publicId (ws_xxxxxxxx) or name')
+    .action(async (channelRef: string, targetRef: string) => {
+      await runChannelsMove(channelRef, targetRef, !!program.opts().json);
     });
 
   const channelsMetaRetry = channels
@@ -641,6 +677,15 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp channels disable ch_AAAAAAAA
   $ hookmyapp channels disable ch_AAAAAAAA --workspace acme-corp
+`,
+  );
+
+  addExamples(
+    channelsMove,
+    `
+EXAMPLES:
+  $ hookmyapp channels move ch_AAAAAAAA "Acme Cafe"
+  $ hookmyapp channels move ch_AAAAAAAA ws_BBBBBBBB
 `,
   );
 
