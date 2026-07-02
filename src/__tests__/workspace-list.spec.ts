@@ -31,8 +31,8 @@ const CONFIG_PATH = path.join(TMP_HOME, '.hookmyapp', 'config.json');
 
 // Phase 117: every workspace id fixture is a ws_ publicId.
 const fakeWorkspaces = [
-  { id: 'ws_TEST0001', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01' },
-  { id: 'ws_TEST0002', name: 'Globex', workosOrganizationId: 'org_01B', role: 'member', createdAt: '2026-02-01' },
+  { id: 'ws_TEST0001', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
+  { id: 'ws_TEST0002', name: 'Globex', workosOrganizationId: 'org_01B', role: 'member', createdAt: '2026-02-01', kind: 'customer' },
 ];
 
 beforeEach(async () => {
@@ -92,5 +92,37 @@ describe('workspace list (RBAC-UX-04)', () => {
     const parsed = JSON.parse(String(lastCall![0]));
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed[0]).toMatchObject({ id: 'ws_TEST0001', workosOrganizationId: 'org_01A', role: 'admin' });
+  });
+
+  it('human mode renders a KIND column', async () => {
+    mockedApi.mockResolvedValue(fakeWorkspaces);
+    await runList([], true);
+
+    const logs = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logs).toContain('KIND');
+    expect(logs).toMatch(/Globex[^\n]*customer/);
+  });
+
+  it('--kind customer filters to customer-kind workspaces (JSON mode)', async () => {
+    mockedApi.mockResolvedValue(fakeWorkspaces);
+    await runList(['--json', '--kind', 'customer'], false);
+
+    const parsed = JSON.parse(String(mockConsoleLog.mock.calls.at(-1)![0]));
+    expect(parsed.map((w: { id: string }) => w.id)).toEqual(['ws_TEST0002']);
+    expect(parsed[0].kind).toBe('customer');
+  });
+
+  it('--kind team filters human table to team rows only', async () => {
+    mockedApi.mockResolvedValue(fakeWorkspaces);
+    await runList(['--kind', 'team'], true);
+
+    const logs = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logs).toContain('Acme');
+    expect(logs).not.toContain('Globex');
+  });
+
+  it('invalid --kind value throws a validation error', async () => {
+    mockedApi.mockResolvedValue(fakeWorkspaces);
+    await expect(runList(['--kind', 'reseller'], false)).rejects.toThrow(/--kind must be "team" or "customer"/);
   });
 });

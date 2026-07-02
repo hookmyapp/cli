@@ -143,8 +143,13 @@ export function registerWorkspaceCommand(program: Command): void {
   const wsList = ws.command('list')
     .description('List all workspaces')
     .option('--json', 'Output machine-readable JSON')
-    .action(async (opts: { json?: boolean }) => {
-      const data = (await apiClient('/workspaces')) as Workspace[];
+    .option('--kind <kind>', 'Filter by kind: team or customer')
+    .action(async (opts: { json?: boolean; kind?: string }) => {
+      if (opts.kind && opts.kind !== 'team' && opts.kind !== 'customer') {
+        throw new ValidationError(`--kind must be "team" or "customer", got "${opts.kind}"`);
+      }
+      const all = (await apiClient('/workspaces')) as Workspace[];
+      const data = opts.kind ? all.filter((w) => w.kind === opts.kind) : all;
       const config = readWorkspaceConfig();
       if (opts.json || !program.opts().json !== true) {
         // JSON: include raw array with workosOrganizationId when --json or non-human default
@@ -158,6 +163,7 @@ export function registerWorkspaceCommand(program: Command): void {
           ACTIVE: w.id === config.activeWorkspaceId ? '*' : ' ',
           NAME: w.name,
           SLUG: w.workosOrganizationId,
+          KIND: w.kind,
           ROLE: w.role,
         }));
         output(rows, { human: true });
