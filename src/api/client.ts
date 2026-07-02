@@ -140,6 +140,14 @@ export async function mapApiError(res: Response): Promise<CliError> {
     err.exitCode = 5;
     return err;
   }
+  // The Stripe billing portal endpoints were retired — any call that still
+  // reaches one gets a pointer to the in-app Billing page instead of a raw 410.
+  if (res.status === 410 && code === 'BILLING_PORTAL_RETIRED') {
+    return new ApiError(
+      'This billing endpoint was retired. Manage billing from your Billing page in the app. Run: hookmyapp billing manage',
+      410,
+    );
+  }
   if (res.status === 429) {
     // Phase 123 Plan 10 — use the new RateLimitError class (sev3, httpStatus
     // 429). Exit code remains 6 so the Phase 108 exit-code contract for 429

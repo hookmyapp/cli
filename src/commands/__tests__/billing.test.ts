@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../api/client.js', () => ({
   apiClient: vi.fn(),
@@ -10,41 +10,74 @@ vi.mock('../_helpers.js', () => ({
   getDefaultWorkspaceId: vi.fn(async () => 'ws_test'),
 }));
 
-// billingManage calls `open(data.url)` after fetching the portal URL; without
-// this stub, the paid-tier branch would try to launch the user's browser.
+// billingManage calls `open(url)` after resolving the Billing page URL;
+// without this stub, it would try to launch the user's browser.
 vi.mock('open', () => ({ default: vi.fn(async () => undefined) }));
 
+import open from 'open';
 import { apiClient } from '../../api/client.js';
-import { billingManage } from '../billing.js';
+import { billingManage, billingUpgrade } from '../billing.js';
 
-describe('billingManage — Phase A subscription shape', () => {
+const workspaces = [
+  { id: 'ws_other', name: 'Other', organizationPublicId: 'org_other111' },
+  { id: 'ws_test', name: 'Acme', organizationPublicId: 'org_abc12345' },
+];
+
+describe('billingManage — opens the app Billing page (portal retired)', () => {
   beforeEach(() => {
     vi.mocked(apiClient).mockReset();
+    vi.mocked(open).mockClear();
+    process.env.HOOKMYAPP_APP_URL = 'https://app.test';
+  });
+  afterEach(() => {
+    delete process.env.HOOKMYAPP_APP_URL;
   });
 
-  test('When free tier (plan.slug === "free", no stripeSubscriptionId field), then billingManage throws ValidationError + does NOT call /stripe/portal', async () => {
-    vi.mocked(apiClient).mockResolvedValueOnce({
-      status: 'active',
-      plan: { slug: 'free', name: 'Launch', priceInCents: 0, annualPriceInCents: 0 },
-    });
-
-    await expect(billingManage()).rejects.toThrow(/billing upgrade/i);
-
-    expect(vi.mocked(apiClient)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(apiClient).mock.calls[0][0]).toBe('/stripe/subscription');
-  });
-
-  test('When paid tier (plan.slug !== "free"), then billingManage calls /stripe/portal', async () => {
-    vi.mocked(apiClient)
-      .mockResolvedValueOnce({
-        status: 'active',
-        plan: { slug: 'launch', name: 'Launch+', priceInCents: 1900, annualPriceInCents: 19000 },
-      })
-      .mockResolvedValueOnce({ url: 'https://stripe.example/portal' });
+  test('When invoked, then it opens <appUrl>/org/<orgPublicId>/billing for the active workspace and never calls /stripe/portal', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce(workspaces);
 
     await expect(billingManage()).resolves.toBeUndefined();
 
-    expect(vi.mocked(apiClient)).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(apiClient).mock.calls[1][0]).toBe('/stripe/portal');
+    expect(vi.mocked(open)).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
+    const paths = vi.mocked(apiClient).mock.calls.map((c) => c[0]);
+    expect(paths).not.toContain('/stripe/portal');
+  });
+
+  test('When no workspace row carries organizationPublicId, then billingManage throws ValidationError and opens nothing', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([{ id: 'ws_test', name: 'Acme' }]);
+
+    await expect(billingManage()).rejects.toThrow(/no organization/i);
+
+    expect(vi.mocked(open)).not.toHaveBeenCalled();
+  });
+});
+
+describe('billingUpgrade — active subscription path (portal retired)', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(open).mockClear();
+    process.env.HOOKMYAPP_APP_URL = 'https://app.test';
+  });
+  afterEach(() => {
+    delete process.env.HOOKMYAPP_APP_URL;
+  });
+
+  test('When paid tier with active status, then billingUpgrade opens the app Billing page and never calls /stripe/portal', async () => {
+    vi.mocked(apiClient).mockImplementation(async (path: string) => {
+      if (path === '/stripe/subscription') {
+        return {
+          status: 'active',
+          plan: { slug: 'launch', name: 'Launch+', priceInCents: 1900, annualPriceInCents: 19000 },
+        };
+      }
+      if (path === '/workspaces') return workspaces;
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    await expect(billingUpgrade()).resolves.toBeUndefined();
+
+    expect(vi.mocked(open)).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
+    const paths = vi.mocked(apiClient).mock.calls.map((c) => c[0]);
+    expect(paths).not.toContain('/stripe/portal');
   });
 });
