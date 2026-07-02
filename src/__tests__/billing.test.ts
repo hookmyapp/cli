@@ -180,36 +180,34 @@ describe('billing commands', () => {
   });
 
   describe('billingManage', () => {
-    it('happy path: POSTs /stripe/portal and opens returned url', async () => {
+    // /stripe/portal is retired (410 BILLING_PORTAL_RETIRED). `billing manage`
+    // now opens the app's org Billing page, resolving the org publicId from
+    // the /workspaces membership union.
+    beforeEach(() => {
+      vi.stubEnv('HOOKMYAPP_APP_URL', 'https://app.test');
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('happy path: resolves the org publicId from /workspaces and opens the app Billing page', async () => {
       mockedApiClient.mockImplementation(async (path: string) => {
-        if (path === '/stripe/subscription') return activeSub;
-        if (path === '/stripe/portal') return { url: 'https://billing.stripe.com/p/x' };
+        if (path === '/workspaces') {
+          return [{ id: WORKSPACE_ID, name: 'Acme', organizationPublicId: 'org_abc12345' }];
+        }
         throw new Error(`unexpected path: ${path}`);
       });
 
       await billingManage();
 
-      expect(mockedApiClient).toHaveBeenCalledWith('/stripe/portal', {
-        method: 'POST',
-        workspaceId: WORKSPACE_ID,
-        body: JSON.stringify({}),
-      });
-      expect(mockedOpen).toHaveBeenCalledWith('https://billing.stripe.com/p/x');
+      expect(mockedOpen).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
+      const paths = mockedApiClient.mock.calls.map((c) => c[0]);
+      expect(paths).not.toContain('/stripe/portal');
     });
 
-    it('free preflight: throws CliError NO_SUBSCRIPTION and does not open', async () => {
+    it('missing organizationPublicId is a ValidationError with exit code 2 and does not open', async () => {
       mockedApiClient.mockImplementation(async (path: string) => {
-        if (path === '/stripe/subscription') return freeSub;
-        throw new Error(`unexpected path: ${path}`);
-      });
-
-      await expect(billingManage()).rejects.toThrow(/No active subscription/);
-      expect(mockedOpen).not.toHaveBeenCalled();
-    });
-
-    it('free preflight error is a ValidationError with exit code 2', async () => {
-      mockedApiClient.mockImplementation(async (path: string) => {
-        if (path === '/stripe/subscription') return freeSub;
+        if (path === '/workspaces') return [{ id: WORKSPACE_ID, name: 'Acme' }];
         throw new Error(`unexpected path: ${path}`);
       });
 
@@ -220,38 +218,46 @@ describe('billing commands', () => {
         caught = e;
       }
       expect(caught).toBeDefined();
-      // Post-phase-108 every command throws a CliError subclass; the specific
-      // old 'NO_SUBSCRIPTION' code was replaced by ValidationError (exit 2).
       expect(caught.code).toBe('VALIDATION_ERROR');
       expect(caught.exitCode).toBe(2);
+      expect(mockedOpen).not.toHaveBeenCalled();
     });
   });
 
   describe('billingUpgrade', () => {
-    it('opens Stripe Portal in update flow when user has active subscription', async () => {
-      mockedApiClient
-        .mockResolvedValueOnce({ status: 'active', plan: { slug: 'growth', name: 'Scale' } })
-        .mockResolvedValueOnce({ url: 'https://billing.stripe.com/p/upd' });
+    beforeEach(() => {
+      vi.stubEnv('HOOKMYAPP_APP_URL', 'https://app.test');
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    function mockSubAndWorkspaces(sub: any) {
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === '/stripe/subscription') return sub;
+        if (path === '/workspaces') {
+          return [{ id: WORKSPACE_ID, name: 'Acme', organizationPublicId: 'org_abc12345' }];
+        }
+        throw new Error(`unexpected path: ${path}`);
+      });
+    }
+
+    it('opens the app Billing page (not /stripe/portal) when user has active subscription', async () => {
+      mockSubAndWorkspaces({ status: 'active', plan: { slug: 'growth', name: 'Scale' } });
 
       await billingUpgrade();
 
-      expect(mockedApiClient).toHaveBeenNthCalledWith(2, '/stripe/portal', expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ flow: 'update' }),
-      }));
-      expect(mockedOpen).toHaveBeenCalledWith('https://billing.stripe.com/p/upd');
+      expect(mockedOpen).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
+      const paths = mockedApiClient.mock.calls.map((c) => c[0]);
+      expect(paths).not.toContain('/stripe/portal');
     });
 
     it('treats past_due on a paid plan as a subscriber', async () => {
-      mockedApiClient
-        .mockResolvedValueOnce({ status: 'past_due', plan: { slug: 'growth', name: 'Scale' } })
-        .mockResolvedValueOnce({ url: 'https://billing.stripe.com/p/x' });
+      mockSubAndWorkspaces({ status: 'past_due', plan: { slug: 'growth', name: 'Scale' } });
 
       await billingUpgrade();
 
-      expect(mockedApiClient).toHaveBeenNthCalledWith(2, '/stripe/portal', expect.objectContaining({
-        body: JSON.stringify({ flow: 'update' }),
-      }));
+      expect(mockedOpen).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
     });
 
     it('rejects --json with UPGRADE_NO_JSON (no machine-readable form)', async () => {
@@ -307,7 +313,6 @@ describe('billing commands', () => {
 
 describe('billing commands — npx prefix roll-out (cliCommandPrefix)', () => {
   let billingStatus: (opts: { human?: boolean }) => Promise<void>;
-  let billingManage: () => Promise<void>;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -320,20 +325,10 @@ describe('billing commands — npx prefix roll-out (cliCommandPrefix)', () => {
 
     const mod = await import('../commands/billing.js');
     billingStatus = mod.billingStatus;
-    billingManage = mod.billingManage;
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
-  });
-
-  it('billingManage (free) throws with "npx hookmyapp billing upgrade" in the message', async () => {
-    mockedApiClient.mockImplementation(async (path: string) => {
-      if (path === '/stripe/subscription') return freeSub;
-      throw new Error(`unexpected path: ${path}`);
-    });
-
-    await expect(billingManage()).rejects.toThrow(/npx hookmyapp billing upgrade/);
   });
 
   it('billingStatus 80% nudge prints "npx hookmyapp billing upgrade" under npm_command=exec', async () => {

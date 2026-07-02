@@ -6,33 +6,38 @@ import { c } from '../output/color.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
+import { getEffectiveAppUrl } from '../config/env-profiles.js';
 import { getDefaultWorkspaceId } from './_helpers.js';
 
 // program is lazy-imported inside actions because commands/billing.ts is
 // loaded by index.ts during program setup — a top-level import would form a
 // cycle. Same pattern as other commands that need root-level opts.
 
+/**
+ * POST /stripe/portal is retired (backend returns 410 BILLING_PORTAL_RETIRED).
+ * Billing is managed on the app's org Billing page. Resolve the org publicId
+ * from the /workspaces membership union — every row carries
+ * organizationPublicId (same mechanism as customers.ts) — preferring the row
+ * for the active workspace.
+ */
+async function orgBillingUrl(workspaceId: string): Promise<string> {
+  const all = (await apiClient('/workspaces')) as Array<{
+    id: string;
+    organizationPublicId?: string;
+  }>;
+  const orgPublicId = (all.find((w) => w.id === workspaceId) ?? all[0])?.organizationPublicId;
+  if (!orgPublicId) {
+    throw new ValidationError('No organization found for your account. Log in and try again.');
+  }
+  return `${getEffectiveAppUrl()}/org/${orgPublicId}/billing`;
+}
+
 export async function billingManage(): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
-  const sub = await apiClient('/stripe/subscription', { workspaceId });
+  const url = await orgBillingUrl(workspaceId);
 
-  // Phase A drops planSlug + stripeSubscriptionId. plan.slug is now the
-  // single source of truth for tier; backend guarantees plan.slug === 'free'
-  // iff there's no active Stripe subscription.
-  if (sub.plan.slug === 'free') {
-    throw new ValidationError(
-      `No active subscription. Run \`${cliCommandPrefix()} billing upgrade\` to subscribe.`,
-    );
-  }
-
-  const data = await apiClient('/stripe/portal', {
-    method: 'POST',
-    workspaceId,
-    body: JSON.stringify({}),
-  });
-
-  console.log('Opening Stripe Customer Portal...');
-  await open(data.url);
+  console.log('Opening your Billing page...');
+  await open(url);
 }
 
 export async function billingStatus(opts: { json?: boolean; human?: boolean } = {}): Promise<void> {
@@ -102,13 +107,9 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
   const hasActiveSub = sub.plan.slug !== 'free' && ['active', 'past_due'].includes(sub.status);
 
   if (hasActiveSub) {
-    const data = await apiClient('/stripe/portal', {
-      method: 'POST',
-      workspaceId,
-      body: JSON.stringify({ flow: 'update' }),
-    });
-    console.log('Opening Stripe Customer Portal to update your plan...');
-    await open(data.url);
+    const url = await orgBillingUrl(workspaceId);
+    console.log('Opening your Billing page to update your plan...');
+    await open(url);
     return;
   }
 
@@ -166,14 +167,14 @@ export function registerBillingCommand(_program: Command): void {
 
   const billingManageCmd = billing
     .command('manage')
-    .description('Open Stripe Customer Portal')
+    .description('Open your Billing page in the app')
     .action(async () => {
       await billingManage();
     });
 
   const billingUpgradeCmd = billing
     .command('upgrade')
-    .description('Upgrade plan (interactive for free users, opens portal for subscribers)')
+    .description('Upgrade plan (interactive for free users, opens your Billing page for subscribers)')
     .action(async () => {
       const { program: rootProgram } = await import('../index.js');
       await billingUpgrade({ json: !!rootProgram.opts().json });

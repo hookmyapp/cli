@@ -68,6 +68,16 @@ describe('mapApiError — Wave 0 RED', () => {
     expect(err.message).toBe('M');
   });
 
+  it('410 + BILLING_PORTAL_RETIRED → ApiError pointing at billing manage', async () => {
+    const { mapApiError } = await import('../client.js');
+    const err = (await (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mapApiError as any
+    )(mkRes(410, { code: 'BILLING_PORTAL_RETIRED', message: 'retired' }))) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.message).toMatch(/billing manage/);
+  });
+
   it('422 → ApiError', async () => {
     const { mapApiError } = await import('../client.js');
     expect(
