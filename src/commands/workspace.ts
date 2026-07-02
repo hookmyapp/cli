@@ -69,7 +69,7 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
   safeWriteFileSync(getConfigFile(), JSON.stringify(merged, null, 2) + '\n');
 }
 
-export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; name: string; role: string; workosOrganizationId: string }> {
+export async function resolveWorkspace(nameOrId: string, kind?: 'team' | 'customer'): Promise<{ id: string; name: string; role: string; workosOrganizationId: string }> {
   // Phase 117: raw UUID input is not an accepted shape. A `ws_` publicId,
   // a workspace name, or a WorkOS organizationId (slug) are the three
   // accepted identifier shapes — matching what the backend now surfaces
@@ -81,12 +81,16 @@ export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; 
     );
   }
 
-  const workspaces = await apiClient('/workspaces');
+  // When `kind` is set the candidate set is restricted to that kind, so
+  // `customers use` can never silently switch into a team workspace.
+  const noun = kind === 'customer' ? 'customer' : 'workspace';
+  const all = await apiClient('/workspaces');
+  const workspaces = kind ? all.filter((w: any) => w.kind === kind) : all;
   // publicId detection: ws_ prefixed, 8-char alphanumeric body.
   if (isValidPublicId(nameOrId, 'ws')) {
     const found = workspaces.find((w: any) => w.id === nameOrId);
     if (found) return found;
-    throw new ValidationError(`workspace "${nameOrId}" not found`);
+    throw new ValidationError(`${noun} "${nameOrId}" not found`);
   }
   // WorkOS organization id shape (slug) — exact match, case-sensitive.
   const orgMatch = workspaces.find((w: any) => w.workosOrganizationId === nameOrId);
@@ -95,15 +99,59 @@ export async function resolveWorkspace(nameOrId: string): Promise<{ id: string; 
   const matches = workspaces.filter((w: any) => w.name.toLowerCase() === nameOrId.toLowerCase());
   if (matches.length === 1) return matches[0];
   if (matches.length === 0) {
-    throw new ValidationError(`workspace "${nameOrId}" not found`);
+    throw new ValidationError(`${noun} "${nameOrId}" not found`);
   }
   // Ambiguous
-  const lines = [`multiple workspaces named "${nameOrId}":`];
+  const lines = [`multiple ${noun}s named "${nameOrId}":`];
   for (const w of matches) {
     lines.push(`  ${w.id}  (role: ${w.role})`);
   }
-  lines.push('', 'Use the workspace publicId instead: hookmyapp workspace use <ws_xxxxxxxx>');
+  lines.push('', `Use the ${noun} publicId instead: hookmyapp ${kind === 'customer' ? 'customers' : 'workspace'} use <ws_xxxxxxxx>`);
   throw new ValidationError(lines.join('\n'));
+}
+
+/**
+ * Resolve (or interactively pick) a workspace, re-scope the token to its
+ * WorkOS org, and persist it as the active workspace. Shared by
+ * `workspace use` and `customers use`; `opts.kind` restricts the candidate
+ * set (both resolve and picker) to that kind.
+ */
+export async function switchActiveWorkspace(
+  nameOrId: string | undefined,
+  opts: { kind?: 'team' | 'customer' } = {},
+): Promise<Workspace> {
+  const noun = opts.kind === 'customer' ? 'customer' : 'workspace';
+  let workspace: Workspace;
+  if (nameOrId) {
+    workspace = (await resolveWorkspace(nameOrId, opts.kind)) as unknown as Workspace;
+  } else {
+    if (!process.stdout.isTTY) {
+      throw new ValidationError(
+        `${noun[0].toUpperCase()}${noun.slice(1)} identifier required (non-TTY). Usage: hookmyapp ${opts.kind === 'customer' ? 'customers' : 'workspace'} use <name-or-ws_publicId>`,
+      );
+    }
+    const { select } = await import('@inquirer/prompts');
+    const all = (await apiClient('/workspaces')) as Workspace[];
+    const workspaces = opts.kind ? all.filter((w) => w.kind === opts.kind) : all;
+    const chosenId = await select({
+      message: `Select a ${noun}`,
+      choices: workspaces.map((w) => ({
+        name: `${w.name} (${w.role})`,
+        value: w.id,
+        description: w.workosOrganizationId,
+      })),
+    });
+    workspace = workspaces.find((w) => w.id === chosenId)!;
+  }
+  // Re-scope the token to the target org BEFORE persisting the switch, so
+  // a failed refresh never leaves config pointing at a workspace the token
+  // isn't valid for (previously config was written first → poisoned state).
+  await forceTokenRefresh(workspace.workosOrganizationId);
+  writeWorkspaceConfig({
+    activeWorkspaceId: workspace.id,
+    activeWorkspaceSlug: workspace.name,
+  });
+  return workspace;
 }
 
 const VALID_ASSIGNABLE_ROLES = ['admin', 'member'];
@@ -248,35 +296,7 @@ export function registerWorkspaceCommand(program: Command): void {
     .description('Switch the active workspace')
     .argument('[name-or-id]', 'Workspace name or publicId (ws_XXXXXXXX). Omit for interactive picker.')
     .action(async (nameOrId?: string) => {
-      let workspace: Workspace;
-      if (nameOrId) {
-        workspace = (await resolveWorkspace(nameOrId)) as unknown as Workspace;
-      } else {
-        if (!process.stdout.isTTY) {
-          throw new ValidationError(
-            'Workspace identifier required (non-TTY). Usage: hookmyapp workspace use <name-or-ws_publicId>',
-          );
-        }
-        const { select } = await import('@inquirer/prompts');
-        const workspaces = (await apiClient('/workspaces')) as Workspace[];
-        const chosenId = await select({
-          message: 'Select a workspace',
-          choices: workspaces.map((w) => ({
-            name: `${w.name} (${w.role})`,
-            value: w.id,
-            description: w.workosOrganizationId,
-          })),
-        });
-        workspace = workspaces.find((w) => w.id === chosenId)!;
-      }
-      // Re-scope the token to the target org BEFORE persisting the switch, so
-      // a failed refresh never leaves config pointing at a workspace the token
-      // isn't valid for (previously config was written first → poisoned state).
-      await forceTokenRefresh(workspace.workosOrganizationId);
-      writeWorkspaceConfig({
-        activeWorkspaceId: workspace.id,
-        activeWorkspaceSlug: workspace.name,
-      });
+      const workspace = await switchActiveWorkspace(nameOrId);
       if (program.opts().json) {
         output({ id: workspace.id, name: workspace.name }, { human: false });
       } else {
