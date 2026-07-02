@@ -8,7 +8,8 @@
 //
 // JSON mode emits a HAND-PICKED projection of SandboxSession (see
 // toStatusJson) — NOT the raw wire DTO. Reasons:
-//   - hmacSecret + accessToken are sensitive (VERIFY_TOKEN + per-session
+//   - hmacSecret + accessToken are sensitive (webhook HMAC signing secret,
+//     a.k.a. WEBHOOK_HMAC_SECRET in `sandbox env` output, + per-session
 //     proxy token); they're already reachable via `sandbox env` for code
 //     that needs to wire up an app, but they have no business on a
 //     `list sessions` surface.

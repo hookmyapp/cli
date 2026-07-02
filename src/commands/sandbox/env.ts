@@ -2,10 +2,13 @@
 // Pipe-safe by default (writes to stdout); --write [path] writes to disk with
 // a clobber prompt (or --force).
 //
-// Per D2: WA block is 5 lines with WHATSAPP_* prefix (unchanged — including
-// the WA quirk where WHATSAPP_PHONE_NUMBER_ID carries the tester's phone, per
-// spec D4). IG block is 5 lines with INSTAGRAM_* prefix:
-//   VERIFY_TOKEN, PORT, INSTAGRAM_API_URL, INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_ACCOUNT_ID.
+// Per D2: WA block uses the WHATSAPP_* prefix (including the WA quirk where
+// WHATSAPP_PHONE_NUMBER_ID carries the tester's phone, per spec D4). IG block
+// uses the INSTAGRAM_* prefix. Both blocks carry the session's webhook HMAC
+// signing secret as WEBHOOK_HMAC_SECRET, plus VERIFY_TOKEN as a temporary
+// compat alias (same value) for older starter-kit setups. The webhook verify
+// token and the HMAC signing secret are distinct concepts — the alias is
+// legacy naming, not an equivalence.
 
 import * as fs from 'node:fs';
 import type { Command } from 'commander';
@@ -38,6 +41,9 @@ export function buildEnvPairs(session: SandboxSession): [string, string][] {
   switch (session.type) {
     case 'whatsapp':
       return [
+        ['WEBHOOK_HMAC_SECRET', session.hmacSecret],
+        // Temporary compat alias — older starter-kit setups read the HMAC
+        // signing secret from VERIFY_TOKEN. Same value, distinct concept.
         ['VERIFY_TOKEN', session.hmacSecret],
         ['PORT', '3000'],
         ['WHATSAPP_API_URL', `${proxyBase}/${session.whatsappApiVersion}`],
@@ -46,6 +52,8 @@ export function buildEnvPairs(session: SandboxSession): [string, string][] {
       ];
     case 'instagram':
       return [
+        ['WEBHOOK_HMAC_SECRET', session.hmacSecret],
+        // Temporary compat alias — see the WhatsApp block above.
         ['VERIFY_TOKEN', session.hmacSecret],
         ['PORT', '3000'],
         ['INSTAGRAM_API_URL', `${proxyBase}/${INSTAGRAM_GRAPH_VERSION}`],
