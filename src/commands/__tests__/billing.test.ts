@@ -62,9 +62,9 @@ describe('billingUpgrade — active subscription path (portal retired)', () => {
     delete process.env.HOOKMYAPP_APP_URL;
   });
 
-  test('When paid tier with active status, then billingUpgrade opens the app Billing page and never calls /stripe/portal', async () => {
+  test('When paid tier with active status, then billingUpgrade reads the org subscription route, opens the app Billing page, and never calls a /stripe/* route', async () => {
     vi.mocked(apiClient).mockImplementation(async (path: string) => {
-      if (path === '/stripe/subscription') {
+      if (path === '/organizations/org_abc12345/billing/subscription') {
         return {
           status: 'active',
           plan: { slug: 'launch', name: 'Launch+', priceInCents: 1900, annualPriceInCents: 19000 },
@@ -77,7 +77,7 @@ describe('billingUpgrade — active subscription path (portal retired)', () => {
     await expect(billingUpgrade()).resolves.toBeUndefined();
 
     expect(vi.mocked(open)).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
-    const paths = vi.mocked(apiClient).mock.calls.map((c) => c[0]);
-    expect(paths).not.toContain('/stripe/portal');
+    const paths = vi.mocked(apiClient).mock.calls.map((c) => String(c[0]));
+    expect(paths.some((p) => p.startsWith('/stripe/'))).toBe(false);
   });
 });

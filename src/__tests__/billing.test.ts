@@ -36,6 +36,10 @@ const mockedApiClient = vi.mocked(apiClient);
 const mockedOpen = vi.mocked(openDefault);
 
 const WORKSPACE_ID = 'ws_TEST0070';
+const ORG_PUBLIC_ID = 'org_abc12345';
+const SUBSCRIPTION_PATH = `/organizations/${ORG_PUBLIC_ID}/billing/subscription`;
+const CHECKOUT_PATH = `/organizations/${ORG_PUBLIC_ID}/billing/checkout`;
+const WORKSPACES = [{ id: WORKSPACE_ID, name: 'Acme', organizationPublicId: ORG_PUBLIC_ID }];
 
 // Phase A backend DTO cleanup: planSlug + stripeSubscriptionId removed.
 // plan.slug is the single source of truth for tier; conditional fields
@@ -55,7 +59,8 @@ const freeSub = {
 
 function mockSubAndUsage(sub: any, usage: { totalMessages: number; limit: number; percentage: number }) {
   mockedApiClient.mockImplementation(async (path: string) => {
-    if (path === '/stripe/subscription') return sub;
+    if (path === '/workspaces') return WORKSPACES;
+    if (path === SUBSCRIPTION_PATH) return sub;
     if (path === '/webhook/usage') return usage;
     throw new Error(`unexpected path: ${path}`);
   });
@@ -84,13 +89,15 @@ describe('billing commands', () => {
   });
 
   describe('billingStatus', () => {
-    it('calls apiClient with GET /stripe/subscription and /webhook/usage in parallel', async () => {
+    it('calls apiClient with GET the org subscription route and /webhook/usage', async () => {
       mockSubAndUsage(activeSub, { totalMessages: 100, limit: 1200, percentage: 8 });
 
       await billingStatus({ human: false });
 
-      expect(mockedApiClient).toHaveBeenCalledWith('/stripe/subscription', { workspaceId: WORKSPACE_ID });
+      expect(mockedApiClient).toHaveBeenCalledWith(SUBSCRIPTION_PATH);
       expect(mockedApiClient).toHaveBeenCalledWith('/webhook/usage', { workspaceId: WORKSPACE_ID });
+      const paths = mockedApiClient.mock.calls.map((c) => c[0]);
+      expect(paths).not.toContain('/stripe/subscription');
     });
   });
 
@@ -192,9 +199,7 @@ describe('billing commands', () => {
 
     it('happy path: resolves the org publicId from /workspaces and opens the app Billing page', async () => {
       mockedApiClient.mockImplementation(async (path: string) => {
-        if (path === '/workspaces') {
-          return [{ id: WORKSPACE_ID, name: 'Acme', organizationPublicId: 'org_abc12345' }];
-        }
+        if (path === '/workspaces') return WORKSPACES;
         throw new Error(`unexpected path: ${path}`);
       });
 
@@ -232,12 +237,11 @@ describe('billing commands', () => {
       vi.unstubAllEnvs();
     });
 
-    function mockSubAndWorkspaces(sub: any) {
+    function mockSubAndWorkspaces(sub: any, checkoutUrl?: string) {
       mockedApiClient.mockImplementation(async (path: string) => {
-        if (path === '/stripe/subscription') return sub;
-        if (path === '/workspaces') {
-          return [{ id: WORKSPACE_ID, name: 'Acme', organizationPublicId: 'org_abc12345' }];
-        }
+        if (path === SUBSCRIPTION_PATH) return sub;
+        if (path === '/workspaces') return WORKSPACES;
+        if (path === CHECKOUT_PATH && checkoutUrl) return { url: checkoutUrl };
         throw new Error(`unexpected path: ${path}`);
       });
     }
@@ -271,7 +275,7 @@ describe('billing commands', () => {
     it('rejects the free-tier prompt path in a non-TTY with UPGRADE_REQUIRES_TTY', async () => {
       const origTTY = process.stdout.isTTY;
       process.stdout.isTTY = false;
-      mockedApiClient.mockResolvedValueOnce({ status: 'active', plan: { slug: 'free', name: 'Free' } });
+      mockSubAndWorkspaces({ status: 'active', plan: { slug: 'free', name: 'Free' } });
 
       try {
         await expect(billingUpgrade()).rejects.toMatchObject({
@@ -291,9 +295,10 @@ describe('billing commands', () => {
       vi.mocked(inq.select)
         .mockResolvedValueOnce('growth' as never)
         .mockResolvedValueOnce('annual' as never);
-      mockedApiClient
-        .mockResolvedValueOnce({ status: 'active', plan: { slug: 'free', name: 'Free' } })
-        .mockResolvedValueOnce({ url: 'https://checkout.stripe.com/x' });
+      mockSubAndWorkspaces(
+        { status: 'active', plan: { slug: 'free', name: 'Free' } },
+        'https://checkout.stripe.com/x',
+      );
 
       try {
         await billingUpgrade();
@@ -302,7 +307,7 @@ describe('billing commands', () => {
       }
 
       expect(inq.select).toHaveBeenCalledTimes(2);
-      expect(mockedApiClient).toHaveBeenNthCalledWith(2, '/stripe/checkout', expect.objectContaining({
+      expect(mockedApiClient).toHaveBeenCalledWith(CHECKOUT_PATH, expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ planSlug: 'growth', billingInterval: 'annual' }),
       }));
