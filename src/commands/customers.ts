@@ -43,6 +43,34 @@ export function registerCustomersCommand(program: Command): void {
       output(rows, { human: true });
     });
 
+  const custNew = cust.command('new')
+    .description('Create an empty customer (connect a channel later via an onboarding link)')
+    .argument('<name>', 'Customer name')
+    .option('--external-id <id>', 'Your own identifier for this customer (CRM/system id)')
+    .option('--json', 'Output machine-readable JSON')
+    .action(async (name: string, opts: { externalId?: string; json?: boolean }) => {
+      // The customers endpoint is org-scoped; resolve the org publicId from the
+      // membership union (every row carries organizationPublicId). Does NOT
+      // switch the active workspace — an empty customer has nothing to work in.
+      const all = (await apiClient('/workspaces')) as Array<Workspace & { organizationPublicId: string }>;
+      const orgPublicId = all[0]?.organizationPublicId;
+      if (!orgPublicId) {
+        throw new ValidationError('No organization found for your account. Log in and try again.');
+      }
+      const created = await apiClient(`/organizations/${orgPublicId}/customers`, {
+        method: 'POST',
+        body: JSON.stringify({ name, ...(opts.externalId ? { externalId: opts.externalId } : {}) }),
+      });
+      output(
+        { id: created.id, name: created.name, externalId: created.externalId },
+        {
+          json: !!(opts.json || program.opts().json),
+          kind: 'mutation',
+          nudge: `Create a connect link next: hookmyapp customers onboarding-links create --label "${created.name}" --channel-type whatsapp --customer ${created.id}`,
+        },
+      );
+    });
+
   const custUse = cust.command('use')
     .description('Switch the active workspace to a customer')
     .argument('[name-or-id]', 'Customer name or publicId (ws_XXXXXXXX). Omit for interactive picker.')
@@ -111,14 +139,19 @@ export function registerCustomersCommand(program: Command): void {
     .description('Create a customer connect link')
     .requiredOption('--label <label>', 'Label for the link')
     .requiredOption('--channel-type <type>', 'whatsapp or instagram')
+    .option('--customer <ws-id>', 'Target an existing customer (ws_XXXXXXXX) — the connect lands in that customer')
     .option('--json', 'Output machine-readable JSON')
-    .action(async (opts: { label: string; channelType: string; json?: boolean }) => {
+    .action(async (opts: { label: string; channelType: string; customer?: string; json?: boolean }) => {
       if (opts.channelType !== 'whatsapp' && opts.channelType !== 'instagram') {
         throw new ValidationError(`--channel-type must be "whatsapp" or "instagram", got "${opts.channelType}"`);
       }
       const created = await apiClient('/org/onboarding-links', {
         method: 'POST',
-        body: JSON.stringify({ label: opts.label, channelType: opts.channelType }),
+        body: JSON.stringify({
+          label: opts.label,
+          channelType: opts.channelType,
+          ...(opts.customer ? { targetWorkspaceId: opts.customer } : {}),
+        }),
       });
       output(
         { id: created.publicId, url: created.url, verifyToken: created.verifyToken },
@@ -153,6 +186,7 @@ EXAMPLES:
     `
 EXAMPLES:
   $ hookmyapp customers onboarding-links create --label "Acme" --channel-type whatsapp
+  $ hookmyapp customers onboarding-links create --label "Acme" --channel-type whatsapp --customer ws_XXXXXXXX
   $ hookmyapp customers onboarding-links create --label "Globex" --channel-type instagram --json
 `,
   );
@@ -162,8 +196,18 @@ EXAMPLES:
     `
 EXAMPLES:
   $ hookmyapp customers list
+  $ hookmyapp customers new "Acme Corp" --external-id crm-123
   $ hookmyapp customers use "Acme Corp"
   $ hookmyapp customers current
+`,
+  );
+
+  addExamples(
+    custNew,
+    `
+EXAMPLES:
+  $ hookmyapp customers new "Acme Corp"
+  $ hookmyapp customers new "Acme Corp" --external-id crm-123
 `,
   );
 
