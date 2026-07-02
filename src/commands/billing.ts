@@ -14,13 +14,14 @@ import { getDefaultWorkspaceId } from './_helpers.js';
 // cycle. Same pattern as other commands that need root-level opts.
 
 /**
- * POST /stripe/portal is retired (backend returns 410 BILLING_PORTAL_RETIRED).
- * Billing is managed on the app's org Billing page. Resolve the org publicId
- * from the /workspaces membership union — every row carries
+ * Billing is org-scoped: the workspace-addressed /stripe/subscription and
+ * /stripe/checkout routes are retired (410 BILLING_ROUTE_MOVED), and
+ * /stripe/portal before them (410 BILLING_PORTAL_RETIRED). Resolve the org
+ * publicId from the /workspaces membership union — every row carries
  * organizationPublicId (same mechanism as customers.ts) — preferring the row
  * for the active workspace.
  */
-async function orgBillingUrl(workspaceId: string): Promise<string> {
+async function resolveOrgPublicId(workspaceId: string): Promise<string> {
   const all = (await apiClient('/workspaces')) as Array<{
     id: string;
     organizationPublicId?: string;
@@ -29,12 +30,16 @@ async function orgBillingUrl(workspaceId: string): Promise<string> {
   if (!orgPublicId) {
     throw new ValidationError('No organization found for your account. Log in and try again.');
   }
+  return orgPublicId;
+}
+
+function orgBillingUrl(orgPublicId: string): string {
   return `${getEffectiveAppUrl()}/org/${orgPublicId}/billing`;
 }
 
 export async function billingManage(): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
-  const url = await orgBillingUrl(workspaceId);
+  const url = orgBillingUrl(await resolveOrgPublicId(workspaceId));
 
   console.log('Opening your Billing page...');
   await open(url);
@@ -42,8 +47,9 @@ export async function billingManage(): Promise<void> {
 
 export async function billingStatus(opts: { json?: boolean; human?: boolean } = {}): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
+  const orgPublicId = await resolveOrgPublicId(workspaceId);
   const [sub, usage] = await Promise.all([
-    apiClient('/stripe/subscription', { workspaceId }),
+    apiClient(`/organizations/${orgPublicId}/billing/subscription`),
     apiClient('/webhook/usage', { workspaceId }),
   ]);
 
@@ -100,14 +106,15 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
   }
 
   const workspaceId = await getDefaultWorkspaceId();
-  const sub = await apiClient('/stripe/subscription', { workspaceId });
+  const orgPublicId = await resolveOrgPublicId(workspaceId);
+  const sub = await apiClient(`/organizations/${orgPublicId}/billing/subscription`);
   // Phase A drops stripeSubscriptionId. Gate on plan.slug for paid-tier
   // detection AND preserve the existing status check so cancelled or
   // incomplete subscriptions still route to the checkout flow.
   const hasActiveSub = sub.plan.slug !== 'free' && ['active', 'past_due'].includes(sub.status);
 
   if (hasActiveSub) {
-    const url = await orgBillingUrl(workspaceId);
+    const url = orgBillingUrl(orgPublicId);
     console.log('Opening your Billing page to update your plan...');
     await open(url);
     return;
@@ -140,9 +147,8 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
       { name: 'Monthly', value: 'monthly' },
     ],
   });
-  const data = await apiClient('/stripe/checkout', {
+  const data = await apiClient(`/organizations/${orgPublicId}/billing/checkout`, {
     method: 'POST',
-    workspaceId,
     body: JSON.stringify({ planSlug, billingInterval }),
   });
   console.log('Opening Stripe Checkout...');
