@@ -184,7 +184,7 @@ registerBillingCommand(program);
 // Workspace management
 registerWorkspaceCommand(program);
 
-// SaaS customers (customer workspaces)
+// Customers (customer workspaces)
 registerCustomersCommand(program);
 
 // Persistent CLI config (env profile: local | staging | production)

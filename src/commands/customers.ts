@@ -14,14 +14,14 @@ interface OnboardingLinkRow {
 }
 
 /**
- * SaaS customers surface. A customer IS a workspace (`kind='customer'`) —
+ * Customers surface. A customer IS a workspace (`kind='customer'`) —
  * this group is a filtered view over the same `/workspaces` union plus the
  * org onboarding-link endpoints, reusing the workspace active-context
  * machinery. `customers new` is intentionally omitted: a customer is born
  * when its owner connects via an onboarding link.
  */
 export function registerCustomersCommand(program: Command): void {
-  const cust = program.command('customers').description('Manage SaaS customers (customer workspaces)');
+  const cust = program.command('customers').description('Manage customers (customer workspaces)');
 
   const custList = cust.command('list')
     .description('List customers')
@@ -108,7 +108,7 @@ export function registerCustomersCommand(program: Command): void {
       );
     });
 
-  // Connect links minted for customers (the app's SaaS -> Onboarding links).
+  // Connect links minted for customers (the app's Onboarding links).
   // Plural to match the CLI's other collection groups (members, invites);
   // singular kept as an alias.
   const links = cust.command('onboarding-links')

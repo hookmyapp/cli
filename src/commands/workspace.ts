@@ -194,7 +194,7 @@ export function registerWorkspaceCommand(program: Command): void {
     .action(async (opts: { json?: boolean }) => {
       // The workspace surface is team-only BY DESIGN — customers are a
       // separate surface (`hookmyapp customers`), mirroring the app's
-      // Workspaces vs SaaS -> Customers split. Strict equality also enforces
+      // Workspaces vs Customers split. Strict equality also enforces
       // the fail-safe: an unknown kind never renders as a team workspace.
       const all = (await apiClient('/workspaces')) as Workspace[];
       const data = all.filter((w) => w.kind === 'team');
