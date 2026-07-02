@@ -36,9 +36,9 @@ const mockedForceTokenRefresh = vi.mocked(forceTokenRefresh);
 // alphanumeric body). Raw UUIDs are rejected with a typed ValidationError at every
 // external flag/header/body surface; see workspace.ts resolveWorkspace + _helpers.ts.
 const fakeWorkspaces = [
-  { id: 'ws_TEST0001', name: 'Alpha Workspace', workosOrganizationId: 'org_01ALPHA', role: 'owner', createdAt: '2026-01-01' },
-  { id: 'ws_TEST0002', name: 'Beta Workspace', workosOrganizationId: 'org_01BETAA', role: 'member', createdAt: '2026-02-01' },
-  { id: 'ws_TEST0003', name: 'Beta Workspace', workosOrganizationId: 'org_01BETAB', role: 'admin', createdAt: '2026-03-01' },
+  { id: 'ws_TEST0001', name: 'Alpha Workspace', workosOrganizationId: 'org_01ALPHA', role: 'owner', createdAt: '2026-01-01', kind: 'team' },
+  { id: 'ws_TEST0002', name: 'Beta Workspace', workosOrganizationId: 'org_01BETAA', role: 'member', createdAt: '2026-02-01', kind: 'team' },
+  { id: 'ws_TEST0003', name: 'Beta Workspace', workosOrganizationId: 'org_01BETAB', role: 'admin', createdAt: '2026-03-01', kind: 'team' },
 ];
 
 const fakeWorkspaceDetail = {

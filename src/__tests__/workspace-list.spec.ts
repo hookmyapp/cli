@@ -94,35 +94,23 @@ describe('workspace list (RBAC-UX-04)', () => {
     expect(parsed[0]).toMatchObject({ id: 'ws_TEST0001', workosOrganizationId: 'org_01A', role: 'admin' });
   });
 
-  it('human mode renders a KIND column', async () => {
+  it('is team-only: customer workspaces never appear (human mode)', async () => {
     mockedApi.mockResolvedValue(fakeWorkspaces);
     await runList([], true);
-
-    const logs = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
-    expect(logs).toContain('KIND');
-    expect(logs).toMatch(/Globex[^\n]*customer/);
-  });
-
-  it('--kind customer filters to customer-kind workspaces (JSON mode)', async () => {
-    mockedApi.mockResolvedValue(fakeWorkspaces);
-    await runList(['--json', '--kind', 'customer'], false);
-
-    const parsed = JSON.parse(String(mockConsoleLog.mock.calls.at(-1)![0]));
-    expect(parsed.map((w: { id: string }) => w.id)).toEqual(['ws_TEST0002']);
-    expect(parsed[0].kind).toBe('customer');
-  });
-
-  it('--kind team filters human table to team rows only', async () => {
-    mockedApi.mockResolvedValue(fakeWorkspaces);
-    await runList(['--kind', 'team'], true);
 
     const logs = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
     expect(logs).toContain('Acme');
     expect(logs).not.toContain('Globex');
   });
 
-  it('invalid --kind value throws a validation error', async () => {
-    mockedApi.mockResolvedValue(fakeWorkspaces);
-    await expect(runList(['--kind', 'reseller'], false)).rejects.toThrow(/--kind must be "team" or "customer"/);
+  it('is team-only in JSON mode too, and an unknown kind never renders as team', async () => {
+    mockedApi.mockResolvedValue([
+      ...fakeWorkspaces,
+      { id: 'ws_TEST0003', name: 'Mystery', workosOrganizationId: 'org_01C', role: 'admin', createdAt: '2026-03-01', kind: 'weird' },
+    ]);
+    await runList(['--json'], false);
+
+    const parsed = JSON.parse(String(mockConsoleLog.mock.calls.at(-1)![0]));
+    expect(parsed.map((w: { id: string }) => w.id)).toEqual(['ws_TEST0001']);
   });
 });

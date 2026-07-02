@@ -189,15 +189,15 @@ export function registerWorkspaceCommand(program: Command): void {
   const ws = program.command('workspace').description('Manage workspaces');
 
   const wsList = ws.command('list')
-    .description('List all workspaces')
+    .description('List your team workspaces')
     .option('--json', 'Output machine-readable JSON')
-    .option('--kind <kind>', 'Filter by kind: team or customer')
-    .action(async (opts: { json?: boolean; kind?: string }) => {
-      if (opts.kind && opts.kind !== 'team' && opts.kind !== 'customer') {
-        throw new ValidationError(`--kind must be "team" or "customer", got "${opts.kind}"`);
-      }
+    .action(async (opts: { json?: boolean }) => {
+      // The workspace surface is team-only BY DESIGN — customers are a
+      // separate surface (`hookmyapp customers`), mirroring the app's
+      // Workspaces vs SaaS -> Customers split. Strict equality also enforces
+      // the fail-safe: an unknown kind never renders as a team workspace.
       const all = (await apiClient('/workspaces')) as Workspace[];
-      const data = opts.kind ? all.filter((w) => w.kind === opts.kind) : all;
+      const data = all.filter((w) => w.kind === 'team');
       const config = readWorkspaceConfig();
       if (opts.json || !program.opts().json !== true) {
         // JSON: include raw array with workosOrganizationId when --json or non-human default
@@ -211,7 +211,6 @@ export function registerWorkspaceCommand(program: Command): void {
           ACTIVE: w.id === config.activeWorkspaceId ? '*' : ' ',
           NAME: w.name,
           SLUG: w.workosOrganizationId,
-          KIND: w.kind,
           ROLE: w.role,
         }));
         output(rows, { human: true });
@@ -296,7 +295,9 @@ export function registerWorkspaceCommand(program: Command): void {
     .description('Switch the active workspace')
     .argument('[name-or-id]', 'Workspace name or publicId (ws_XXXXXXXX). Omit for interactive picker.')
     .action(async (nameOrId?: string) => {
-      const workspace = await switchActiveWorkspace(nameOrId);
+      // Team-only, matching `workspace list`; switching into a customer goes
+      // through `hookmyapp customers use`.
+      const workspace = await switchActiveWorkspace(nameOrId, { kind: 'team' });
       if (program.opts().json) {
         output({ id: workspace.id, name: workspace.name }, { human: false });
       } else {
