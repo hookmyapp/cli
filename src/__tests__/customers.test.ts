@@ -33,8 +33,8 @@ const mockedRefresh = vi.mocked(forceTokenRefresh);
 const CONFIG_PATH = path.join(TMP_HOME, '.hookmyapp', 'config.json');
 
 const fakeWorkspaces = [
-  { id: 'ws_TEAM0001', name: 'HR', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
-  { id: 'ws_CUST0001', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-02-01', kind: 'customer' },
+  { id: 'ws_TEAM0001', name: 'HR', workosOrganizationId: 'org_01A', organizationPublicId: 'org_pub_A', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
+  { id: 'ws_CUST0001', name: 'Acme', workosOrganizationId: 'org_01A', organizationPublicId: 'org_pub_A', role: 'admin', createdAt: '2026-02-01', kind: 'customer' },
 ];
 
 beforeEach(async () => {
@@ -104,6 +104,35 @@ describe('customers use', () => {
   });
 });
 
+describe('customers new', () => {
+  it('creates an empty customer via POST /organizations/:orgId/customers', async () => {
+    mockedApi.mockImplementation(async (path: string) => {
+      if (path === '/workspaces') return fakeWorkspaces;
+      return { id: 'ws_NEWCUST1', name: 'Fresh Client', externalId: 'crm-9' };
+    });
+    await runCustomers(['new', 'Fresh Client', '--external-id', 'crm-9']);
+
+    expect(mockedApi).toHaveBeenCalledWith('/organizations/org_pub_A/customers', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Fresh Client', externalId: 'crm-9' }),
+    });
+    const logs = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logs).toContain('ws_NEWCUST1');
+  });
+
+  it('does NOT switch the active workspace to the new customer', async () => {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'ws_TEAM0001', activeWorkspaceSlug: 'HR' }));
+    mockedApi.mockImplementation(async (path: string) => {
+      if (path === '/workspaces') return fakeWorkspaces;
+      return { id: 'ws_NEWCUST1', name: 'Fresh Client', externalId: null };
+    });
+    await runCustomers(['new', 'Fresh Client']);
+
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    expect(cfg.activeWorkspaceId).toBe('ws_TEAM0001');
+  });
+});
+
 describe('customers onboarding-links', () => {
   it('list renders the org onboarding links', async () => {
     mockedApi.mockResolvedValue({
@@ -137,6 +166,19 @@ describe('customers onboarding-links', () => {
       runCustomers(['onboarding-links', 'create', '--label', 'Acme', '--channel-type', 'sms']),
     ).rejects.toThrow(/--channel-type must be "whatsapp" or "instagram"/);
     expect(mockedApi).not.toHaveBeenCalled();
+  });
+
+  it('create --customer targets an existing customer workspace', async () => {
+    mockedApi.mockResolvedValue({ publicId: 'ol_LINK0004', url: 'https://app.example/connect/tok9' });
+    await runCustomers([
+      'onboarding-links', 'create',
+      '--label', 'Acme', '--channel-type', 'whatsapp', '--customer', 'ws_CUST0001',
+    ]);
+
+    expect(mockedApi).toHaveBeenCalledWith('/org/onboarding-links', {
+      method: 'POST',
+      body: JSON.stringify({ label: 'Acme', channelType: 'whatsapp', targetWorkspaceId: 'ws_CUST0001' }),
+    });
   });
 
   it('singular onboarding-link alias works', async () => {
