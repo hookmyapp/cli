@@ -22,3 +22,4 @@ pnpm-lock.yaml
 # Internal planning artifacts — never publish to this public repo
 docs/superpowers/
 .superpowers/
+coverage/
