@@ -3,111 +3,71 @@ import { readCredentials } from '../../auth/store.js';
 import { getEffectiveApiUrl } from '../../config/env-profiles.js';
 import { AuthError } from '../../output/error.js';
 
-/** Mirrors backend `WebhookDeliveryOutcome` (@hookmyapp/shared). */
-export type DeliveryOutcome = 'delivered' | 'no_response' | 'rejected' | 'skipped';
+export type DeliveryStatus =
+  | 'delivered'
+  | 'no_response'
+  | 'rejected'
+  | 'not_delivered'
+  | 'skipped';
 
-/** Wire mirror of backend `DeliveryListItem` (deliveries/dto/delivery.response.ts). */
-export interface DeliveryListItem {
-  id: string;
+export type DeliveryDestination =
+  | { type: 'webhook'; url: string }
+  | { type: 'cli'; label: 'CLI listener' }
+  | null;
+
+export interface DeliveryLog {
   receivedAt: string;
-  metaMessageId: string | null;
-  fromPhone: string | null;
-  senderId: string | null;
-  senderDisplay: string | null;
-  routingDecision: string;
-  humanStatus: string;
-  humanStatusCopy: string;
-  humanStatusTooltip: string | null;
-  humanStatusColor: 'green' | 'red' | 'gray';
-  // Flat outcome columns (replaces the old nested latestAttempt sub-object).
-  outcome: DeliveryOutcome;
-  forwardStatus: number | null;
-  attemptedAt: string | null;
-}
-
-/** Wire mirror of backend `RelatedDelivery` — sibling rows sharing a metaMessageId. */
-export interface RelatedDelivery {
-  id: string;
-  receivedAt: string;
-  humanStatus: string;
-  outcome: DeliveryOutcome;
-}
-
-/**
- * Wire mirror of backend `DeliveryDetail` (row-per-request model): each row is
- * exactly one forward, so the forward fields are flat on the DTO rather than a
- * nested `attempts[]` array. `forwardUrl === null` means no destination was
- * configured and no forward was attempted.
- *
- * `senderDisplay` + `senderId` (D8): IG-aware identity, returned by the
- * backend for every delivery regardless of channel type. WA channels get
- * `senderDisplay` mirroring `fromPhone`; IG channels carry the `@handle` +
- * IG scoped ID. Falls back to `fromPhone` in the CLI sender chain.
- *
- * `humanStatusTooltip`: GUI-only field (tooltip text shown on hover in the
- * web UI). Carried on the DTO for shape parity with sandbox/logs.ts; the
- * CLI never renders it and `toLogsJson()` strips it from `--json` output.
- */
-export interface DeliveryDetail {
-  id: string;
-  workspaceId: string;
-  scopeKind: string;
-  channelId: string | null;
-  sandboxSessionId: string | null;
-  providerObject: string;
-  providerResourceId: string;
-  metaMessageId: string | null;
-  inboundBody: string | null;
-  inboundBodySha256: string;
-  inboundBodyTruncated: boolean;
-  inboundHeaders: Record<string, string> | null;
-  signatureOk: boolean;
-  routingDecision: string;
-  isSandbox: boolean;
-  requestId: string | null;
-  fromPhone: string | null;
-  senderId: string | null;
-  senderDisplay: string | null;
-  receivedAt: string;
-  humanStatus: string;
-  humanStatusCopy: string;
-  humanStatusTooltip: string | null;
-  humanStatusColor: 'green' | 'red' | 'gray';
-  // Flat forward fields (replaces the old nested attempts[] array).
-  outcome: DeliveryOutcome;
-  outcomeReason: string | null;
-  forwardUrl: string | null;
-  forwardRequestHeaders: Record<string, string> | null;
-  forwardRequestBody: string | null;
-  forwardStatus: number | null;
-  forwardDurationMs: number | null;
-  forwardResponseHeaders: Record<string, string> | null;
-  forwardResponseBody: string | null;
-  forwardResponseBodySha256: string | null;
-  forwardResponseBodyTruncated: boolean;
-  attemptedAt: string | null;
-  relatedDeliveries: RelatedDelivery[];
-}
-
-/**
- * JSON-mode projection. `humanStatusTooltip` + `humanStatusColor` are
- * GUI-only (CLI has no tooltips; colors come from picocolors, not the
- * backend hex hint). Stripping them keeps the agent-facing stream lean and
- * avoids implying the backend's color choice is canonical for terminals.
- * Mirrors sandbox/logs.ts `toLogsJson()` byte-for-byte (D8 parity).
- */
-export function toLogsJson(
-  d: DeliveryDetail,
-): Omit<DeliveryDetail, 'humanStatusTooltip' | 'humanStatusColor'> {
-  const { humanStatusTooltip: _t, humanStatusColor: _c, ...rest } = d;
-  return rest;
+  sender: string | null;
+  messageId: string | null;
+  meta: unknown;
+  hookmyapp: {
+    status: DeliveryStatus;
+    statusText: string;
+    destination: DeliveryDestination;
+    appResponse: {
+      status: number | null;
+      durationMs: number | null;
+      body: unknown;
+    };
+  };
 }
 
 /** Wire mirror of the backend `GET /deliveries` list response. */
 export interface DeliveriesPage {
-  deliveries: DeliveryListItem[];
+  logs: DeliveryLog[];
   nextCursor: string | null;
-  floorHours: number;
+}
+
+export function cleanDeliveryLog(log: DeliveryLog): DeliveryLog {
+  const destination = log.hookmyapp.destination;
+  return {
+    receivedAt: log.receivedAt,
+    sender: log.sender,
+    messageId: log.messageId,
+    meta: log.meta,
+    hookmyapp: {
+      status: log.hookmyapp.status,
+      statusText: log.hookmyapp.statusText,
+      destination:
+        destination === null
+          ? null
+          : destination.type === 'cli'
+            ? { type: 'cli', label: 'CLI listener' }
+            : { type: 'webhook', url: destination.url },
+      appResponse: {
+        status: log.hookmyapp.appResponse.status,
+        durationMs: log.hookmyapp.appResponse.durationMs,
+        body: log.hookmyapp.appResponse.body,
+      },
+    },
+  };
+}
+
+function cleanDeliveriesPage(page: DeliveriesPage): DeliveriesPage {
+  return {
+    logs: page.logs.map(cleanDeliveryLog),
+    nextCursor: page.nextCursor,
+  };
 }
 
 export interface FetchDeliveriesParams {
@@ -134,9 +94,9 @@ export async function fetchDeliveriesPage(
   if (params.since) query.set('since', params.since);
   if (params.until) query.set('until', params.until);
   if (params.cursor) query.set('cursor', params.cursor);
-  return (await apiClient(`/deliveries?${query.toString()}`, {
+  return cleanDeliveriesPage((await apiClient(`/deliveries?${query.toString()}`, {
     workspaceId: params.workspaceId,
-  })) as DeliveriesPage;
+  })) as DeliveriesPage);
 }
 
 /**
@@ -147,10 +107,10 @@ export async function fetchDeliveriesPage(
 export async function fetchDeliveryDetail(
   id: string,
   workspaceId: string,
-): Promise<DeliveryDetail> {
-  return (await apiClient(`/deliveries/${encodeURIComponent(id)}`, {
+): Promise<DeliveryLog> {
+  return cleanDeliveryLog((await apiClient(`/deliveries/${encodeURIComponent(id)}`, {
     workspaceId,
-  })) as DeliveryDetail;
+  })) as DeliveryLog);
 }
 
 /** Hard cap on rows collected by `--all`, so a misfire cannot run away. */
@@ -162,40 +122,33 @@ export const ALL_ROW_CAP = 1000;
  * is clamped against the remaining cap so the total never overshoots, which
  * keeps the last page boundary exact: the returned `nextCursor` is non-null
  * iff rows remain beyond the cap (spec D5 — that is the truncation signal).
- * `floorHours` is taken from the first page.
  */
 export async function fetchAllDeliveries(
   params: FetchDeliveriesParams,
 ): Promise<DeliveriesPage> {
-  const deliveries: DeliveryListItem[] = [];
+  const logs: DeliveryLog[] = [];
   let cursor: string | undefined = params.cursor;
-  let floorHours = 0;
   let nextCursor: string | null = null;
-  let firstPage = true;
 
-  while (deliveries.length < ALL_ROW_CAP) {
-    const pageLimit = Math.min(params.limit, ALL_ROW_CAP - deliveries.length);
+  while (logs.length < ALL_ROW_CAP) {
+    const pageLimit = Math.min(params.limit, ALL_ROW_CAP - logs.length);
     const page = await fetchDeliveriesPage({ ...params, limit: pageLimit, cursor });
-    if (firstPage) {
-      floorHours = page.floorHours;
-      firstPage = false;
-    }
-    deliveries.push(...page.deliveries);
+    logs.push(...page.logs);
     nextCursor = page.nextCursor;
     if (!page.nextCursor) break;
     // A page that returns zero rows with a non-null cursor would never advance
-    // `deliveries.length` — break so `--all` cannot spin on requests forever.
-    if (page.deliveries.length === 0) break;
+    // `logs.length` — break so `--all` cannot spin on requests forever.
+    if (page.logs.length === 0) break;
     cursor = page.nextCursor;
   }
 
-  return { deliveries, nextCursor, floorHours };
+  return { logs, nextCursor };
 }
 
 /**
  * SSE async generator for `channels logs list --follow`. Opens a stream to
  * `GET /deliveries/stream?scope=channel:<publicId>`, parses `delivery`
- * events, fetches the full DeliveryDetail per eventId, and yields each one.
+ * events, fetches the public delivery log per eventId, and yields each one.
  *
  * Mirrors the SSE parsing logic in `src/commands/sandbox/logs.ts` runFollow —
  * the protocol is identical, only the `scope` value differs (channel: vs
@@ -210,7 +163,7 @@ export async function fetchAllDeliveries(
 export async function* streamDeliveries(args: {
   channelPublicId: string;
   workspaceId: string;
-}): AsyncIterableIterator<DeliveryDetail> {
+}): AsyncIterableIterator<DeliveryLog> {
   const { channelPublicId, workspaceId } = args;
 
   const creds = await readCredentials();
@@ -268,8 +221,8 @@ export async function* streamDeliveries(args: {
 
       if (event === 'delivery' && data) {
         try {
-          const payload = JSON.parse(data) as { eventId?: string };
-          const eventId = payload.eventId;
+          const payload = JSON.parse(data) as { eventId?: string; publicId?: string };
+          const eventId = payload.eventId ?? payload.publicId;
           if (!eventId || seenIds.has(eventId)) continue;
           seenIds.add(eventId);
           const detail = await fetchDeliveryDetail(eventId, workspaceId);

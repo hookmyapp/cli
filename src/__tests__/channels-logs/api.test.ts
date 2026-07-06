@@ -8,6 +8,7 @@ import {
   fetchDeliveryDetail,
   fetchAllDeliveries,
   ALL_ROW_CAP,
+  type DeliveryLog,
 } from '../../commands/channels-logs/api.js';
 
 beforeEach(() => {
@@ -17,9 +18,8 @@ beforeEach(() => {
 describe('fetchDeliveriesPage', () => {
   it('builds a channel-scoped query and forwards the workspace id', async () => {
     mocks.apiClient.mockResolvedValue({
-      deliveries: [],
+      logs: [],
       nextCursor: null,
-      floorHours: 24,
     });
 
     await fetchDeliveriesPage({
@@ -39,9 +39,8 @@ describe('fetchDeliveriesPage', () => {
 
   it('omits since/until/cursor when not provided', async () => {
     mocks.apiClient.mockResolvedValue({
-      deliveries: [],
+      logs: [],
       nextCursor: null,
-      floorHours: 24,
     });
 
     await fetchDeliveriesPage({
@@ -59,7 +58,7 @@ describe('fetchDeliveriesPage', () => {
 
 describe('fetchDeliveryDetail', () => {
   it('GETs the workspace-scoped detail endpoint by id', async () => {
-    mocks.apiClient.mockResolvedValue({ id: 'd1' });
+    mocks.apiClient.mockResolvedValue(row());
 
     await fetchDeliveryDetail(
       '9b1f2e3d-4c5a-6789-0abc-def012345678',
@@ -73,8 +72,24 @@ describe('fetchDeliveryDetail', () => {
   });
 });
 
-function rows(n: number, prefix: string): { id: string }[] {
-  return Array.from({ length: n }, (_, i) => ({ id: `${prefix}-${i}` }));
+function row(overrides: Partial<DeliveryLog> = {}): DeliveryLog {
+  return {
+    receivedAt: '2026-05-20T11:58:00.000Z',
+    sender: '15551234567',
+    messageId: 'wamid.test',
+    meta: { text: 'hi' },
+    hookmyapp: {
+      status: 'delivered',
+      statusText: 'Delivered to your app',
+      destination: { type: 'webhook', url: 'https://customer.app/webhook' },
+      appResponse: { status: 200, durationMs: 42, body: { ok: true } },
+    },
+    ...overrides,
+  };
+}
+
+function rows(n: number, prefix: string): DeliveryLog[] {
+  return Array.from({ length: n }, (_, i) => row({ messageId: `${prefix}-${i}` }));
 }
 
 describe('fetchAllDeliveries', () => {
@@ -82,48 +97,45 @@ describe('fetchAllDeliveries', () => {
 
   it('follows nextCursor and concatenates every page', async () => {
     mocks.apiClient
-      .mockResolvedValueOnce({ deliveries: rows(50, 'a'), nextCursor: 'c1', floorHours: 168 })
-      .mockResolvedValueOnce({ deliveries: rows(50, 'b'), nextCursor: 'c2', floorHours: 168 })
-      .mockResolvedValueOnce({ deliveries: rows(10, 'c'), nextCursor: null, floorHours: 168 });
+      .mockResolvedValueOnce({ logs: rows(50, 'a'), nextCursor: 'c1' })
+      .mockResolvedValueOnce({ logs: rows(50, 'b'), nextCursor: 'c2' })
+      .mockResolvedValueOnce({ logs: rows(10, 'c'), nextCursor: null });
 
     const page = await fetchAllDeliveries(base);
 
-    expect(page.deliveries).toHaveLength(110);
+    expect(page.logs).toHaveLength(110);
     expect(page.nextCursor).toBeNull();
-    expect(page.floorHours).toBe(168);
     expect(mocks.apiClient).toHaveBeenCalledTimes(3);
   });
 
   it('stops at ALL_ROW_CAP and keeps a non-null nextCursor as the truncation signal', async () => {
     mocks.apiClient.mockResolvedValue({
-      deliveries: rows(100, 'p'),
+      logs: rows(100, 'p'),
       nextCursor: 'more',
-      floorHours: 168,
     });
 
     const page = await fetchAllDeliveries({ ...base, limit: 100 });
 
-    expect(page.deliveries).toHaveLength(ALL_ROW_CAP);
+    expect(page.logs).toHaveLength(ALL_ROW_CAP);
     expect(page.nextCursor).toBe('more');
     expect(mocks.apiClient).toHaveBeenCalledTimes(10);
   });
 
-  it('stops on an empty-deliveries page even when nextCursor is non-null', async () => {
+  it('stops on an empty-logs page even when nextCursor is non-null', async () => {
     mocks.apiClient.mockResolvedValue({
-      deliveries: [],
+      logs: [],
       nextCursor: 'still-more',
-      floorHours: 24,
     });
 
     const page = await fetchAllDeliveries(base);
 
-    expect(page.deliveries).toHaveLength(0);
+    expect(page.logs).toHaveLength(0);
     expect(page.nextCursor).toBe('still-more');
     expect(mocks.apiClient).toHaveBeenCalledTimes(1);
   });
 
   it('passes the initial cursor through to the first request', async () => {
-    mocks.apiClient.mockResolvedValue({ deliveries: [], nextCursor: null, floorHours: 24 });
+    mocks.apiClient.mockResolvedValue({ logs: [], nextCursor: null });
 
     await fetchAllDeliveries({ ...base, cursor: 'start-here' });
 

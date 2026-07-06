@@ -3,70 +3,45 @@ import {
   renderDeliveryDetail,
   printSummaryRow,
 } from '../../commands/channels-logs/render.js';
-import type { DeliveryDetail } from '../../commands/channels-logs/api.js';
+import type { DeliveryLog } from '../../commands/channels-logs/api.js';
 
-function detail(over: Partial<DeliveryDetail> = {}): DeliveryDetail {
+function detail(overrides: Partial<DeliveryLog> = {}): DeliveryLog {
   return {
-    id: 'd1',
-    workspaceId: 'ws_w1',
-    scopeKind: 'channel',
-    channelId: 'chan-uuid',
-    sandboxSessionId: null,
-    providerObject: 'whatsapp_business_account',
-    providerResourceId: 'r1',
-    metaMessageId: 'm1',
-    inboundBody: '{"entry":[]}',
-    inboundBodySha256: 'sha',
-    inboundBodyTruncated: false,
-    inboundHeaders: { 'x-hub-signature-256': 'sig' },
-    signatureOk: true,
-    routingDecision: 'forwarded',
-    isSandbox: false,
-    requestId: 'req1',
-    fromPhone: '+14155550100',
-    senderId: '14155550100',
-    senderDisplay: '+14155550100',
     receivedAt: '2026-05-20T11:58:00.000Z',
-    humanStatus: 'Rejected',
-    humanStatusCopy: "Your app got this, but couldn't process it",
-    humanStatusTooltip: null,
-    humanStatusColor: 'red',
-    outcome: 'rejected',
-    outcomeReason: null,
-    forwardUrl: 'https://customer.app/webhook',
-    forwardRequestHeaders: { 'content-type': 'application/json' },
-    forwardRequestBody: '{"hello":"world"}',
-    forwardStatus: 500,
-    forwardDurationMs: 842,
-    forwardResponseHeaders: { 'x-trace': 'abc' },
-    forwardResponseBody: 'internal error',
-    forwardResponseBodySha256: 'sha',
-    forwardResponseBodyTruncated: false,
-    attemptedAt: '2026-05-20T11:58:01.000Z',
-    relatedDeliveries: [],
-    ...over,
+    sender: '+14155550100',
+    messageId: 'wamid.m1',
+    meta: { entry: [] },
+    hookmyapp: {
+      status: 'rejected',
+      statusText: "Your app got this, but couldn't process it",
+      destination: { type: 'webhook', url: 'https://customer.app/webhook' },
+      appResponse: { status: 500, durationMs: 842, body: 'internal error' },
+    },
+    ...overrides,
+  };
+}
+
+function withHookmyapp(
+  overrides: Partial<DeliveryLog['hookmyapp']>,
+): DeliveryLog {
+  const base = detail();
+  return {
+    ...base,
+    hookmyapp: {
+      ...base.hookmyapp,
+      ...overrides,
+      appResponse: {
+        ...base.hookmyapp.appResponse,
+        ...overrides.appResponse,
+      },
+    },
   };
 }
 
 describe('printSummaryRow', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders a one-line summary from the flat forward fields', () => {
-    const writes: string[] = [];
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      writes.push(String(chunk));
-      return true;
-    });
-
-    printSummaryRow(detail({ forwardStatus: 200, forwardDurationMs: 100 }));
-
-    const line = writes.join('');
-    expect(line).toContain('customer.app');
-    expect(line).toContain('200');
-    expect(line).toContain('(100ms)');
-  });
-
-  it('does not crash and falls back to outcome when no forward was made', () => {
+  it('renders a one-line summary from public delivery fields', () => {
     const writes: string[] = [];
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
       writes.push(String(chunk));
@@ -74,60 +49,78 @@ describe('printSummaryRow', () => {
     });
 
     printSummaryRow(
-      detail({
-        forwardUrl: null,
-        forwardStatus: null,
-        forwardDurationMs: null,
-        outcome: 'skipped',
+      withHookmyapp({
+        status: 'delivered',
+        statusText: 'Delivered to your app',
+        appResponse: { status: 200, durationMs: 100, body: null },
       }),
     );
 
     const line = writes.join('');
-    expect(line).toContain('(no forward URL set)');
-    expect(line).toContain('skipped');
+    expect(line).toContain('+14155550100');
+    expect(line).toContain('Delivered to your app');
+    expect(line).toContain('App response: 200 in 100ms');
+  });
+
+  it('does not crash and falls back when no destination or response exists', () => {
+    const writes: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+
+    printSummaryRow(
+      withHookmyapp({
+        status: 'skipped',
+        statusText: 'No destination configured',
+        destination: null,
+        appResponse: { status: null, durationMs: null, body: null },
+      }),
+    );
+
+    const line = writes.join('');
+    expect(line).toContain('No destination configured');
+    expect(line).not.toContain('App response:');
   });
 });
 
 describe('renderDeliveryDetail', () => {
-  it('renders the three sections for a forwarded delivery', () => {
+  it('renders the clean public sections for a forwarded delivery', () => {
     const out = renderDeliveryDetail(detail());
-    expect(out).toContain('What WhatsApp sent us');
-    expect(out).toContain('We sent it to your app');
-    expect(out).toContain('POST https://customer.app/webhook');
+    expect(out).toContain('Meta payload');
+    expect(out).toContain('To: https://customer.app/webhook');
     expect(out).toContain('Your app responded');
-    expect(out).toContain('  500 (842ms)');
+    expect(out).toContain('500 in 842ms');
+    expect(out).toContain('internal error');
   });
 
-  it('shows the no-destination note when no forward URL was set', () => {
+  it('shows no destination line when no destination was set', () => {
     const out = renderDeliveryDetail(
-      detail({ forwardUrl: null, forwardStatus: null, attemptedAt: null, outcome: 'skipped' }),
-    );
-    expect(out).toContain('No destination was configured');
-    expect(out).not.toContain('We sent it to your app');
-  });
-
-  it('treats a real-channel no_webhook_config delivery as no-destination', () => {
-    const out = renderDeliveryDetail(
-      detail({
-        routingDecision: 'no_webhook_config',
-        forwardUrl: null,
-        forwardStatus: null,
-        attemptedAt: null,
-        outcome: 'skipped',
+      withHookmyapp({
+        status: 'skipped',
+        statusText: 'No destination configured',
+        destination: null,
+        appResponse: { status: null, durationMs: null, body: null },
       }),
     );
-    expect(out).toContain('No destination was configured');
+    expect(out).not.toContain('To:');
+    expect(out).toContain('(no response)');
   });
 
-  it('omits headers by default and includes them when verbose', () => {
-    expect(renderDeliveryDetail(detail())).not.toContain('x-hub-signature-256');
-    expect(renderDeliveryDetail(detail(), { verbose: true })).toContain(
-      'x-hub-signature-256',
+  it('renders the CLI listener destination', () => {
+    const out = renderDeliveryDetail(
+      withHookmyapp({
+        destination: { type: 'cli', label: 'CLI listener' },
+      }),
     );
+    expect(out).toContain('To: CLI listener');
   });
 
-  it('marks a truncated inbound body', () => {
-    const out = renderDeliveryDetail(detail({ inboundBodyTruncated: true }));
-    expect(out).toContain('(truncated)');
+  it('does not expose internal routing, signature, request, or header fields', () => {
+    const out = renderDeliveryDetail(detail(), { verbose: true });
+    expect(out).not.toContain('Routing:');
+    expect(out).not.toContain('Signature');
+    expect(out).not.toContain('requestId');
+    expect(out).not.toContain('x-hub-signature-256');
   });
 });

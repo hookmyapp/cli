@@ -10,9 +10,8 @@ import {
   fetchAllDeliveries,
   fetchDeliveryDetail,
   streamDeliveries,
-  toLogsJson,
   type DeliveriesPage,
-  type DeliveryDetail,
+  type DeliveryLog,
   type FetchDeliveriesParams,
 } from './api.js';
 import {
@@ -46,16 +45,16 @@ function parseLimit(raw: string | undefined): number {
 /**
  * Render a single delivery detail to stdout per the mode flags.
  * Modes:
- *   --json    → JSONL via toLogsJson (GUI fields stripped, one DTO per line)
- *   --verbose → full inbound + forward-attempt block via renderDeliveryDetail
+ *   --json    → JSONL public delivery log, one event per line
+ *   --verbose → full Meta payload + app response via renderDeliveryDetail
  *   default   → one-line summary via printSummaryRow (D9 table-by-default)
  */
 function emitDelivery(
-  detail: DeliveryDetail,
+  detail: DeliveryLog,
   mode: { json: boolean; verbose: boolean },
 ): void {
   if (mode.json) {
-    process.stdout.write(JSON.stringify(toLogsJson(detail)) + '\n');
+    process.stdout.write(JSON.stringify(detail) + '\n');
   } else if (mode.verbose) {
     console.log(renderDeliveryDetail(detail, { verbose: true }));
   } else {
@@ -94,9 +93,8 @@ export async function runChannelLogsList(
       until,
       cursor: opts.cursor,
     });
-    for (const summary of initial.deliveries) {
-      const detail = await fetchDeliveryDetail(summary.id, channel.workspaceId);
-      emitDelivery(detail, mode);
+    for (const log of initial.logs) {
+      emitDelivery(log, mode);
     }
     for await (const detail of streamDeliveries({
       channelPublicId: channel.id,
@@ -121,46 +119,22 @@ export async function runChannelLogsList(
     : await fetchDeliveriesPage(params);
 
   if (json) {
-    // Snapshot mode emits a single JSON array of detail DTOs (GUI fields
-    // stripped via toLogsJson) — `[]` when empty, matching `channels list
-    // --json` and every other snapshot `--json` command. The streaming
-    // `--follow` path above stays JSONL (a live tail can't be a closed array).
-    const dtos = [];
-    for (const summary of page.deliveries) {
-      const detail = await fetchDeliveryDetail(summary.id, channel.workspaceId);
-      dtos.push(toLogsJson(detail));
-    }
-    output(dtos, { json: true });
+    output(page.logs, { json: true });
     return;
   }
 
-  if (page.deliveries.length === 0) {
-    console.log(`No deliveries in the last ${page.floorHours}h for this channel.`);
+  if (page.logs.length === 0) {
+    console.log('No delivery logs for this channel.');
     return;
-  }
-
-  // Retention-floor note — only when an explicit --since was clamped (spec D9).
-  if (since) {
-    const floorBoundaryMs = Date.now() - page.floorHours * 3_600_000;
-    if (new Date(since).getTime() < floorBoundaryMs) {
-      console.log(`Showing last ${page.floorHours}h (plan retention limit).`);
-    }
   }
 
   if (verbose) {
-    // Verbose mode: N+1 detail fetch + per-row block.
-    for (const summary of page.deliveries) {
-      const detail = await fetchDeliveryDetail(summary.id, channel.workspaceId);
-      console.log(renderDeliveryDetail(detail, { verbose: true }));
+    for (const log of page.logs) {
+      console.log(renderDeliveryDetail(log, { verbose: true }));
     }
   } else {
-    // Default summary-by-default (D9): one-line `printSummaryRow` per delivery
-    // matches sandbox/logs.ts UX. Requires N+1 detail fetches to get
-    // `senderDisplay` + attempt body for the preview. Acceptable for a debug
-    // command (see N+1 note in sandbox/logs.ts header).
-    for (const summary of page.deliveries) {
-      const detail = await fetchDeliveryDetail(summary.id, channel.workspaceId);
-      printSummaryRow(detail);
+    for (const log of page.logs) {
+      printSummaryRow(log);
     }
   }
 
@@ -213,10 +187,10 @@ export function registerChannelsLogsCommand(
     .option('--cursor <cursor>', 'Continue from a previous page nextCursor')
     .option('--all', 'Auto-paginate every page (capped at 1000 rows)')
     .option('-f, --follow', 'Stream new deliveries as they arrive (Ctrl-C to stop)')
-    .option('--json', 'JSON array of delivery DTOs ([] when empty; JSONL when --follow)')
+    .option('--json', 'JSON array of delivery logs ([] when empty; JSONL when --follow)')
     .option(
       '-v, --verbose',
-      'Full inbound body + forward attempt dump (default: one-line summary)',
+      'Show the full Meta payload and app response',
     )
     .action(async (channelRef: string, opts: ListOptions) => {
       await runChannelLogsList(
@@ -229,8 +203,8 @@ export function registerChannelsLogsCommand(
   const logsShow = logs
     .command('show')
     .description('Show the full detail of one delivery')
-    .argument('<id>', 'Delivery ID from `channels logs list`')
-    .option('--verbose', 'Include request/response headers')
+    .argument('<id>', 'Delivery ID for compatibility lookup')
+    .option('--verbose', 'Show the full Meta payload and app response')
     .action(async (id: string, opts: { verbose?: boolean }) => {
       await runChannelLogsShow(id, !!program.opts().json, !!opts.verbose);
     });
