@@ -172,7 +172,6 @@ Instagram channel:
 INSTAGRAM_GRAPH_API_URL=...
 INSTAGRAM_ACCESS_TOKEN=...
 INSTAGRAM_ACCOUNT_ID=...
-INSTAGRAM_USER_ID=... # legacy alias
 HOOKMYAPP_CHANNEL_ID=ch_xxxxxxxx
 VERIFY_TOKEN=...
 ```
@@ -236,9 +235,7 @@ Add `--json` to any of these for machine-readable output.
 
 `sandbox env` emits a different key shape from `channels env`. Sandbox blocks
 always include a `PORT` line and use the `*_API_URL` names. Real channels use
-`*_GRAPH_API_URL`. Instagram uses `INSTAGRAM_ACCOUNT_ID` in both contexts;
-`INSTAGRAM_USER_ID` remains as a legacy alias for older connected-channel env
-files.
+`*_GRAPH_API_URL`. Instagram uses `INSTAGRAM_ACCOUNT_ID` in both contexts.
 
 WhatsApp sandbox:
 

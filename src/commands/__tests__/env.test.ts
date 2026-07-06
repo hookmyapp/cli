@@ -178,7 +178,7 @@ describe('runChannelEnv --json (D6)', () => {
     values: {
       INSTAGRAM_GRAPH_API_URL: 'https://graph.instagram.com/v25.0',
       INSTAGRAM_ACCESS_TOKEN: 'IGAAi_test_token',
-      INSTAGRAM_USER_ID: '17841999999999999',
+      INSTAGRAM_ACCOUNT_ID: '17841999999999999',
       HOOKMYAPP_CHANNEL_ID: 'ch_TEST0001',
       VERIFY_TOKEN: 'test123',
     },
@@ -208,7 +208,7 @@ describe('runChannelEnv --json (D6)', () => {
     expect(parsed).toEqual({
       INSTAGRAM_GRAPH_API_URL: 'https://graph.instagram.com/v25.0',
       INSTAGRAM_ACCESS_TOKEN: 'IGAAi_test_token',
-      INSTAGRAM_USER_ID: '17841999999999999',
+      INSTAGRAM_ACCOUNT_ID: '17841999999999999',
       HOOKMYAPP_CHANNEL_ID: 'ch_TEST0001',
       VERIFY_TOKEN: 'test123',
     });
