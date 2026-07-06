@@ -18,71 +18,21 @@ vi.mock('../../commands/_helpers.js', () => ({
 
 import { registerChannelsLogsCommand } from '../../commands/channels-logs/index.js';
 import { ValidationError } from '../../output/error.js';
+import type { DeliveryLog } from '../../commands/channels-logs/api.js';
 
-function listItem(id: string) {
+function deliveryLog(overrides: Partial<DeliveryLog> = {}): DeliveryLog {
   return {
-    id,
     receivedAt: new Date().toISOString(),
-    metaMessageId: null,
-    fromPhone: '+14155550100',
-    senderId: '14155550100',
-    senderDisplay: '+14155550100',
-    routingDecision: 'forwarded',
-    humanStatus: 'Delivered',
-    humanStatusCopy: 'Delivered to your app',
-    humanStatusTooltip: null,
-    humanStatusColor: 'green',
-    outcome: 'delivered',
-    forwardStatus: 200,
-    attemptedAt: new Date().toISOString(),
-  };
-}
-
-/**
- * DeliveryDetail factory mirroring the flat wire shape for /deliveries/:id
- * (row-per-request: one forward per row, no nested attempts[]). Default-mode
- * and --json mode both fetch detail per row (N+1) post-B11, so tests that
- * exercise either need to mock the detail response too.
- */
-function detailItem(id: string) {
-  return {
-    id,
-    workspaceId: 'ws_w1',
-    scopeKind: 'channel',
-    channelId: 'chan-uuid',
-    sandboxSessionId: null,
-    providerObject: 'whatsapp_business_account',
-    providerResourceId: 'r1',
-    metaMessageId: null,
-    inboundBody: '{"text":"hi"}',
-    inboundBodySha256: 'sha',
-    inboundBodyTruncated: false,
-    inboundHeaders: null,
-    signatureOk: true,
-    routingDecision: 'forwarded',
-    isSandbox: false,
-    requestId: 'req1',
-    fromPhone: '+14155550100',
-    senderId: '14155550100',
-    senderDisplay: '+14155550100',
-    receivedAt: new Date().toISOString(),
-    humanStatus: 'Delivered',
-    humanStatusCopy: 'Delivered to your app',
-    humanStatusTooltip: null,
-    humanStatusColor: 'green',
-    outcome: 'delivered',
-    outcomeReason: null,
-    forwardUrl: 'https://customer.app/webhook',
-    forwardRequestHeaders: null,
-    forwardRequestBody: null,
-    forwardStatus: 200,
-    forwardDurationMs: 100,
-    forwardResponseHeaders: null,
-    forwardResponseBody: null,
-    forwardResponseBodySha256: null,
-    forwardResponseBodyTruncated: false,
-    attemptedAt: new Date().toISOString(),
-    relatedDeliveries: [],
+    sender: '+14155550100',
+    messageId: 'wamid.test',
+    meta: { text: 'hi' },
+    hookmyapp: {
+      status: 'delivered',
+      statusText: 'Delivered to your app',
+      destination: { type: 'webhook', url: 'https://customer.app/webhook' },
+      appResponse: { status: 200, durationMs: 100, body: null },
+    },
+    ...overrides,
   };
 }
 
@@ -103,17 +53,10 @@ beforeEach(() => {
 
 describe('channels logs list', () => {
   it('prints one summary row per delivery in default mode (D9 — table-by-default)', async () => {
-    // Default mode (no --verbose, no --json) now emits one-line summary rows
-    // via process.stdout.write (printSummaryRow), not console.log. Each row is
-    // a detail fetch (N+1) — same pattern as sandbox/logs.ts.
-    mocks.apiClient
-      .mockResolvedValueOnce({
-        deliveries: [listItem('row-aaa'), listItem('row-bbb')],
-        nextCursor: null,
-        floorHours: 168,
-      })
-      .mockResolvedValueOnce(detailItem('row-aaa'))
-      .mockResolvedValueOnce(detailItem('row-bbb'));
+    mocks.apiClient.mockResolvedValueOnce({
+      logs: [deliveryLog(), deliveryLog({ messageId: 'wamid.two' })],
+      nextCursor: null,
+    });
     const writes: string[] = [];
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
       writes.push(String(chunk));
@@ -123,63 +66,24 @@ describe('channels logs list', () => {
     await run(['logs', 'list', 'ch_abc12345']);
 
     const combined = writes.join('');
-    expect(combined).toContain('customer.app'); // target host in summary
-    expect(combined).toContain('"hi"'); // body preview
+    expect(combined).toContain('+14155550100');
+    expect(combined).toContain('Delivered to your app');
+    expect(combined).toContain('text');
+    expect(combined).toContain('hi');
     // Two summary rows were emitted.
-    expect(writes.filter((w) => w.includes('customer.app'))).toHaveLength(2);
+    expect(writes.filter((w) => w.includes('Delivered to your app'))).toHaveLength(2);
+    expect(mocks.apiClient).toHaveBeenCalledTimes(1);
   });
 
-  it('emits a single JSON array of DeliveryDetail under --json', async () => {
-    // Snapshot --json is a single JSON array (one full DeliveryDetail per
-    // element, GUI-only humanStatusTooltip + humanStatusColor stripped),
-    // matching `channels list --json`; `--follow` stays JSONL. Mirrors
-    // sandbox/logs.ts.
-    const fullDetail = {
-      id: 'row-aaa',
-      workspaceId: 'ws_w1',
-      scopeKind: 'channel',
-      channelId: 'chan-uuid',
-      sandboxSessionId: null,
-      providerObject: 'whatsapp_business_account',
-      providerResourceId: 'r1',
-      metaMessageId: null,
-      inboundBody: '{"hello":"world"}',
-      inboundBodySha256: 'sha',
-      inboundBodyTruncated: false,
-      inboundHeaders: null,
-      signatureOk: true,
-      routingDecision: 'forwarded',
-      isSandbox: false,
-      requestId: 'req1',
-      fromPhone: '+14155550100',
-      senderId: '14155550100',
-      senderDisplay: '+14155550100',
+  it('emits a single JSON array of public delivery logs under --json', async () => {
+    const log = deliveryLog({
       receivedAt: '2026-05-20T11:58:00.000Z',
-      humanStatus: 'Delivered',
-      humanStatusCopy: 'Delivered to your app',
-      humanStatusTooltip: 'shown on hover (GUI)',
-      humanStatusColor: 'green',
-      outcome: 'delivered',
-      outcomeReason: null,
-      forwardUrl: 'https://customer.app/webhook',
-      forwardRequestHeaders: null,
-      forwardRequestBody: null,
-      forwardStatus: 200,
-      forwardDurationMs: 100,
-      forwardResponseHeaders: null,
-      forwardResponseBody: null,
-      forwardResponseBodySha256: null,
-      forwardResponseBodyTruncated: false,
-      attemptedAt: '2026-05-20T11:58:01.000Z',
-      relatedDeliveries: [],
-    };
-    mocks.apiClient
-      .mockResolvedValueOnce({
-        deliveries: [listItem('row-aaa')],
-        nextCursor: 'c1',
-        floorHours: 24,
-      })
-      .mockResolvedValueOnce(fullDetail);
+      meta: { hello: 'world' },
+    });
+    mocks.apiClient.mockResolvedValueOnce({
+      logs: [log],
+      nextCursor: 'c1',
+    });
     const logs: string[] = [];
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => {
       logs.push(a.map(String).join(' '));
@@ -191,17 +95,18 @@ describe('channels logs list', () => {
     const parsed = JSON.parse(logs[0]);
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed).toHaveLength(1);
-    expect(parsed[0].id).toBe('row-aaa');
-    expect(parsed[0].inboundBody).toBe('{"hello":"world"}');
-    expect(parsed[0].humanStatusTooltip).toBeUndefined();
-    expect(parsed[0].humanStatusColor).toBeUndefined();
+    expect(parsed[0].sender).toBe('+14155550100');
+    expect(parsed[0].meta).toEqual({ hello: 'world' });
+    expect(parsed[0].hookmyapp.statusText).toBe('Delivered to your app');
+    expect(parsed[0].routingDecision).toBeUndefined();
+    expect(parsed[0].signatureOk).toBeUndefined();
+    expect(parsed[0].requestId).toBeUndefined();
   });
 
   it('emits [] under --json when there are no deliveries', async () => {
     mocks.apiClient.mockResolvedValueOnce({
-      deliveries: [],
+      logs: [],
       nextCursor: null,
-      floorHours: 24,
     });
     const logs: string[] = [];
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => {
@@ -215,24 +120,21 @@ describe('channels logs list', () => {
   });
 
   it('prints a friendly message when there are no deliveries', async () => {
-    mocks.apiClient.mockResolvedValue({ deliveries: [], nextCursor: null, floorHours: 24 });
+    mocks.apiClient.mockResolvedValue({ logs: [], nextCursor: null });
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     await run(['logs', 'list', 'ch_abc12345']);
 
     expect(log.mock.calls.flat().join('\n')).toContain(
-      'No deliveries in the last 24h for this channel.',
+      'No delivery logs for this channel.',
     );
     log.mockRestore();
   });
 
   it('auto-paginates every page under --all', async () => {
-    // 4 apiClient calls: 2 list pages + 2 detail fetches (N+1 per row).
     mocks.apiClient
-      .mockResolvedValueOnce({ deliveries: [listItem('p1')], nextCursor: 'c1', floorHours: 168 })
-      .mockResolvedValueOnce({ deliveries: [listItem('p2')], nextCursor: null, floorHours: 168 })
-      .mockResolvedValueOnce(detailItem('p1'))
-      .mockResolvedValueOnce(detailItem('p2'));
+      .mockResolvedValueOnce({ logs: [deliveryLog({ messageId: 'p1' })], nextCursor: 'c1' })
+      .mockResolvedValueOnce({ logs: [deliveryLog({ messageId: 'p2' })], nextCursor: null });
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
     await run(['logs', 'list', 'ch_abc12345', '--all']);
@@ -256,31 +158,11 @@ describe('channels logs list', () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it('prints a retention-floor note when --since predates the floor', async () => {
-    mocks.apiClient
-      .mockResolvedValueOnce({
-        deliveries: [listItem('row-x')],
-        nextCursor: null,
-        floorHours: 168,
-      })
-      .mockResolvedValueOnce(detailItem('row-x'));
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-
-    await run(['logs', 'list', 'ch_abc12345', '--since', '720h']);
-
-    expect(log.mock.calls.flat().join('\n')).toContain('Showing last 168h');
-    log.mockRestore();
-  });
-
   it('prints a continuation hint when nextCursor is non-null', async () => {
-    mocks.apiClient
-      .mockResolvedValueOnce({
-        deliveries: [listItem('row-x')],
-        nextCursor: 'tok_abc',
-        floorHours: 168,
-      })
-      .mockResolvedValueOnce(detailItem('row-x'));
+    mocks.apiClient.mockResolvedValueOnce({
+      logs: [deliveryLog()],
+      nextCursor: 'tok_abc',
+    });
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
@@ -291,7 +173,7 @@ describe('channels logs list', () => {
   });
 
   it('forwards --until and --cursor through to the API query', async () => {
-    mocks.apiClient.mockResolvedValue({ deliveries: [], nextCursor: null, floorHours: 24 });
+    mocks.apiClient.mockResolvedValue({ logs: [], nextCursor: null });
 
     await run(['logs', 'list', 'ch_abc12345', '--until', '1h', '--cursor', 'tok_xyz']);
 

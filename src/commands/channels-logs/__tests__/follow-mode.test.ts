@@ -23,6 +23,7 @@ import {
   streamDeliveries,
   fetchDeliveriesPage,
   fetchDeliveryDetail,
+  type DeliveryLog,
 } from '../api.js';
 
 // Wire-mirror dto fed into resolveChannel → parseChannelListItem. Fields match
@@ -44,46 +45,17 @@ const igDto = {
   instagramProfilePictureUrl: null,
 };
 
-// Sample DeliveryDetail used by both the snapshot fetch and the SSE yields.
-// Carries IG-aware sender fields (senderDisplay/senderId) per D8.
-const sampleDetail = {
-  id: 'wph_001',
-  workspaceId: 'ws_TEST0001',
-  scopeKind: 'channel',
-  channelId: 'chan-uuid',
-  sandboxSessionId: null,
-  providerObject: 'instagram',
-  providerResourceId: '17841',
-  metaMessageId: null,
-  inboundBody: '{"text":"hi"}',
-  inboundBodySha256: 'sha',
-  inboundBodyTruncated: false,
-  inboundHeaders: null,
-  signatureOk: true,
-  routingDecision: 'forward',
-  isSandbox: false,
-  requestId: 'req-001',
-  fromPhone: null,
-  senderId: '1907',
-  senderDisplay: '@ordvir',
+const sampleLog: DeliveryLog = {
   receivedAt: '2026-05-26T14:30:01Z',
-  humanStatus: 'delivered',
-  humanStatusCopy: 'Delivered',
-  humanStatusTooltip: null,
-  humanStatusColor: 'green' as const,
-  outcome: 'delivered' as const,
-  outcomeReason: null,
-  forwardUrl: 'https://n8n.example/webhook',
-  forwardRequestHeaders: null,
-  forwardRequestBody: '',
-  forwardStatus: 200,
-  forwardDurationMs: 150,
-  forwardResponseHeaders: null,
-  forwardResponseBody: null,
-  forwardResponseBodySha256: null,
-  forwardResponseBodyTruncated: false,
-  attemptedAt: '2026-05-26T14:30:01.150Z',
-  relatedDeliveries: [],
+  sender: '@ordvir',
+  messageId: 'mid-001',
+  meta: { text: 'hi' },
+  hookmyapp: {
+    status: 'delivered',
+    statusText: 'Delivered',
+    destination: { type: 'webhook', url: 'https://n8n.example/webhook' },
+    appResponse: { status: 200, durationMs: 150, body: null },
+  },
 };
 
 describe('channels logs list --follow streams deliveries', () => {
@@ -97,18 +69,16 @@ describe('channels logs list --follow streams deliveries', () => {
   it('emits the initial snapshot + each streamed delivery as summary rows', async () => {
     // resolveChannel hits /meta/channels — one apiClient call.
     vi.mocked(apiClient).mockResolvedValueOnce([igDto]);
-    // Snapshot: 1 summary + 1 detail fetch.
+    // Snapshot rows are already clean public logs.
     vi.mocked(fetchDeliveriesPage).mockResolvedValueOnce({
-      deliveries: [{ id: 'wph_001' } as unknown as never],
+      logs: [sampleLog],
       nextCursor: null,
-      floorHours: 168,
     });
-    vi.mocked(fetchDeliveryDetail).mockResolvedValueOnce(sampleDetail);
     // SSE yields 2 more deliveries, then stream ends.
     vi.mocked(streamDeliveries).mockReturnValueOnce(
       (async function* () {
-        yield { ...sampleDetail, id: 'wph_002' };
-        yield { ...sampleDetail, id: 'wph_003' };
+        yield { ...sampleLog, messageId: 'mid-002' };
+        yield { ...sampleLog, messageId: 'mid-003' };
       })(),
     );
 
@@ -120,11 +90,12 @@ describe('channels logs list --follow streams deliveries', () => {
 
     const combined = outSpy.mock.calls.map((c) => c[0]).join('');
     expect(combined).toContain('@ordvir'); // sender in summary
-    expect(combined).toContain('n8n.example'); // target host parsed from forwardUrl
+    expect(combined).toContain('App response: 200 in 150ms');
     expect(streamDeliveries).toHaveBeenCalledWith({
       channelPublicId: 'ch_IGaaaaaa',
       workspaceId: 'ws_TEST0001',
     });
+    expect(fetchDeliveryDetail).not.toHaveBeenCalled();
     outSpy.mockRestore();
   });
 });

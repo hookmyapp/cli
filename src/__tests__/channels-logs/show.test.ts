@@ -20,43 +20,16 @@ import { registerChannelsLogsCommand } from '../../commands/channels-logs/index.
 import { ApiError, ValidationError } from '../../output/error.js';
 
 const DETAIL = {
-  id: 'd1',
-  workspaceId: 'ws_w1',
-  scopeKind: 'channel',
-  channelId: 'chan-uuid',
-  sandboxSessionId: null,
-  providerObject: 'whatsapp_business_account',
-  providerResourceId: 'r1',
-  metaMessageId: 'm1',
-  inboundBody: '{"entry":[]}',
-  inboundBodySha256: 'sha',
-  inboundBodyTruncated: false,
-  inboundHeaders: null,
-  signatureOk: true,
-  routingDecision: 'forwarded',
-  isSandbox: false,
-  requestId: 'req1',
-  fromPhone: '+14155550100',
-  senderId: '14155550100',
-  senderDisplay: '+14155550100',
   receivedAt: '2026-05-20T11:58:00.000Z',
-  humanStatus: 'Delivered',
-  humanStatusCopy: 'Delivered to your app',
-  humanStatusTooltip: null,
-  humanStatusColor: 'green',
-  outcome: 'delivered',
-  outcomeReason: null,
-  forwardUrl: 'https://customer.app/webhook',
-  forwardRequestHeaders: null,
-  forwardRequestBody: '{"entry":[]}',
-  forwardStatus: 200,
-  forwardDurationMs: 120,
-  forwardResponseHeaders: null,
-  forwardResponseBody: 'ok',
-  forwardResponseBodySha256: null,
-  forwardResponseBodyTruncated: false,
-  attemptedAt: '2026-05-20T11:58:01.000Z',
-  relatedDeliveries: [],
+  sender: '+14155550100',
+  messageId: 'wamid.m1',
+  meta: { entry: [] },
+  hookmyapp: {
+    status: 'delivered',
+    statusText: 'Delivered to your app',
+    destination: { type: 'webhook', url: 'https://customer.app/webhook' },
+    appResponse: { status: 200, durationMs: 120, body: 'ok' },
+  },
 };
 
 async function run(args: string[]) {
@@ -81,13 +54,21 @@ describe('channels logs show', () => {
     await run(['logs', 'show', 'd1']);
 
     const out = log.mock.calls.flat().join('\n');
-    expect(out).toContain('Delivery d1');
-    expect(out).toContain('What WhatsApp sent us');
+    expect(out).toContain('Delivered to your app');
+    expect(out).toContain('Meta payload');
+    expect(out).toContain('To: https://customer.app/webhook');
+    expect(out).not.toContain('Delivery d1');
     log.mockRestore();
   });
 
-  it('emits the raw detail body verbatim under --json', async () => {
-    mocks.apiClient.mockResolvedValue(DETAIL);
+  it('emits only the clean public detail body under --json', async () => {
+    mocks.apiClient.mockResolvedValue({
+      ...DETAIL,
+      routingDecision: 'forwarded',
+      signatureOk: true,
+      requestId: 'req_123',
+      inboundHeaders: { 'x-hub-signature-256': 'secret' },
+    });
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     await run(['logs', 'show', 'd1', '--json']);

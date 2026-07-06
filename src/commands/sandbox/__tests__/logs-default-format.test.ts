@@ -9,6 +9,7 @@ vi.mock('../../_helpers.js', () => ({
 
 import { apiClient } from '../../../api/client.js';
 import { runSandboxLogs } from '../logs.js';
+import type { DeliveryLog } from '../../channels-logs/api.js';
 
 const ig = {
   id: 'ssn_IG000001',
@@ -22,6 +23,22 @@ const ig = {
   origin: 'demo_handoff',
 };
 
+function deliveryLog(overrides: Partial<DeliveryLog> = {}): DeliveryLog {
+  return {
+    receivedAt: '2026-05-26T14:30:01Z',
+    sender: '@ordvir',
+    messageId: 'mid-001',
+    meta: { text: 'Hello from cli' },
+    hookmyapp: {
+      status: 'delivered',
+      statusText: 'Delivered to your webhook',
+      destination: { type: 'webhook', url: 'https://n8n.example/webhook' },
+      appResponse: { status: 200, durationMs: 150, body: null },
+    },
+    ...overrides,
+  };
+}
+
 describe('runSandboxLogs — default is table-by-default (D9)', () => {
   beforeEach(() => {
     vi.mocked(apiClient).mockReset();
@@ -31,46 +48,20 @@ describe('runSandboxLogs — default is table-by-default (D9)', () => {
     vi.mocked(apiClient)
       .mockResolvedValueOnce([ig])
       .mockResolvedValueOnce({
-        deliveries: [
-          { id: 'wph_001', receivedAt: '2026-05-26T14:30:01Z' },
-          { id: 'wph_002', receivedAt: '2026-05-26T14:32:15Z' },
+        logs: [
+          deliveryLog(),
+          deliveryLog({
+            receivedAt: '2026-05-26T14:32:15Z',
+            messageId: 'mid-002',
+            meta: { text: 'test image' },
+            hookmyapp: {
+              status: 'no_response',
+              statusText: 'Webhook timed out',
+              destination: { type: 'webhook', url: 'https://n8n.example/webhook' },
+              appResponse: { status: null, durationMs: null, body: null },
+            },
+          }),
         ],
-      })
-      .mockResolvedValueOnce({
-        id: 'wph_001',
-        routingDecision: 'forward',
-        inboundBody: '{"text":"Hello from cli"}',
-        fromPhone: null,
-        senderDisplay: '@ordvir',
-        senderId: '1907',
-        receivedAt: '2026-05-26T14:30:01Z',
-        humanStatus: 'delivered',
-        humanStatusCopy: 'Delivered to your webhook',
-        outcome: 'delivered',
-        forwardUrl: 'https://n8n.example/webhook',
-        forwardRequestBody: '',
-        forwardStatus: 200,
-        forwardDurationMs: 150,
-        forwardResponseBody: null,
-        attemptedAt: '2026-05-26T14:30:01.150Z',
-      })
-      .mockResolvedValueOnce({
-        id: 'wph_002',
-        routingDecision: 'forward',
-        inboundBody: '{"text":"test image"}',
-        fromPhone: null,
-        senderDisplay: '@ordvir',
-        senderId: '1907',
-        receivedAt: '2026-05-26T14:32:15Z',
-        humanStatus: 'failed',
-        humanStatusCopy: 'Webhook timed out',
-        outcome: 'no_response',
-        forwardUrl: 'https://n8n.example/webhook',
-        forwardRequestBody: '',
-        forwardStatus: null,
-        forwardDurationMs: null,
-        forwardResponseBody: null,
-        attemptedAt: '2026-05-26T14:32:15.500Z',
       });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -86,7 +77,7 @@ describe('runSandboxLogs — default is table-by-default (D9)', () => {
     expect(combined).toContain('n8n.example');
     expect(combined).toContain('200');
     expect(combined).toContain('150ms');
-    expect(combined).toContain('no_response');
+    expect(combined).toContain('Webhook timed out');
     outSpy.mockRestore();
     logSpy.mockRestore();
   });
@@ -94,36 +85,15 @@ describe('runSandboxLogs — default is table-by-default (D9)', () => {
   it('--verbose returns the pre-flip detailed format', async () => {
     vi.mocked(apiClient)
       .mockResolvedValueOnce([ig])
-      .mockResolvedValueOnce({ deliveries: [{ id: 'wph_001', receivedAt: '...' }] })
-      .mockResolvedValueOnce({
-        id: 'wph_001',
-        routingDecision: 'forward',
-        inboundBody: '{"text":"Hello from cli"}',
-        fromPhone: null,
-        senderDisplay: '@ordvir',
-        senderId: '1907',
-        receivedAt: '2026-05-26T14:30:01Z',
-        humanStatus: 'delivered',
-        humanStatusCopy: 'Delivered',
-        attempts: [{
-          id: 'a1', attemptNumber: 1,
-          forwardUrl: 'https://n8n.example/webhook',
-          forwardRequestBody: '',
-          forwardStatus: 200,
-          forwardDurationMs: 150,
-          forwardResponseBody: null,
-          outcome: 'success',
-          attemptedAt: '2026-05-26T14:30:01.150Z',
-        }],
-      });
+      .mockResolvedValueOnce({ logs: [deliveryLog()] });
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await runSandboxLogs({ identifierArg: '@ordvir', limit: 1, verbose: true, json: false });
     const combined =
       outSpy.mock.calls.map((c) => c[0]).join('') +
       logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-    // --verbose contains inbound body + forward attempt block.
-    expect(combined).toMatch(/inbound/i);
+    // --verbose contains the Meta payload and app response block.
+    expect(combined).toMatch(/Meta payload/i);
     expect(combined).toMatch(/Hello from cli/);
     outSpy.mockRestore();
     logSpy.mockRestore();
