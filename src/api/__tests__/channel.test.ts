@@ -215,21 +215,26 @@ describe('parseChannelListItem — Phase A backend cleanup shape', () => {
 });
 
 describe('parseChannelDetail', () => {
-  it('extends list-item with detail-only fields (accessToken, whatsappBusinessName, metaBusinessId)', () => {
+  it('extends list-item with detail-only fields (whatsappBusinessName, metaBusinessId)', () => {
     const detail: ChannelDetail = parseChannelDetail({
       ...baseValidWa,
-      accessToken: 'EAAxxx...',
       whatsappBusinessName: 'Test Business',
       metaBusinessId: '100000000000000',
     });
-    expect(detail.accessToken).toBe('EAAxxx...');
     expect(detail.whatsappBusinessName).toBe('Test Business');
     expect(detail.metaBusinessId).toBe('100000000000000');
   });
 
+  it('never passes through a raw accessToken even if the backend sends one', () => {
+    // The `accessToken` slot was removed: `EAA…` is a Meta system-user token
+    // (HookMyApp infra), NOT the customer's hmat_ (which has its own
+    // `channels token` surface). It must never reach `channels show`.
+    const detail = parseChannelDetail({ ...baseValidWa, accessToken: 'EAAxxx...' });
+    expect(detail).not.toHaveProperty('accessToken');
+  });
+
   it('list-item shape (without detail fields) parses with detail-only fields undefined', () => {
     const detail = parseChannelDetail(baseValidIg);
-    expect(detail.accessToken).toBeUndefined();
     expect(detail.whatsappBusinessName).toBeUndefined();
   });
 });

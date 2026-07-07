@@ -14,6 +14,20 @@ export interface WorkspaceConfig {
 }
 
 /**
+ * Drop `workosOrganizationId` from a workspace before it is displayed. Per the
+ * CLI-output-cleanup decision (spec 2026-05-27) it is a DROP-list field: the
+ * WorkOS org id is internal plumbing the CLI passes to WorkOS for token
+ * re-scoping (`workspace use`), not a customer-facing identifier. The ws_
+ * publicId (`id`) and the HookMyApp-native `organizationPublicId` are the
+ * identifiers scripts should key on. Everything else the backend sends passes
+ * through untouched.
+ */
+export function stripInternalWorkspaceFields(w: Workspace): Omit<Workspace, 'workosOrganizationId'> {
+  const { workosOrganizationId: _drop, ...rest } = w;
+  return rest;
+}
+
+/**
  * The on-disk shape of `~/.hookmyapp/config.json`. This is shared with
  * `src/config/env-profiles.ts`, which owns the `env` field. Both modules
  * MUST merge-read-then-write (see writeWorkspaceConfig / setPersistedEnv)
@@ -199,25 +213,22 @@ export function registerWorkspaceCommand(program: Command): void {
       const all = (await apiClient('/workspaces')) as Workspace[];
       const data = all.filter((w) => w.kind === 'team');
       const config = readWorkspaceConfig();
-      if (opts.json || !program.opts().json !== true) {
-        // JSON: include raw array with workosOrganizationId when --json or non-human default
-        if (opts.json) {
-          console.log(JSON.stringify(data, null, 2));
-          return;
-        }
+      if (opts.json) {
+        console.log(JSON.stringify(data.map(stripInternalWorkspaceFields), null, 2));
+        return;
       }
       if (!program.opts().json) {
         const rows = data.map((w) => ({
           ACTIVE: w.id === config.activeWorkspaceId ? '*' : ' ',
           NAME: w.name,
-          SLUG: w.workosOrganizationId,
+          ID: w.id,
           ROLE: w.role,
         }));
         output(rows, { human: true });
         return;
       }
       // Default (non-human, no --json): still emit JSON array
-      console.log(JSON.stringify(data, null, 2));
+      console.log(JSON.stringify(data.map(stripInternalWorkspaceFields), null, 2));
     });
 
   const wsNew = ws.command('new')
@@ -339,14 +350,16 @@ export function registerWorkspaceCommand(program: Command): void {
       validateAssignableRole(opts.role);
       const { getDefaultWorkspaceId } = await import('./_helpers.js');
       const workspaceId = await getDefaultWorkspaceId();
-      const result = await apiClient(`/workspaces/${workspaceId}/members`, {
+      const result = (await apiClient(`/workspaces/${workspaceId}/members`, {
         method: 'POST',
         body: JSON.stringify({ email, role: opts.role }),
-      });
+      })) as { status?: string };
       if (!program.opts().json) {
         console.log(`Invited ${email} as ${opts.role} to workspace`);
       } else {
-        output(result, { human: false });
+        // Shape, don't spread: the raw invite row carries internal DB UUIDs
+        // (id, workspaceId, invitedBy) and timestamps.
+        output({ email, role: opts.role, status: result.status ?? 'invited' }, { human: false });
       }
     });
 
@@ -391,14 +404,16 @@ export function registerWorkspaceCommand(program: Command): void {
       const { getDefaultWorkspaceId } = await import('./_helpers.js');
       const workspaceId = await getDefaultWorkspaceId();
       const member = await resolveMemberByEmail(workspaceId, email);
-      const result = await apiClient(`/workspaces/${workspaceId}/members/${member.id}`, {
+      await apiClient(`/workspaces/${workspaceId}/members/${member.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ role: opts.role }),
       });
       if (!program.opts().json) {
         console.log(`Updated ${email} role to ${opts.role}`);
       } else {
-        output(result, { human: false });
+        // Shape, don't spread: the raw member row carries internal DB UUIDs
+        // (id, userId, workspaceId, workosMembershipId).
+        output({ email, role: opts.role }, { human: false });
       }
     });
 

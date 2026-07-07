@@ -675,6 +675,34 @@ describe('workspace members commands', () => {
         program.parseAsync(['workspace', 'members', 'invite', 'new@co.com', '--role', 'owner'], { from: 'user' }),
       ).rejects.toThrow('invalid role');
     });
+
+    it('under --json emits a shaped DTO, never the raw invite row (no internal UUIDs)', async () => {
+      // Backend returns the full Prisma row: internal UUID id, workspaceId,
+      // invitedBy user UUID. The CLI must shape it, not spread it.
+      mockedApiClient.mockResolvedValue({
+        id: 'a79634d0-7d8b-435c-8d49-9e5a524645ae',
+        email: 'new@co.com',
+        role: 'member',
+        workspaceId: 'b1234567-0000-0000-0000-000000000000',
+        invitedBy: 'c9999999-0000-0000-0000-000000000000',
+        status: 'invited',
+      });
+      mockedOutput.mockClear();
+
+      const program = new Command();
+      program.option('--json');
+      registerWorkspaceCommand(program);
+      await program.parseAsync(['workspace', 'members', 'invite', 'new@co.com', '--json'], { from: 'user' });
+
+      expect(mockedOutput).toHaveBeenCalledWith(
+        { email: 'new@co.com', role: 'member', status: 'invited' },
+        expect.objectContaining({ human: false }),
+      );
+      const [payload] = mockedOutput.mock.calls.at(-1)!;
+      expect(payload).not.toHaveProperty('id');
+      expect(payload).not.toHaveProperty('workspaceId');
+      expect(payload).not.toHaveProperty('invitedBy');
+    });
   });
 
   describe('members remove', () => {
@@ -758,6 +786,33 @@ describe('workspace members commands', () => {
       await expect(
         program.parseAsync(['workspace', 'members', 'role', 'member@co.com', '--role', 'owner'], { from: 'user' }),
       ).rejects.toThrow('invalid role');
+    });
+
+    it('under --json emits a shaped DTO, never the raw member row (no internal UUIDs)', async () => {
+      mockedApiClient
+        .mockResolvedValueOnce(fakeMembersResponse) // resolveMemberByEmail
+        .mockResolvedValueOnce({
+          id: 'a79634d0-7d8b-435c-8d49-9e5a524645ae',
+          userId: 'u1234567-0000-0000-0000-000000000000',
+          workspaceId: 'b1234567-0000-0000-0000-000000000000',
+          workosMembershipId: 'wm_internal',
+          role: 'admin',
+        }); // PATCH
+      mockedOutput.mockClear();
+
+      const program = new Command();
+      program.option('--json');
+      registerWorkspaceCommand(program);
+      await program.parseAsync(['workspace', 'members', 'role', 'member@co.com', '--role', 'admin', '--json'], { from: 'user' });
+
+      expect(mockedOutput).toHaveBeenCalledWith(
+        { email: 'member@co.com', role: 'admin' },
+        expect.objectContaining({ human: false }),
+      );
+      const [payload] = mockedOutput.mock.calls.at(-1)!;
+      expect(payload).not.toHaveProperty('userId');
+      expect(payload).not.toHaveProperty('workspaceId');
+      expect(payload).not.toHaveProperty('workosMembershipId');
     });
   });
 });
