@@ -48,6 +48,8 @@ const fakeWorkspaceDetail = {
   channelCount: 2,
   createdAt: '2026-01-01',
   updatedAt: '2026-01-15',
+  // Internal AuthKit plumbing on the detail wire — must never reach stdout.
+  workosOrganizationId: 'org_01ALPHA',
 };
 
 describe('resolveWorkspace', () => {
@@ -303,6 +305,38 @@ describe('workspace commands', () => {
         expect(mockedApiClient).toHaveBeenCalledWith('/workspaces/ws_TEST0001');
       } finally {
         // Restore original config
+        if (originalConfig !== null) {
+          fs.writeFileSync(configPath, originalConfig);
+        }
+      }
+    });
+
+    it('omits workosOrganizationId from --json output', async () => {
+      mockedApiClient.mockResolvedValueOnce(fakeWorkspaces);
+      mockedApiClient.mockResolvedValueOnce(fakeWorkspaceDetail);
+
+      const program = new Command();
+      program.option('--human').option('--json');
+      registerWorkspaceCommand(program);
+
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      const os = await import('node:os');
+      const configDir = (process.env.HOOKMYAPP_CONFIG_DIR ?? path.join(os.homedir(), '.hookmyapp'));
+      const configPath = path.join(configDir, 'config.json');
+      let originalConfig: string | null = null;
+      try { originalConfig = fs.readFileSync(configPath, 'utf-8'); } catch { /* noop */ }
+      fs.mkdirSync(configDir, { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify({ activeWorkspaceId: 'ws_TEST0001' }));
+
+      try {
+        await program.parseAsync(['--json', 'workspace', 'current'], { from: 'user' });
+
+        expect(mockedOutput).toHaveBeenCalledWith(
+          expect.not.objectContaining({ workosOrganizationId: expect.anything() }),
+          { human: false },
+        );
+      } finally {
         if (originalConfig !== null) {
           fs.writeFileSync(configPath, originalConfig);
         }
