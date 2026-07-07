@@ -48,9 +48,28 @@ export async function collectDoctorReport(
   }
 
   let loggedIn = false;
-  try { loggedIn = (await readCredentials()) !== null; } catch { loggedIn = false; }
+  let creds: Awaited<ReturnType<typeof readCredentials>> = null;
+  try { creds = await readCredentials(); loggedIn = creds !== null; } catch { loggedIn = false; }
+  // Credentials-present alone is a false positive when the stored token is
+  // expired or belongs to another env (2026-07-07 audit: doctor said OK, the
+  // next command 401'd). When network checks are on, prove the token works
+  // against the ACTIVE env with a real authenticated call.
+  let authDetail = loggedIn ? 'credentials present' : 'not logged in — run: hookmyapp login';
+  if (loggedIn && opts.checkNetwork !== false) {
+    try {
+      const r = await fetch(`${getEffectiveApiUrl()}/workspaces`, {
+        headers: { Authorization: `Bearer ${creds!.accessToken}` },
+      });
+      if (r.status === 401 || r.status === 403) {
+        loggedIn = false;
+        authDetail = 'credentials present but rejected by this env — run: hookmyapp login';
+      } else {
+        authDetail = 'credentials valid for this env';
+      }
+    } catch { /* network flake — leave the presence-based verdict */ }
+  }
   // Informational: not-logged-in is reported, not a hard prereq failure.
-  checks.push({ id: 'auth', label: 'Logged in', ok: loggedIn, hard: false, detail: loggedIn ? 'credentials present' : 'not logged in — run: hookmyapp login' });
+  checks.push({ id: 'auth', label: 'Logged in', ok: loggedIn, hard: false, detail: authDetail });
 
   let activeWs: string | undefined;
   try { activeWs = readWorkspaceConfig().activeWorkspaceSlug ?? undefined; } catch { /* ignore */ }
