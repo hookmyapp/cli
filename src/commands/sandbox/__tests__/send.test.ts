@@ -111,6 +111,28 @@ describe('runSandboxSend — Instagram', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('mid.IGSTANDARD_xxx'));
   });
 
+  it('--json emits a shaped result, never the raw provider wire', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([wa]);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          messaging_product: 'whatsapp',
+          contacts: [{ input: '15551234567', wa_id: '15551234567' }],
+          messages: [{ id: 'wamid.test' }],
+        }),
+        { status: 200 },
+      ),
+    );
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await runSandboxSend({ phone: '+15551234567', message: 'hi', json: true });
+
+    const printed = JSON.parse(String(logSpy.mock.calls[0]?.[0]));
+    expect(printed).toEqual({ messageId: 'wamid.test', to: '+15551234567', status: 'sent' });
+    expect(printed).not.toHaveProperty('messaging_product');
+    expect(printed).not.toHaveProperty('contacts');
+  });
+
   it('surfaces SESSION_WINDOW_CLOSED 403 from sandbox-proxy verbatim (E8)', async () => {
     vi.mocked(apiClient).mockResolvedValueOnce([ig]);
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(

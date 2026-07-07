@@ -85,13 +85,18 @@ export async function runSandboxSend(opts: {
     throw new ApiError(msg, res.status);
   }
 
+  // Shape the output around what the customer needs (the sent message's id +
+  // where it went), NOT the raw provider/proxy wire — a verbatim passthrough
+  // would republish provider-shaped fields (messaging_product, contacts[].input)
+  // as our public --json contract. Public Surface Data Contract.
+  const msgId: string =
+    resBody?.messages?.[0]?.id ?? resBody?.message_id ?? '?';
+
   if (opts.json) {
-    output(resBody, { json: true });
+    output({ messageId: msgId, to: sessionIdentifier(session), status: 'sent' }, { json: true });
     return;
   }
 
-  const msgId: string =
-    resBody?.messages?.[0]?.id ?? resBody?.message_id ?? '?';
   console.log(
     `${c.success(icon.success)} Message sent to ${sessionIdentifier(session)} (id: ${msgId})`,
   );
