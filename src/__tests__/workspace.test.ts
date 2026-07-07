@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock api client
 vi.mock('../api/client.js', () => ({
@@ -925,5 +925,59 @@ describe('workspace invites commands', () => {
         method: 'DELETE',
       });
     });
+  });
+});
+
+describe('per-env active workspace (AIT-83)', () => {
+  let dir: string;
+  let origDir: string | undefined;
+  let origEnv: string | undefined;
+
+  beforeEach(async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const os = await import('node:os');
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hma-ws-perenv-'));
+    origDir = process.env.HOOKMYAPP_CONFIG_DIR;
+    origEnv = process.env.HOOKMYAPP_ENV;
+    process.env.HOOKMYAPP_CONFIG_DIR = dir;
+  });
+
+  afterEach(() => {
+    if (origDir === undefined) delete process.env.HOOKMYAPP_CONFIG_DIR;
+    else process.env.HOOKMYAPP_CONFIG_DIR = origDir;
+    if (origEnv === undefined) delete process.env.HOOKMYAPP_ENV;
+    else process.env.HOOKMYAPP_ENV = origEnv;
+  });
+
+  it('a staging `workspace use` does not leak into local', async () => {
+    const { readWorkspaceConfig, writeWorkspaceConfig } = await import('../commands/workspace.js');
+
+    process.env.HOOKMYAPP_ENV = 'staging';
+    writeWorkspaceConfig({ activeWorkspaceId: 'ws_STAGING1', activeWorkspaceSlug: 'Staging WS' });
+    expect(readWorkspaceConfig().activeWorkspaceId).toBe('ws_STAGING1');
+
+    process.env.HOOKMYAPP_ENV = 'local';
+    // No local slot yet → falls back to the legacy mirror (last write wins)
+    // only via top-level fields; write a local one and staging must survive.
+    writeWorkspaceConfig({ activeWorkspaceId: 'ws_LOCAL001', activeWorkspaceSlug: 'Local WS' });
+    expect(readWorkspaceConfig().activeWorkspaceId).toBe('ws_LOCAL001');
+
+    process.env.HOOKMYAPP_ENV = 'staging';
+    expect(readWorkspaceConfig().activeWorkspaceId).toBe('ws_STAGING1');
+    expect(readWorkspaceConfig().activeWorkspaceSlug).toBe('Staging WS');
+  });
+
+  it('falls back to the legacy top-level fields when no per-env slot exists', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const { readWorkspaceConfig } = await import('../commands/workspace.js');
+
+    fs.writeFileSync(
+      path.join(dir, 'config.json'),
+      JSON.stringify({ activeWorkspaceId: 'ws_LEGACY01', activeWorkspaceSlug: 'Legacy' }),
+    );
+    process.env.HOOKMYAPP_ENV = 'staging';
+    expect(readWorkspaceConfig().activeWorkspaceId).toBe('ws_LEGACY01');
   });
 });

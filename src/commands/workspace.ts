@@ -7,6 +7,7 @@ import type { Workspace } from '../types/workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
 import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
+import { resolveEnv } from '../config/env-profiles.js';
 
 export interface WorkspaceConfig {
   activeWorkspaceId?: string;
@@ -37,6 +38,10 @@ interface FullPersistedConfig {
   activeWorkspaceId?: string;
   activeWorkspaceSlug?: string;
   env?: string;
+  // Per-env active workspace (2026-07-07, AIT-83): workspaces are per-env
+  // resources, so a staging `workspace use` must not leak into local/prod.
+  // The legacy top-level fields stay as a read fallback + downgrade mirror.
+  activeWorkspaceByEnv?: Record<string, { id?: string; slug?: string }>;
 }
 
 function readFullConfig(): FullPersistedConfig {
@@ -49,17 +54,20 @@ function readFullConfig(): FullPersistedConfig {
 
 export function readWorkspaceConfig(): WorkspaceConfig {
   const full = readFullConfig();
+  // Per-env slot wins; legacy top-level fields are the pre-AIT-83 fallback
+  // (single global workspace) so existing installs keep their selection.
+  const perEnv = full.activeWorkspaceByEnv?.[resolveEnv()];
+  const candidateId = perEnv?.id ?? full.activeWorkspaceId;
+  const candidateSlug = perEnv?.id ? perEnv.slug : full.activeWorkspaceSlug;
   // Phase 117 hard cutover: activeWorkspaceId on disk MUST be a ws_ publicId.
   // A stale UUID from a pre-0.5.0 install is silently dropped so the next
   // caller falls through to the single-workspace auto-pick or the login
   // wizard's picker. No UUID value ever leaks back out to the backend.
   const activeWorkspaceId =
-    full.activeWorkspaceId && isValidPublicId(full.activeWorkspaceId, 'ws')
-      ? full.activeWorkspaceId
-      : undefined;
+    candidateId && isValidPublicId(candidateId, 'ws') ? candidateId : undefined;
   return {
     activeWorkspaceId,
-    activeWorkspaceSlug: activeWorkspaceId ? full.activeWorkspaceSlug : undefined,
+    activeWorkspaceSlug: activeWorkspaceId ? candidateSlug : undefined,
   };
 }
 
@@ -77,8 +85,13 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
   const existing = readFullConfig();
   const merged: FullPersistedConfig = {
     ...existing,
+    // Legacy mirror kept for pre-AIT-83 CLI downgrades reading top-level.
     activeWorkspaceId: config.activeWorkspaceId,
     activeWorkspaceSlug: config.activeWorkspaceSlug,
+    activeWorkspaceByEnv: {
+      ...existing.activeWorkspaceByEnv,
+      [resolveEnv()]: { id: config.activeWorkspaceId, slug: config.activeWorkspaceSlug },
+    },
   };
   safeWriteFileSync(getConfigFile(), JSON.stringify(merged, null, 2) + '\n');
 }

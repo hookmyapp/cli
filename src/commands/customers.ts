@@ -44,6 +44,7 @@ export function registerCustomersCommand(program: Command): void {
     });
 
   const custNew = cust.command('new')
+    .alias('create')
     .description('Create an empty customer (connect a channel later via an onboarding link)')
     .argument('<name>', 'Customer name')
     .option('--external-id <id>', 'Your own identifier for this customer (CRM/system id)')
@@ -136,6 +137,7 @@ export function registerCustomersCommand(program: Command): void {
     });
 
   const linksCreate = links.command('create')
+    .alias('new')
     .description('Create a customer connect link')
     .requiredOption('--label <label>', 'Label for the link')
     .requiredOption('--channel-type <type>', 'whatsapp or instagram')
