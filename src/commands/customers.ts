@@ -4,7 +4,7 @@ import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import type { Workspace } from '../types/workspace.js';
-import { readWorkspaceConfig, switchActiveWorkspace } from './workspace.js';
+import { readWorkspaceConfig, switchActiveWorkspace, stripInternalWorkspaceFields } from './workspace.js';
 
 interface OnboardingLinkRow {
   publicId: string;
@@ -30,14 +30,14 @@ export function registerCustomersCommand(program: Command): void {
       const all = (await apiClient('/workspaces')) as Workspace[];
       const customers = all.filter((w) => w.kind === 'customer');
       if (opts.json || program.opts().json) {
-        console.log(JSON.stringify(customers, null, 2));
+        console.log(JSON.stringify(customers.map(stripInternalWorkspaceFields), null, 2));
         return;
       }
       const config = readWorkspaceConfig();
       const rows = customers.map((w) => ({
         ACTIVE: w.id === config.activeWorkspaceId ? '*' : ' ',
         NAME: w.name,
-        SLUG: w.workosOrganizationId,
+        ID: w.id,
         ROLE: w.role,
       }));
       output(rows, { human: true });

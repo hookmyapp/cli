@@ -54,7 +54,6 @@ export type Channel = WhatsAppChannel | InstagramChannel | MessengerChannel;
 
 /** Detail-only fields returned by GET /meta/channels/:id (not on list endpoint). */
 interface DetailExtras {
-  accessToken?: string;
   whatsappBusinessName?: string;
   metaBusinessId?: string;
 }
@@ -168,7 +167,6 @@ export function parseChannelDetail(dto: unknown): ChannelDetail {
   const d = dto as Record<string, unknown>;
   return {
     ...base,
-    accessToken: typeof d.accessToken === 'string' ? d.accessToken : undefined,
     whatsappBusinessName:
       typeof d.whatsappBusinessName === 'string' ? d.whatsappBusinessName : undefined,
     metaBusinessId: typeof d.metaBusinessId === 'string' ? d.metaBusinessId : undefined,

@@ -423,8 +423,13 @@ describe('resolveChannel — strict resolver order (Task 5)', () => {
     expect(c.id).toBe('ch_abc12345');
   });
 
-  it('resolves by exact display phone (E.164 with plus)', async () => {
+  it('resolves by exact display phone', async () => {
     const c = await resolveChannel('+972557277945');
+    expect(c.id).toBe('ch_abc12345');
+  });
+
+  it('resolves by display phone without plus', async () => {
+    const c = await resolveChannel('972557277945');
     expect(c.id).toBe('ch_abc12345');
   });
 
@@ -462,6 +467,42 @@ describe('health command', () => {
     });
     expect(mockedOutput).toHaveBeenCalledWith(
       { metaConnected: true, forwardingEnabled: true, whatsappWabaName: 'Test' },
+      expect.objectContaining({}),
+    );
+  });
+
+  it('drops the internal cron timestamp but keeps the customer-facing failure count', async () => {
+    mockedApiClient
+      .mockResolvedValueOnce(fakeChannels) // channel lookup
+      .mockResolvedValueOnce({
+        metaConnected: true,
+        forwardingEnabled: true,
+        whatsappWabaName: 'Test',
+        consecutiveForwardFailures: 3,
+        whatsappQualityRatingCheckedAt: '2026-07-01T00:00:00.000Z',
+      }); // health result with a mix of customer health + internal plumbing
+
+    await runChannelHealth('ch_TEST0001');
+
+    const [payload] = mockedOutput.mock.calls.at(-1)!;
+    expect(payload).not.toHaveProperty('whatsappQualityRatingCheckedAt');
+    expect(payload).toMatchObject({
+      metaConnected: true,
+      forwardingEnabled: true,
+      whatsappWabaName: 'Test',
+      consecutiveForwardFailures: 3,
+    });
+  });
+
+  it('renders a clean not_connected shape when the channel was deleted at Meta', async () => {
+    mockedApiClient
+      .mockResolvedValueOnce(fakeChannels) // channel lookup
+      .mockResolvedValueOnce({ deleted: true }); // health result
+
+    await runChannelHealth('ch_TEST0001');
+
+    expect(mockedOutput).toHaveBeenCalledWith(
+      { status: 'not_connected', detail: 'Channel is no longer connected at Meta.' },
       expect.objectContaining({}),
     );
   });

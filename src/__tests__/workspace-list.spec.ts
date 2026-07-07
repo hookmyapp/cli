@@ -68,22 +68,25 @@ async function runList(extra: string[] = [], human = false): Promise<void> {
 }
 
 describe('workspace list (RBAC-UX-04)', () => {
-  it('human mode renders table with ACTIVE/NAME/SLUG/ROLE columns and * on active row', async () => {
+  it('human mode renders table with ACTIVE/NAME/ID/ROLE columns and * on active row', async () => {
     mockedApi.mockResolvedValue(fakeWorkspaces);
     await runList([], true);
 
     const logs = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
     expect(logs).toContain('ACTIVE');
     expect(logs).toContain('NAME');
-    expect(logs).toContain('SLUG');
+    expect(logs).toContain('ID');
     expect(logs).toContain('ROLE');
+    // The WorkOS org id is a DROP-list field (spec 2026-05-27) — the column
+    // now shows the ws_ publicId, not the internal WorkOS org id.
+    expect(logs).toContain('ws_TEST0001');
     // Active marker on Acme row — cli-table3 renders with box-drawing
     // separators between cells, so we no longer assert a tab character.
     expect(logs).toContain('Acme');
     expect(logs).toMatch(/\*[^\n]*Acme/);
   });
 
-  it('--json flag emits JSON array containing workosOrganizationId', async () => {
+  it('--json flag emits JSON array without the internal workosOrganizationId', async () => {
     mockedApi.mockResolvedValue(fakeWorkspaces);
     await runList(['--json'], false);
 
@@ -91,7 +94,8 @@ describe('workspace list (RBAC-UX-04)', () => {
     expect(lastCall).toBeDefined();
     const parsed = JSON.parse(String(lastCall![0]));
     expect(Array.isArray(parsed)).toBe(true);
-    expect(parsed[0]).toMatchObject({ id: 'ws_TEST0001', workosOrganizationId: 'org_01A', role: 'admin' });
+    expect(parsed[0]).toMatchObject({ id: 'ws_TEST0001', role: 'admin' });
+    expect(parsed[0]).not.toHaveProperty('workosOrganizationId');
   });
 
   it('is team-only: customer workspaces never appear (human mode)', async () => {
