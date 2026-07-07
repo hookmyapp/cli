@@ -203,7 +203,7 @@ export function registerChannelsLogsCommand(
   const logsShow = logs
     .command('show')
     .description('Show the full detail of one delivery')
-    .argument('<id>', 'Delivery ID for compatibility lookup')
+    .argument('<id>', 'Delivery ID (wd_xxxxxxxx) from channels logs list')
     .option('--verbose', 'Show the full Meta payload and app response')
     .action(async (id: string, opts: { verbose?: boolean }) => {
       await runChannelLogsShow(id, !!program.opts().json, !!opts.verbose);
@@ -214,7 +214,7 @@ export function registerChannelsLogsCommand(
     `
 EXAMPLES:
   $ hookmyapp channels logs list ch_AAAAAAAA
-  $ hookmyapp channels logs show 9b1f2e3d-4c5a-6789-0abc-def012345678
+  $ hookmyapp channels logs show wd_9X2kQm4T
 `,
   );
   addExamples(
@@ -231,8 +231,8 @@ EXAMPLES:
     logsShow,
     `
 EXAMPLES:
-  $ hookmyapp channels logs show 9b1f2e3d-4c5a-6789-0abc-def012345678
-  $ hookmyapp channels logs show 9b1f2e3d-4c5a-6789-0abc-def012345678 --json
+  $ hookmyapp channels logs show wd_9X2kQm4T
+  $ hookmyapp channels logs show wd_9X2kQm4T --json
 `,
   );
 }
