@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mkdir, writeFile, chmod } from 'node:fs/promises';
 import path from 'node:path';
-import { tmpHome } from '../helpers/tmpHome.js';
+import { tmpHome, cliConfigDir } from '../helpers/tmpHome.js';
 import { SHARED_CREDS_PATH } from '../helpers/seedSession.js';
 import { HOOKMYAPP_API_URL } from '../helpers/env.js';
 
@@ -62,7 +62,7 @@ describe('hookmyapp login (PR path — internal cli-login bypass)', () => {
       // Mirror the original post-condition: write credentials.json into an
       // isolated tmpHome at <home>/.hookmyapp/credentials.json with mode 0600.
       const home = await tmpHome();
-      const credsPath = path.join(home, '.hookmyapp', 'credentials.json');
+      const credsPath = path.join(cliConfigDir(home), 'credentials.json');
       await mkdir(path.dirname(credsPath), { recursive: true });
       const credsJson = JSON.stringify(creds);
       await writeFile(credsPath, credsJson);

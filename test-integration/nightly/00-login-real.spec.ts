@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tmpHome } from '../helpers/tmpHome.js';
+import { tmpHome, cliConfigDir } from '../helpers/tmpHome.js';
 import { SHARED_CREDS_PATH } from '../helpers/seedSession.js';
 import { CLI_BIN } from '../helpers/runCli.js';
 import { HOOKMYAPP_API_URL, HOOKMYAPP_WORKOS_CLIENT_ID } from '../helpers/env.js';
@@ -189,7 +189,7 @@ describe('hookmyapp login (nightly only — real WorkOS UI puppeting)', () => {
       expect(result.exitCode).toBe(0);
 
       // Verify credentials.json landed in the isolated HOME.
-      const credsPath = path.join(home, '.hookmyapp', 'credentials.json');
+      const credsPath = path.join(cliConfigDir(home), 'credentials.json');
       expect(existsSync(credsPath)).toBe(true);
       const creds = JSON.parse(await readFile(credsPath, 'utf-8'));
       expect(creds.accessToken).toBeTruthy();
