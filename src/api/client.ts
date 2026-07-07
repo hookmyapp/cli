@@ -189,6 +189,15 @@ export function isNetworkFailure(err: unknown): boolean {
   return false;
 }
 
+/** Undici wraps the real failure ("getaddrinfo ENOTFOUND …", cert errors) in
+ * `err.cause` behind a generic "fetch failed" — surface the inner message. */
+export function describeFetchError(err: unknown): string {
+  const cause = (err as { cause?: unknown })?.cause;
+  const inner = cause instanceof Error ? cause.message : undefined;
+  const outer = err instanceof Error ? err.message : String(err);
+  return inner && inner !== outer ? `${outer} (${inner})` : outer;
+}
+
 export async function apiClient(
   path: string,
   options?: RequestInit & { workspaceId?: string },
@@ -252,7 +261,11 @@ export async function apiClient(
     });
   } catch (err) {
     if (isNetworkFailure(err)) {
-      throw new NetworkError();
+      // Name the host + underlying cause (AIT-88) — the bare copy made
+      // network failures undiagnosable in nightly logs.
+      throw new NetworkError(
+        `Could not connect to HookMyApp API (${new URL(baseUrl).host}): ${describeFetchError(err)}. Check your internet connection or try again later.`,
+      );
     }
     throw err;
   }
