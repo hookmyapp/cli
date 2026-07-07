@@ -3,13 +3,13 @@ import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { runCli } from '../helpers/runCli.js';
 import { seedSession } from '../helpers/seedSession.js';
-import { tmpHome } from '../helpers/tmpHome.js';
+import { tmpHome, cliConfigDir } from '../helpers/tmpHome.js';
 
 describe('auth commands', () => {
   describe('happy path (logged in)', () => {
     it('logout deletes credentials.json', async () => {
       const session = await seedSession();
-      const credsPath = path.join(session.home, '.hookmyapp', 'credentials.json');
+      const credsPath = path.join(cliConfigDir(session.home), 'credentials.json');
       await access(credsPath); // exists before
       const { exitCode } = await runCli(['logout'], { home: session.home });
       expect(exitCode).toBe(0);

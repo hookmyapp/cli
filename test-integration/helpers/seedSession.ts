@@ -2,7 +2,7 @@ import { copyFile, writeFile, chmod } from 'node:fs/promises';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { tmpHome } from './tmpHome.js';
+import { tmpHome, cliConfigDir } from './tmpHome.js';
 import { runCli } from './runCli.js';
 import { HOOKMYAPP_API_URL } from './env.js';
 
@@ -54,14 +54,14 @@ export async function seedSession(opts?: {
     );
   }
   const home = await tmpHome();
-  const credsDest = path.join(home, '.hookmyapp', 'credentials.json');
+  const credsDest = path.join(cliConfigDir(home), 'credentials.json');
   await copyFile(SHARED_CREDS_PATH, credsDest);
   await chmod(credsDest, 0o600);
 
   let activeWorkspaceId = opts?.workspaceId;
   if (activeWorkspaceId) {
     await writeFile(
-      path.join(home, '.hookmyapp', 'config.json'),
+      path.join(cliConfigDir(home), 'config.json'),
       JSON.stringify({ activeWorkspaceId }) + '\n',
     );
   } else if (!opts?.skipActiveWorkspace) {

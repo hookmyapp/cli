@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runCli } from '../helpers/runCli.js';
 import { seedSession } from '../helpers/seedSession.js';
-import { tmpHome } from '../helpers/tmpHome.js';
+import { tmpHome, cliConfigDir } from '../helpers/tmpHome.js';
 
 const RUN_ID = randomUUID().slice(0, 8);
 const wsName = (label: string): string => `cli-it-${RUN_ID}-${label}`;
@@ -32,7 +32,7 @@ describe('workspace commands', () => {
       const name = wsName('new');
       const { exitCode } = await runCli(['workspace', 'new', name], { home: session.home });
       expect(exitCode).toBe(0);
-      const cfgPath = path.join(session.home, '.hookmyapp', 'config.json');
+      const cfgPath = path.join(cliConfigDir(session.home), 'config.json');
       const cfg = JSON.parse(await readFile(cfgPath, 'utf-8'));
       expect(cfg.activeWorkspaceId).toBeTruthy();
 
