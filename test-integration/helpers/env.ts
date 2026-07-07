@@ -21,6 +21,8 @@ export function assertEnv(): RequiredEnv {
   return Object.fromEntries(REQUIRED.map((k) => [k, process.env[k]!])) as RequiredEnv;
 }
 
-export const HOOKMYAPP_API_URL = 'http://localhost:4312';
+// Honor a caller-supplied API URL (nightly.yml points this at staging);
+// default to the local docker backend for the local integration profile.
+export const HOOKMYAPP_API_URL = process.env.HOOKMYAPP_API_URL ?? 'http://localhost:4312';
 export const HOOKMYAPP_WORKOS_CLIENT_ID =
   process.env.HOOKMYAPP_WORKOS_CLIENT_ID ?? 'client_01KM5S4CGX9M2M2P63JTA6AFEH';
