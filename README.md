@@ -179,6 +179,41 @@ VERIFY_TOKEN=...
 These are the real-channel key names. A `channels env` block has no `PORT`
 line; the sandbox block does.
 
+## Customers (SaaS Mode)
+
+Run messaging for your own customers: create a customer, send them an
+onboarding link, and their channel appears in your organization the moment
+they connect.
+
+```bash
+hookmyapp customers list                                   # all customers
+hookmyapp customers new "Acme Corp" --external-id crm-123  # create a customer
+hookmyapp customers use "Acme Corp"                        # make it the active workspace
+hookmyapp customers current                                # show the active customer
+
+hookmyapp customers onboarding-links create --label "Acme" --channel-type whatsapp
+hookmyapp customers onboarding-links list
+```
+
+`onboarding-links create` prints the connect URL to send your customer.
+Links stay listed in the dashboard (Org → Onboarding), so you can copy them
+again later.
+
+Once the customer's channel is connected, every channel command works on it —
+switch with `customers use` or pass `--workspace <ws_id>`:
+
+```bash
+hookmyapp customers use "Acme Corp"
+hookmyapp channels list
+hookmyapp channels env ch_xxxxxxxx --write .env
+```
+
+Move a channel between workspaces or customers in the same organization:
+
+```bash
+hookmyapp channels move ch_xxxxxxxx "Acme Corp"   # target by name or ws_ id
+```
+
 ## JSON output and global flags
 
 Four global flags apply to every command:
