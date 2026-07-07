@@ -418,7 +418,12 @@ export async function runBootstrapCodeExchange(
       body: JSON.stringify({ code }),
     });
   } catch (err) {
-    if (isNetworkFailure(err)) throw new NetworkError();
+    if (isNetworkFailure(err)) {
+      const { describeFetchError } = await import('../api/client.js');
+      throw new NetworkError(
+        `Could not connect to HookMyApp API (${new URL(baseUrl).host}): ${describeFetchError(err)}. Check your internet connection or try again later.`,
+      );
+    }
     throw err;
   }
   if (!res.ok) throw await mapApiError(res);
@@ -726,8 +731,9 @@ export function loginCommand(program: Command): void {
           // Name the host that actually failed + keep the cause — the default
           // copy blamed "HookMyApp API" and hid the underlying error, which
           // made the nightly failures undiagnosable (AIT-88).
+          const { describeFetchError } = await import('../api/client.js');
           throw new NetworkError(
-            `Could not connect to the sign-in service (api.workos.com): ${err instanceof Error ? err.message : String(err)}. Check your internet connection or try again later.`,
+            `Could not connect to the sign-in service (api.workos.com): ${describeFetchError(err)}. Check your internet connection or try again later.`,
           );
         }
 
