@@ -120,9 +120,9 @@ COMMON COMMANDS:
   login             Browser sign-in + workspace picker and next-steps guide
   channels connect  Connect a channel via Meta OAuth (WhatsApp or Instagram)
   channels list     List your connected channels
-  channels env      Print or write a channel's .env (gateway URL + access token)
-  channels token    Print a channel's gateway access token (hmat_…)
-  channels listen   Stream a real channel's Meta webhooks to your local server
+  channels env      Print or write channel env values
+  channels token    Print channel token
+  channels listen   Send channel messages to your local server while it runs
   sandbox start     Create or resume a sandbox session (tunnel + credentials)
   sandbox listen    Stream Meta webhooks to your local server through a sandbox tunnel
   sandbox send      Send a test message via sandbox-proxy

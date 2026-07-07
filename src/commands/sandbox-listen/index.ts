@@ -288,7 +288,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
     )
     .argument(
       '[identifier]',
-      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+      'Positional shape-detected: phone | @username | ssn_XXXXXXXX',
     )
     .option(
       '--port <n>',
@@ -297,7 +297,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
       3000,
     )
     .option('--path <p>', 'Webhook path on your app', '/webhook')
-    .option('--phone <e164>', 'Select WhatsApp session by phone')
+    .option('--phone <phone>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <id>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--verbose', 'Print full request/response bodies', false)
@@ -368,7 +368,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
     `
 EXAMPLES:
   $ hookmyapp sandbox listen
-  $ hookmyapp sandbox listen --phone +15551234567 --port 3000
+  $ hookmyapp sandbox listen --phone 15551234567 --port 3000
   $ hookmyapp sandbox listen --username @ordvir
   $ hookmyapp sandbox listen --path /webhook --verbose
   $ hookmyapp sandbox listen --session ssn_POWomFvq

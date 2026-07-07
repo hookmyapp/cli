@@ -200,6 +200,15 @@ describe('pickSession — identifierArg positional (D3)', () => {
     expect(result.id).toBe('ssn_WA000001');
   });
 
+  it('bare phone positional resolves to WA session', async () => {
+    const result = await pickSession({
+      sessions: [wa, ig],
+      identifierArg: '15551234567',
+      isHuman: false,
+    });
+    expect(result.id).toBe('ssn_WA000001');
+  });
+
   it('@handle positional resolves to IG session', async () => {
     const result = await pickSession({
       sessions: [wa, ig],
@@ -239,15 +248,6 @@ describe('pickSession — identifierArg positional (D3)', () => {
     ).rejects.toThrow(/Conflicting selectors/);
   });
 
-  it('bare digits positional → sharp suggestion', async () => {
-    await expect(
-      pickSession({
-        sessions: [wa],
-        identifierArg: '15551234567',
-        isHuman: false,
-      }),
-    ).rejects.toThrow(/Did you mean \+15551234567/);
-  });
 });
 
 describe('pickSession — alwaysShowPicker (sandbox send)', () => {

@@ -34,7 +34,7 @@ export type { Channel, ChannelDetail };
 /**
  * Resolve a CLI channel reference (D3 — shape-detected positional) to a parsed
  * Channel. Accepted shapes:
- *   +E164          → WA channel by whatsappDisplayPhoneNumber
+ *   phone          → WA channel by whatsappDisplayPhoneNumber, with or without leading +
  *   @handle        → IG channel by instagramUsername
  *   ch_XXXXXXXX    → exact publicId match
  *
@@ -264,7 +264,7 @@ export async function runChannelsConnect(
  * Exported handler for `hookmyapp channels list` (Task B3).
  *
  * Type-aware human-table render: IG rows show `@handle`, WA rows show
- * `+phone`. Columns are `Type`, `Identifier`, `Channel ID`, `Forwarding`.
+ * phone number. Columns are `Type`, `Identifier`, `Channel ID`, `Forwarding`.
  * JSON mode emits the parsed Channel[] verbatim (wire field names preserved
  * for scripts). Bypasses `output(...)` and writes directly to
  * `process.stdout.write` so tests can spy on exact bytes (see
@@ -342,7 +342,7 @@ export async function runChannelsShow(
     console.log(`Display name: ${detail.instagramProfileName ?? '(none)'}`);
   }
   console.log(`Forwarding: ${detail.forwardingEnabled ? 'on' : 'off'}`);
-  console.log(`Webhook URL: ${detail.webhookUrl ?? '(uses CLI tunnel)'}`);
+  console.log(`Webhook URL: ${detail.webhookUrl ?? '(not set)'}`);
   if (detail.whatsappBusinessName) console.log(`Business: ${detail.whatsappBusinessName}`);
 }
 
@@ -466,7 +466,7 @@ export function registerChannelsCommand(program: Command): void {
   const channels = program.command('channels').description('Manage channels (WhatsApp & Instagram)');
 
   // `hookmyapp channels listen` — spec 2026-05-15. Mounts under the existing
-  // plural parent (D10): real-channel CLI tunnel mirroring `sandbox listen`.
+  // plural parent (D10): real-channel local listener mirroring `sandbox listen`.
   registerChannelsListenCommand(channels, program);
 
   // `hookmyapp channels logs` — spec 2026-05-20. Read-only delivery history,
@@ -483,7 +483,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsShow = channels
     .command('show')
     .description('Show channel details')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .action(async (channelRef: string) => {
       await runChannelsShow(channelRef, { json: !!program.opts().json });
     });
@@ -510,7 +510,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsDisconnect = channels
     .command('disconnect')
     .description('Disconnect a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .action(async (channelRef: string) => {
       await runChannelsDisconnect(channelRef);
     });
@@ -518,7 +518,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsEnable = channels
     .command('enable')
     .description('Enable forwarding for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .action(async (channelRef: string) => {
       await runChannelsEnable(channelRef, !!program.opts().json);
     });
@@ -526,7 +526,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsDisable = channels
     .command('disable')
     .description('Disable forwarding for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .action(async (channelRef: string) => {
       await runChannelsDisable(channelRef, !!program.opts().json);
     });
@@ -534,7 +534,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsMove = channels
     .command('move')
     .description('Move a channel to another workspace or customer in this organization')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .argument('<target>', 'Target workspace/customer publicId (ws_xxxxxxxx) or name')
     .action(async (channelRef: string, targetRef: string) => {
       await runChannelsMove(channelRef, targetRef, !!program.opts().json);
@@ -544,7 +544,7 @@ export function registerChannelsCommand(program: Command): void {
     .command('meta-retry')
     .description('Enable or disable Meta webhook retries for a channel')
     .argument('<mode>', '"on" or "off" (off = forwarder always acks Meta 200)')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .action(async (mode: string, channelRef: string) => {
       await runChannelsMetaRetry(mode, channelRef, !!program.opts().json);
     });
@@ -554,7 +554,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsEnv = channels
     .command('env')
     .description('Pull env values for a channel and optionally write to .env')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .option(
       '--write [path]',
       'Upsert credentials into a .env file (default ./.env). Replaces existing WHATSAPP_* keys, preserves everything else.',
@@ -570,9 +570,9 @@ export function registerChannelsCommand(program: Command): void {
   const channelsToken = channels
     .command('token')
     .description(
-      "Print the channel's HookMyApp gateway access token (hmat_…) — the bearer you send to the gateway in place of the real Meta token.",
+      'Print the channel token used for message sends.',
     )
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .option('--rotate', 'Revoke the current token and issue a new one, then print it')
     .action(async function (this: Command, channelRef: string, opts: { rotate?: boolean }) {
       await runChannelToken(channelRef, this, opts.rotate ?? false);
@@ -581,19 +581,19 @@ export function registerChannelsCommand(program: Command): void {
   const channelsHealth = channels
     .command('health')
     .description('Health check for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .action(async (channelRef: string) => {
       await runChannelHealth(channelRef, { human: !program.opts().json });
     });
 
   const channelsWebhook = channels
     .command('webhook')
-    .description("Manage a channel's configured webhook URL");
+    .description('Manage the webhook URL for a channel');
 
   const channelsWebhookShow = channelsWebhook
     .command('show')
     .description('Show the configured webhook URL for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .action(async (channelRef: string) => {
       await runChannelWebhookShow(channelRef, { json: !!program.opts().json });
     });
@@ -601,7 +601,7 @@ export function registerChannelsCommand(program: Command): void {
   const channelsWebhookSet = channelsWebhook
     .command('set')
     .description('Set the configured webhook URL for a channel')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .option('--url <url>', 'Webhook URL')
     .option('--verify-token <token>', 'Verify token (auto-generated if omitted)')
     .action(async (channelRef: string, opts: WebhookSetOptions) => {
@@ -610,8 +610,8 @@ export function registerChannelsCommand(program: Command): void {
 
   const channelsWebhookClear = channelsWebhook
     .command('clear')
-    .description('Clear the webhook URL (revert to the HookMyApp CLI tunnel)')
-    .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or +<phone> or @<username>')
+    .description('Clear the webhook URL')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .action(async (channelRef: string) => {
       await runChannelWebhookClear(channelRef, { json: !!program.opts().json });
     });
@@ -710,9 +710,7 @@ EXAMPLES:
   addExamples(
     channelsToken,
     `
-Prints the channel's HookMyApp gateway access token (hmat_…) in full — the
-bearer you send to the gateway in place of the real Meta token. The token is
-yours to read any time; the real upstream Meta token is never exposed.
+Prints the channel token used for message sends.
 
 Use --rotate to revoke the current token and issue a new one. The old token
 stops working immediately, so update your integration with the printed value.

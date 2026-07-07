@@ -48,9 +48,15 @@ const ig = {
 describe('resolveChannel — shape-detected positional', () => {
   beforeEach(() => vi.mocked(apiClient).mockReset());
 
-  it('+phone narrows to WA channel by whatsappDisplayPhoneNumber', async () => {
+  it('phone narrows to WA channel by whatsappDisplayPhoneNumber', async () => {
     vi.mocked(apiClient).mockResolvedValueOnce([wa, ig]);
     const out = await resolveChannel('+15551234567');
+    expect(out.id).toBe('ch_WAaaaaaa');
+  });
+
+  it('bare phone narrows to WA channel by whatsappDisplayPhoneNumber', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([wa, ig]);
+    const out = await resolveChannel('15551234567');
     expect(out.id).toBe('ch_WAaaaaaa');
   });
 

@@ -94,7 +94,7 @@ export async function runChannelWebhookClear(
   output({ status: 'cleared' }, { json: !!opts.json, kind: 'mutation' });
   if (!opts.json) {
     console.log(
-      `✓ Webhook URL cleared for ${channelLabel(channel)} (now uses CLI tunnel)`,
+      `✓ Webhook URL cleared for ${channelLabel(channel)}`,
     );
   }
 }

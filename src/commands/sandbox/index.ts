@@ -105,9 +105,9 @@ export function registerSandboxCommand(program: Command): void {
     .description('Delete a sandbox session')
     .argument(
       '[identifier]',
-      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+      'Positional shape-detected: phone | @username | ssn_XXXXXXXX',
     )
-    .option('--phone <e164>', 'Select WhatsApp session by phone')
+    .option('--phone <phone>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('-y, --yes', 'Skip confirmation')
@@ -134,7 +134,7 @@ export function registerSandboxCommand(program: Command): void {
     sandboxStop,
     `EXAMPLES:
   $ hookmyapp sandbox stop
-  $ hookmyapp sandbox stop --phone +15551234567
+  $ hookmyapp sandbox stop --phone 15551234567
   $ hookmyapp sandbox stop --username @ordvir
   $ hookmyapp sandbox stop --session ssn_POWomFvq --yes`,
   );
@@ -144,9 +144,9 @@ export function registerSandboxCommand(program: Command): void {
     .description('Print or write your sandbox .env values')
     .argument(
       '[identifier]',
-      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+      'Positional shape-detected: phone | @username | ssn_XXXXXXXX',
     )
-    .option('--phone <e164>', 'Select WhatsApp session by phone')
+    .option('--phone <phone>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--write [path]', 'Write to file (default ./.env)')
@@ -179,7 +179,7 @@ export function registerSandboxCommand(program: Command): void {
     sandboxEnv,
     `EXAMPLES:
   $ hookmyapp sandbox env
-  $ hookmyapp sandbox env --phone +15551234567 --write .env
+  $ hookmyapp sandbox env --phone 15551234567 --write .env
   $ hookmyapp sandbox env --username @ordvir --write
   $ hookmyapp sandbox env --session ssn_POWomFvq --json`,
   );
@@ -189,9 +189,9 @@ export function registerSandboxCommand(program: Command): void {
     .description('Send a test message via the shared sandbox-proxy')
     .argument(
       '[identifier]',
-      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+      'Positional shape-detected: phone | @username | ssn_XXXXXXXX',
     )
-    .option('--phone <e164>', 'Select WhatsApp session by phone')
+    .option('--phone <phone>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--message <text>', 'Message body')
@@ -217,7 +217,7 @@ export function registerSandboxCommand(program: Command): void {
   addExamples(
     sandboxSend,
     `EXAMPLES:
-  $ hookmyapp sandbox send --phone +15551234567 --message "hi"
+  $ hookmyapp sandbox send --phone 15551234567 --message "hi"
   $ hookmyapp sandbox send --username @ordvir --message "hello"
   $ hookmyapp sandbox send --session ssn_POWomFvq --message "ack"`,
   );
@@ -227,9 +227,9 @@ export function registerSandboxCommand(program: Command): void {
     .description('List recent webhook deliveries for a sandbox session')
     .argument(
       '[identifier]',
-      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+      'Positional shape-detected: phone | @username | ssn_XXXXXXXX',
     )
-    .option('--phone <e164>', 'Select WhatsApp session by phone')
+    .option('--phone <phone>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--limit <n>', 'Number of deliveries (1-100, default 50)')
@@ -261,7 +261,7 @@ export function registerSandboxCommand(program: Command): void {
     sandboxLogs,
     `EXAMPLES:
   $ hookmyapp sandbox logs --username @ordvir
-  $ hookmyapp sandbox logs --phone +15551234567 --limit 10
+  $ hookmyapp sandbox logs --phone 15551234567 --limit 10
   $ hookmyapp sandbox logs --username @ordvir --follow
   $ hookmyapp sandbox logs --username @ordvir --json | jq`,
   );
@@ -275,9 +275,9 @@ export function registerSandboxCommand(program: Command): void {
     .description('Show the current webhook URL on a sandbox session')
     .argument(
       '[identifier]',
-      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+      'Positional shape-detected: phone | @username | ssn_XXXXXXXX',
     )
-    .option('--phone <e164>', 'Select WhatsApp session by phone')
+    .option('--phone <phone>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--json', 'Machine-readable output')
@@ -292,7 +292,7 @@ export function registerSandboxCommand(program: Command): void {
   addExamples(
     webhookShow,
     `EXAMPLES:
-  $ hookmyapp sandbox webhook show --phone +15551234567
+  $ hookmyapp sandbox webhook show --phone 15551234567
   $ hookmyapp sandbox webhook show --username @ordvir
   $ hookmyapp sandbox webhook show --session ssn_POWomFvq`,
   );
@@ -302,9 +302,9 @@ export function registerSandboxCommand(program: Command): void {
     .description('Point this sandbox session at a custom webhook URL')
     .argument(
       '[identifier]',
-      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+      'Positional shape-detected: phone | @username | ssn_XXXXXXXX',
     )
-    .option('--phone <e164>', 'Select WhatsApp session by phone')
+    .option('--phone <phone>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--url <url>', 'Webhook URL')
@@ -326,7 +326,7 @@ export function registerSandboxCommand(program: Command): void {
   addExamples(
     webhookSet,
     `EXAMPLES:
-  $ hookmyapp sandbox webhook set --phone +15551234567 --url https://my.example/hook
+  $ hookmyapp sandbox webhook set --phone 15551234567 --url https://my.example/hook
   $ hookmyapp sandbox webhook set --username @ordvir --url https://my.example/hook
   $ hookmyapp sandbox webhook set --session ssn_POWomFvq --url https://my.example/hook`,
   );
@@ -334,13 +334,13 @@ export function registerSandboxCommand(program: Command): void {
   const webhookClear = sandboxWebhook
     .command('clear')
     .description(
-      'Clear a custom webhook URL on a sandbox session (revert to HookMyApp CLI tunnel)',
+      'Clear a custom webhook URL on a sandbox session',
     )
     .argument(
       '[identifier]',
-      'Positional shape-detected: +phone | @username | ssn_XXXXXXXX',
+      'Positional shape-detected: phone | @username | ssn_XXXXXXXX',
     )
-    .option('--phone <e164>', 'Select WhatsApp session by phone')
+    .option('--phone <phone>', 'Select WhatsApp session by phone')
     .option('--username <handle>', 'Select Instagram session by @handle')
     .option('--session <ssn_X>', 'Select any session by id (ssn_XXXXXXXX)')
     .option('--json', 'Machine-readable output')
@@ -355,7 +355,7 @@ export function registerSandboxCommand(program: Command): void {
   addExamples(
     webhookClear,
     `EXAMPLES:
-  $ hookmyapp sandbox webhook clear --phone +15551234567
+  $ hookmyapp sandbox webhook clear --phone 15551234567
   $ hookmyapp sandbox webhook clear --username @ordvir`,
   );
 
@@ -372,7 +372,7 @@ export function registerSandboxCommand(program: Command): void {
   addExamples(
     sandboxWebhook,
     `EXAMPLES:
-  $ hookmyapp sandbox webhook show --phone +15551234567
+  $ hookmyapp sandbox webhook show --phone 15551234567
   $ hookmyapp sandbox webhook set --username @ordvir --url https://my.example/hook
   $ hookmyapp sandbox webhook clear --session ssn_POWomFvq`,
   );
