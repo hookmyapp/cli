@@ -271,7 +271,10 @@ export function registerWorkspaceCommand(program: Command): void {
         apiClient(`/workspaces/${workspaceId}`),
       ]);
       const listEntry = workspaces.find((w: any) => w.id === workspaceId);
-      const merged = { ...detail, role: listEntry?.role };
+      // Drop workosOrganizationId before display — internal AuthKit plumbing,
+      // same rule as stripInternalWorkspaceFields on the list path.
+      const { workosOrganizationId: _drop, ...detailPublic } = detail;
+      const merged = { ...detailPublic, role: listEntry?.role };
       if (!program.opts().json) {
         console.log(`Name:          ${merged.name}`);
         console.log(`ID:            ${merged.id}`);
