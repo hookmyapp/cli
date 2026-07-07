@@ -34,6 +34,11 @@ jobs:
         run: node build.mjs
       - name: Run nightly CLI login spec against staging
         env:
+          # HOOKMYAPP_ENV flips the WHOLE profile (API URL, app URL, and the
+          # staging WorkOS client id). The bare HOOKMYAPP_API_URL override
+          # left the device flow initiating with the PRODUCTION WorkOS client
+          # id against the staging API (AIT-88).
+          HOOKMYAPP_ENV: staging
           HOOKMYAPP_API_URL: https://staging-api.hookmyapp.com
           E2E_API_BASE_URL: https://staging-api.hookmyapp.com
           E2E_PROVISION_SECRET: ${{ secrets.E2E_PROVISION_SECRET }}

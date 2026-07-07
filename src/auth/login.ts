@@ -722,8 +722,13 @@ export function loginCommand(program: Command): void {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ client_id: getEffectiveWorkosClientId() }),
           });
-        } catch {
-          throw new NetworkError();
+        } catch (err) {
+          // Name the host that actually failed + keep the cause — the default
+          // copy blamed "HookMyApp API" and hid the underlying error, which
+          // made the nightly failures undiagnosable (AIT-88).
+          throw new NetworkError(
+            `Could not connect to the sign-in service (api.workos.com): ${err instanceof Error ? err.message : String(err)}. Check your internet connection or try again later.`,
+          );
         }
 
         if (!res.ok) {
