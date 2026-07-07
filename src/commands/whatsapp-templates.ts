@@ -107,15 +107,15 @@ export function registerWhatsappTemplates(whatsapp: Command): void {
     templates,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp templates list --channel +1555
-  $ hookmyapp whatsapp templates get hello_world --channel +1555
+  $ hookmyapp whatsapp templates list --channel 1555
+  $ hookmyapp whatsapp templates get hello_world --channel 1555
 `,
   );
 
   const list = templates
     .command('list')
     .description('List message templates')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--status <status>', 'Filter by status (e.g. APPROVED, PENDING, REJECTED)')
     .option('--category <category>', 'Filter by category (e.g. MARKETING, UTILITY)')
     .option('--limit <n>', 'Max templates to return')
@@ -127,7 +127,7 @@ EXAMPLES:
     .command('get')
     .description('Get a message template by name')
     .argument('<name>', 'Template name')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .action(async function (this: Command, name: string, opts: WaTemplatesGetOpts) {
       await runWhatsappTemplatesGet(opts, name, this);
     });
@@ -135,7 +135,7 @@ EXAMPLES:
   const create = templates
     .command('create')
     .description('Create a message template (complete --body JSON only)')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--body <json|@file|->', 'Complete Meta template body (verbatim)')
     .option('-d, --data <json|@file|->', 'Alias for --body')
     .action(async function (this: Command, opts: WaTemplatesCreateOpts) {
@@ -146,7 +146,7 @@ EXAMPLES:
     .command('delete')
     .description('Delete a message template by name')
     .argument('<name>', 'Template name')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .action(async function (this: Command, name: string, opts: WaTemplatesDeleteOpts) {
       await runWhatsappTemplatesDelete(opts, name, this);
     });
@@ -155,32 +155,32 @@ EXAMPLES:
     list,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp templates list --channel +1555
-  $ hookmyapp whatsapp templates list --channel +1555 --status APPROVED --json
+  $ hookmyapp whatsapp templates list --channel 1555
+  $ hookmyapp whatsapp templates list --channel 1555 --status APPROVED --json
 `,
   );
   addExamples(
     get,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp templates get hello_world --channel +1555
-  $ hookmyapp whatsapp templates get hello_world --channel +1555 --json
+  $ hookmyapp whatsapp templates get hello_world --channel 1555
+  $ hookmyapp whatsapp templates get hello_world --channel 1555 --json
 `,
   );
   addExamples(
     create,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp templates create --channel +1555 --body @template.json
-  $ hookmyapp whatsapp templates create --channel +1555 -d @template.json
+  $ hookmyapp whatsapp templates create --channel 1555 --body @template.json
+  $ hookmyapp whatsapp templates create --channel 1555 -d @template.json
 `,
   );
   addExamples(
     del,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp templates delete hello_world --channel +1555
-  $ hookmyapp whatsapp templates delete hello_world --channel +1555 --json
+  $ hookmyapp whatsapp templates delete hello_world --channel 1555
+  $ hookmyapp whatsapp templates delete hello_world --channel 1555 --json
 `,
   );
 }

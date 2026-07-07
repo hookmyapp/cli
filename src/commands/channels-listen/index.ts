@@ -255,7 +255,7 @@ export function registerChannelsListenCommand(
     .option('--path <p>', 'Webhook path on your app', '/webhook')
     .argument(
       '[channel]',
-      'Channel: ch_xxxxxxxx, +<phone>, or @<username>. If omitted, an interactive picker is shown.',
+      'Channel: ch_xxxxxxxx, phone number, or @<username>. If omitted, an interactive picker is shown.',
     )
     .option('--verbose', 'Print full request/response bodies', false)
     .option('--json', 'Machine-readable event log', false)

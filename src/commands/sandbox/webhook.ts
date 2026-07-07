@@ -3,7 +3,7 @@
 //
 // D3 contract: positional [identifier] is first-class. Shape-detected
 // via parseIdentifier in the unified picker (src/commands/sandbox/picker.ts).
-// Accepts +phone, @username, or ssn_XXXXXXXX.
+// Accepts phone, @username, or ssn_XXXXXXXX.
 
 import { input } from '@inquirer/prompts';
 import { apiClient } from '../../api/client.js';
@@ -74,7 +74,7 @@ export async function runSandboxWebhookShow(opts: BaseOpts): Promise<void> {
     return;
   }
   if (!url) {
-    console.log(`${sessionLabel(session)}: webhook URL not set (uses HookMyApp CLI tunnel)`);
+    console.log(`${sessionLabel(session)}: webhook URL not set`);
     return;
   }
   console.log(`${sessionLabel(session)}: ${url}`);
@@ -84,7 +84,7 @@ export async function runSandboxWebhookSet(opts: SetOpts): Promise<void> {
   const { session } = await pickForWebhook(opts, true);
   if (!opts.url) {
     throw new ValidationError(
-      '--url is required. Example: hookmyapp sandbox webhook set --phone +15551234567 --url https://example.com/webhook',
+      '--url is required. Example: hookmyapp sandbox webhook set --phone 15551234567 --url https://example.com/webhook',
     );
   }
   // Existing backend contract: PATCH /sandbox/sessions/:id/webhook-url with a

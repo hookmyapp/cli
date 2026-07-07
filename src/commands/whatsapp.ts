@@ -67,15 +67,15 @@ export function registerWhatsappMessages(whatsapp: Command): void {
     messages,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp messages send --channel +1555 --to +1444 --text "hi"
-  $ hookmyapp whatsapp messages read wamid.ABC --channel +1555
+  $ hookmyapp whatsapp messages send --channel 1555 --to +1444 --text "hi"
+  $ hookmyapp whatsapp messages read wamid.ABC --channel 1555
 `,
   );
 
   const send = messages
     .command('send')
     .description('Send a WhatsApp message (--text shortcut, or complete --body)')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--to <phone>', 'Recipient phone (E.164)')
     .option('--text <text>', 'Text body (shortcut for a text message)')
     .option('--body <json|@file|->', 'Complete Meta message body (verbatim)')
@@ -88,7 +88,7 @@ EXAMPLES:
     .command('read')
     .description('Mark a received WhatsApp message as read')
     .argument('<message-id>', 'WhatsApp message id (wamid.…)')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .action(async function (this: Command, messageId: string, opts: WaReadOpts) {
       await runWhatsappMessagesRead(opts, messageId, this);
     });
@@ -97,8 +97,8 @@ EXAMPLES:
     send,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp messages send --channel +1555 --to +1444 --text "hi"
-  $ hookmyapp whatsapp messages send --channel +1555 --body @msg.json
+  $ hookmyapp whatsapp messages send --channel 1555 --to +1444 --text "hi"
+  $ hookmyapp whatsapp messages send --channel 1555 --body @msg.json
 `,
   );
 
@@ -106,8 +106,8 @@ EXAMPLES:
     read,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp messages read wamid.ABC --channel +1555
-  $ hookmyapp whatsapp messages read wamid.ABC --channel +1555 --json
+  $ hookmyapp whatsapp messages read wamid.ABC --channel 1555
+  $ hookmyapp whatsapp messages read wamid.ABC --channel 1555 --json
 `,
   );
 }
@@ -125,10 +125,10 @@ export function registerWhatsappCommand(program: Command): Command {
 EXAMPLES:
   $ hookmyapp whatsapp --help
   $ hookmyapp wa --help
-  $ hookmyapp whatsapp messages send --channel +1555 --to +1444 --text "hi"
-  $ hookmyapp whatsapp templates list --channel +1555
-  $ hookmyapp whatsapp media upload --channel +1555 --file ./a.jpg
-  $ hookmyapp whatsapp profile get --channel +1555
+  $ hookmyapp whatsapp messages send --channel 1555 --to +1444 --text "hi"
+  $ hookmyapp whatsapp templates list --channel 1555
+  $ hookmyapp whatsapp media upload --channel 1555 --file ./a.jpg
+  $ hookmyapp whatsapp profile get --channel 1555
 `,
   );
 

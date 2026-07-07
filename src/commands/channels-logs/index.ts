@@ -175,7 +175,7 @@ export function registerChannelsLogsCommand(
 ): void {
   const logs = channels
     .command('logs')
-    .description("Read a channel's webhook delivery history");
+    .description('Read webhook delivery history for a channel');
 
   const logsList = logs
     .command('list')

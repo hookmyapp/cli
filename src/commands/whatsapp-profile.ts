@@ -83,15 +83,15 @@ export function registerWhatsappProfile(whatsapp: Command): void {
     profile,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp profile get --channel +1555
-  $ hookmyapp whatsapp profile update --channel +1555 --about "We ship fast"
+  $ hookmyapp whatsapp profile get --channel 1555
+  $ hookmyapp whatsapp profile update --channel 1555 --about "We ship fast"
 `,
   );
 
   const get = profile
     .command('get')
     .description('Get the business profile')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--fields <list>', `Comma-separated fields (default: ${DEFAULT_FIELDS})`)
     .action(async function (this: Command, opts: WaProfileGetOpts) {
       await runWhatsappProfileGet(opts, this);
@@ -100,7 +100,7 @@ EXAMPLES:
   const update = profile
     .command('update')
     .description('Update the business profile (builder flags, or complete --body)')
-    .option('--channel <ref>', 'Channel: +phone, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--about <text>', 'About text')
     .option('--description <text>', 'Description')
     .option('--address <text>', 'Address')
@@ -117,16 +117,16 @@ EXAMPLES:
     get,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp profile get --channel +1555
-  $ hookmyapp whatsapp profile get --channel +1555 --fields about,email
+  $ hookmyapp whatsapp profile get --channel 1555
+  $ hookmyapp whatsapp profile get --channel 1555 --fields about,email
 `,
   );
   addExamples(
     update,
     `
 EXAMPLES:
-  $ hookmyapp whatsapp profile update --channel +1555 --about "We ship fast"
-  $ hookmyapp whatsapp profile update --channel +1555 --website https://a.com --website https://b.com
+  $ hookmyapp whatsapp profile update --channel 1555 --about "We ship fast"
+  $ hookmyapp whatsapp profile update --channel 1555 --website https://a.com --website https://b.com
 `,
   );
 }

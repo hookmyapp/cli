@@ -3,7 +3,7 @@ import { apiClient } from '../api/client.js';
 import { isJsonMode } from '../output/format.js';
 import { resolveChannel } from './channels.js';
 
-/** Backend wire-shape for `GET /meta/channels/:publicId/token` (gateway model). */
+/** Backend wire-shape for `GET /meta/channels/:publicId/token`. */
 interface TokenSummary {
   token: string;
   tokenPrefix: string;
@@ -13,11 +13,9 @@ interface TokenSummary {
 /**
  * Canonical handler for `hookmyapp channels token <channel> [--rotate]`.
  *
- * Prints the channel's HookMyApp gateway access token (`hmat_…`) — the bearer
- * the customer sends to the gateway in place of the real Meta token. Every
- * connected channel is born with its access token, so one always exists and is
- * returned in FULL: it is the customer's to read any time (an access token, not
- * a write-once API key). The real upstream Meta token is never exposed.
+ * Prints the channel token (`hmat_...`) used for message sends. Every
+ * connected channel is born with its token, so one always exists and is
+ * returned in full.
  *
  * With `--rotate`, the current token is revoked and a fresh one is minted
  * atomically (`POST /meta/channels/:id/token/rotate`); the NEW token is then

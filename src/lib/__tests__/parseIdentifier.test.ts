@@ -3,9 +3,10 @@ import { parseIdentifier } from '../parseIdentifier.js';
 import { ValidationError } from '../../output/error.js';
 
 describe('parseIdentifier — shape detection', () => {
-  it('+E164 phone → { kind: "phone", value: digits-only }', () => {
+  it('phone → { kind: "phone", value: digits-only }', () => {
     expect(parseIdentifier('+972545434384')).toEqual({ kind: 'phone', value: '972545434384' });
     expect(parseIdentifier('+15551234567')).toEqual({ kind: 'phone', value: '15551234567' });
+    expect(parseIdentifier('15551234567')).toEqual({ kind: 'phone', value: '15551234567' });
   });
 
   it('@handle username → { kind: "username", value: handle-without-@ }', () => {
@@ -22,11 +23,6 @@ describe('parseIdentifier — shape detection', () => {
 
   it('ch_XXXXXXXX → { kind: "channelId", value: full publicId }', () => {
     expect(parseIdentifier('ch_POWomFvq')).toEqual({ kind: 'channelId', value: 'ch_POWomFvq' });
-  });
-
-  it('bare digits without + → ValidationError with phone suggestion', () => {
-    expect(() => parseIdentifier('972545434384')).toThrow(ValidationError);
-    expect(() => parseIdentifier('972545434384')).toThrow(/Did you mean \+972545434384/);
   });
 
   it('bare letters without @ → ValidationError with username suggestion', () => {
