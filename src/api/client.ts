@@ -9,6 +9,7 @@ import {
   ConflictError,
   RateLimitError,
   SessionWindowError,
+  FeatureDisabledError,
   UnexpectedError,
   AppError,
   type CliError,
@@ -120,6 +121,12 @@ export async function mapApiError(res: Response): Promise<CliError> {
     // message first" guidance.
     if (code === 'SESSION_WINDOW_CLOSED') {
       return new SessionWindowError(msg);
+    }
+    // Feature-availability rejections (e.g. INSTAGRAM_DISABLED) surface the
+    // server's message verbatim — "contact your workspace admin" would be
+    // wrong guidance for a feature the server has turned off.
+    if (code === 'INSTAGRAM_DISABLED') {
+      return new FeatureDisabledError(msg, code);
     }
     // Lazy-import to avoid a cycle with commands/workspace.ts
     const { readWorkspaceConfig } = await import('../commands/workspace.js');

@@ -216,6 +216,21 @@ export class SessionWindowError extends CliError {
 }
 
 /**
+ * 403 for a feature the server currently has disabled (e.g. a channel type
+ * whose connections are temporarily unavailable). Carries the server's own
+ * message verbatim — this is availability, not a permission problem, so the
+ * PermissionError "ask your workspace admin" guidance would mislead.
+ */
+export class FeatureDisabledError extends CliError {
+  static readonly severity = 'sev3' as const;
+  static readonly httpStatus = 403;
+  constructor(message: string, code: string) {
+    super(message, code, 403);
+    this.exitCode = 1;
+  }
+}
+
+/**
  * 426 Upgrade Required from the backend's ClientVersionInterceptor (RFC 9110
  * §15.5.16). Spec contract: server returns a structured payload with
  * `messages[]` listing the user-facing instructions and the exact upgrade

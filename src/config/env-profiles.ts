@@ -238,10 +238,9 @@ export function getEffectiveSandboxWhatsAppNumber(): string {
  *   local + staging → @hookmyappsandboxstaging
  *   production      → not yet provisioned — throws ConfigurationError
  *
- * Per project memory reference_sandbox_ig_account: production IG sandbox
- * handle is genuinely TBD. Shipping a placeholder would silently produce a
- * broken ig.me deep link that consumes a bind code that never gets matched.
- * Fail fast at the env-profile boundary.
+ * The production IG sandbox handle is not provisioned yet. Shipping a
+ * placeholder would silently produce a broken ig.me deep link that consumes
+ * a bind code that never gets matched. Fail fast at the env-profile boundary.
  */
 export function getEffectiveSandboxInstagramUsername(): string {
   const env = resolveEnv();
@@ -262,10 +261,8 @@ export function getEffectiveSandboxInstagramUsername(): string {
  *        - staging    → https://staging-sandbox.hookmyapp.com
  *        - production → https://sandbox.hookmyapp.com
  *
- * Staging and production target separate Cloud Run services as of Phase 120
- * (each in its own GCP project) AND separate sandbox WABAs under separate
- * Meta Apps: staging proxies to +972 55 704 6276 / WABA 1276334778010256,
- * production proxies to +1 737-237-0900 / WABA 1703736267434336.
+ * Staging and production are separate sandbox deployments with separate
+ * sandbox numbers, so the URL must match the selected environment.
  */
 /**
  * OPTIONAL surgical override of the gateway base URL (host + /meta + version) for
