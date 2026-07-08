@@ -47,6 +47,19 @@ test('list --json prints the credentials array', async () => {
   logSpy.mockRestore();
 });
 
+test('list human rows include the credential name', async () => {
+  apiClientMock.mockResolvedValue([
+    { publicId: 'ac_pub1', name: 'ci-bot', scopes: ['workspace.read'] },
+    { publicId: 'ac_pub2', name: null, scopes: ['workspace.read'] },
+  ]);
+  const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  await run(['credentials', 'list']);
+  const out = logSpy.mock.calls.flat().join('\n');
+  expect(out).toContain('ac_pub1  ci-bot  workspace.read');
+  expect(out).toContain('ac_pub2  (unnamed)  workspace.read');
+  logSpy.mockRestore();
+});
+
 test('revoke <id> -y DELETEs without prompting', async () => {
   apiClientMock.mockResolvedValue(undefined);
   await run(['credentials', 'revoke', 'ac_pub1', '-y']);

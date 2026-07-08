@@ -6,6 +6,8 @@ import { addExamples } from '../output/help.js';
 
 interface AgentCredentialRow {
   publicId: string;
+  /** Null for legacy keys created before names existed. */
+  name?: string | null;
   scopes?: string[];
 }
 
@@ -32,7 +34,7 @@ export function registerCredentialsCommand(program: Command): void {
         return;
       }
       for (const r of rows) {
-        console.log(`${r.publicId}  ${(r.scopes ?? []).join(', ')}`);
+        console.log(`${r.publicId}  ${r.name ?? '(unnamed)'}  ${(r.scopes ?? []).join(', ')}`);
       }
     });
 
