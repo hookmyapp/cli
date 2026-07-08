@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CliError, AuthError, NetworkError, ApiError, outputError } from '../output/error.js';
+import {
+  CliError,
+  AuthError,
+  NetworkError,
+  ApiError,
+  FeatureDisabledError,
+  exitCodeFor,
+  outputError,
+} from '../output/error.js';
 
 describe('error classes', () => {
   it('CliError stores userMessage, code, and optional statusCode', () => {
@@ -47,6 +55,13 @@ describe('error classes', () => {
     const err = new ApiError('Not found', 404);
     expect(err.code).toBe('API_ERROR');
     expect(err.statusCode).toBe(404);
+  });
+
+  it('FeatureDisabledError (e.g. INSTAGRAM_DISABLED 403) exits 3 like other 403s', () => {
+    const err = new FeatureDisabledError('Instagram is unavailable', 'INSTAGRAM_DISABLED');
+    expect(err.statusCode).toBe(403);
+    expect(err.exitCode).toBe(3);
+    expect(exitCodeFor(err)).toBe(3);
   });
 });
 
