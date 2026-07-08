@@ -30,6 +30,20 @@ describe('parseIdentifier — shape detection', () => {
     expect(() => parseIdentifier('ordvir')).toThrow(/Did you mean @ordvir/);
   });
 
+  it('malformed known-prefix id → points at the list command, NOT an IG-handle suggestion', () => {
+    expect(() => parseIdentifier('ch_DOESNOTEX')).toThrow(ValidationError);
+    expect(() => parseIdentifier('ch_DOESNOTEX')).toThrow(/malformed channel ID/);
+    expect(() => parseIdentifier('ch_DOESNOTEX')).toThrow(/channels list/);
+    expect(() => parseIdentifier('ch_DOESNOTEX')).not.toThrow(/Instagram handle/);
+    expect(() => parseIdentifier('ssn_toolongtobevalid')).toThrow(/malformed sandbox session ID/);
+    expect(() => parseIdentifier('ws_x')).toThrow(/workspace list/);
+    expect(() => parseIdentifier('wd_')).toThrow(/malformed delivery ID/);
+  });
+
+  it('unknown-prefix underscore input still gets the generic shape error', () => {
+    expect(() => parseIdentifier('zz_12345678')).toThrow(/not a recognized identifier shape/);
+  });
+
   it('empty string → ValidationError', () => {
     expect(() => parseIdentifier('')).toThrow(ValidationError);
   });

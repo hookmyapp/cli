@@ -1,4 +1,5 @@
 import { ValidationError } from '../output/error.js';
+import { cliCommandPrefix } from '../output/cli-self.js';
 
 export type IdentifierKind = 'phone' | 'username' | 'sessionId' | 'channelId';
 
@@ -11,6 +12,19 @@ export interface ParsedIdentifier {
    */
   value: string;
 }
+
+/**
+ * Known publicId prefixes → resource + list command. An input starting with
+ * one of these but failing the strict shape (wrong length/alphabet) is a
+ * malformed ID, not an Instagram handle — suggest the list command instead.
+ */
+const ID_PREFIX_HINTS: Record<string, { resource: string; listCmd: string }> = {
+  ch: { resource: 'channel', listCmd: 'channels list' },
+  ssn: { resource: 'sandbox session', listCmd: 'sandbox status' },
+  ws: { resource: 'workspace', listCmd: 'workspace list' },
+  wd: { resource: 'delivery', listCmd: 'channels logs list <channel>' },
+  ac: { resource: 'agent credential', listCmd: 'credentials list' },
+};
 
 const PHONE_RE = /^\+?\d{7,15}$/;
 const USERNAME_RE = /^@[A-Za-z0-9._]{1,32}$/;
@@ -48,6 +62,15 @@ export function parseIdentifier(raw: string): ParsedIdentifier {
   }
   if (CHANNEL_ID_RE.test(raw)) {
     return { kind: 'channelId', value: raw };
+  }
+  const prefix = raw.split('_', 1)[0];
+  const hint = raw.includes('_') ? ID_PREFIX_HINTS[prefix] : undefined;
+  if (hint) {
+    throw new ValidationError(
+      `"${raw}" looks like a malformed ${hint.resource} ID (expected ${prefix}_ followed by 8 letters/digits). ` +
+        `Run: ${cliCommandPrefix()} ${hint.listCmd}`,
+      'IDENTIFIER_UNRECOGNIZED_SHAPE',
+    );
   }
   if (BARE_LETTERS_RE.test(raw)) {
     throw new ValidationError(
