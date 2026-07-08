@@ -207,9 +207,17 @@ EXAMPLES:
           : 'default';
 
       if (isJsonMode(this)) {
-        // D7: the JSON `config show` envelope is a frozen {env, telemetry}
-        // contract.
-        console.log(JSON.stringify({ env, telemetry: telemetryActive }));
+        // Same resolved fields as the human view (env-var overrides win),
+        // additive over the original {env, telemetry} envelope.
+        console.log(
+          JSON.stringify({
+            env,
+            apiUrl: apiOverride ?? profile.apiUrl,
+            appUrl: appOverride ?? profile.appUrl,
+            workosClientId: workosOverride ?? profile.workosClientId,
+            telemetry: telemetryActive,
+          }),
+        );
       } else {
         console.log(`env:               ${env}`);
         console.log(`  source:          ${source}`);
