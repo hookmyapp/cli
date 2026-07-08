@@ -37,6 +37,12 @@ export interface WhatsAppChannel extends ChannelBase {
    */
   whatsappVerifiedName: string | null;
   whatsappQualityRating: string | null;
+  /**
+   * Signed gateway /media URL for the phone number's profile picture (the
+   * backend never puts the raw provider CDN URL on the wire). Absent on
+   * older backends — parser normalizes to null.
+   */
+  whatsappProfilePictureUrl: string | null;
 }
 
 export interface InstagramChannel extends ChannelBase {
@@ -127,6 +133,9 @@ export function parseChannelListItem(dto: unknown): Channel {
         malformed(id, 'WA channel: whatsappVerifiedName must be string or null');
       if (!isStringOrNull(d.whatsappQualityRating))
         malformed(id, 'WA channel: whatsappQualityRating must be string or null');
+      // Tolerate absent whatsappProfilePictureUrl (older backends omit it).
+      if (d.whatsappProfilePictureUrl !== undefined && !isStringOrNull(d.whatsappProfilePictureUrl))
+        malformed(id, 'WA channel: whatsappProfilePictureUrl must be string or null');
       return {
         ...base,
         type: 'whatsapp',
@@ -136,6 +145,10 @@ export function parseChannelListItem(dto: unknown): Channel {
         whatsappVerifiedName:
           d.whatsappVerifiedName === undefined ? null : (d.whatsappVerifiedName as string | null),
         whatsappQualityRating: d.whatsappQualityRating,
+        whatsappProfilePictureUrl:
+          d.whatsappProfilePictureUrl === undefined
+            ? null
+            : (d.whatsappProfilePictureUrl as string | null),
       };
     }
     case 'instagram': {
