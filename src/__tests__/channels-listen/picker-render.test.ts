@@ -24,6 +24,7 @@ function waNumber(over: Partial<WhatsAppChannel>): WhatsAppChannel {
     whatsappPhoneNumberId: 'pn_AAA',
     whatsappVerifiedName: null,
     whatsappQualityRating: null,
+    whatsappProfilePictureUrl: null,
     ...over,
   };
 }

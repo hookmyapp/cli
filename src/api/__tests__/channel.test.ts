@@ -60,6 +60,24 @@ describe('parseChannelListItem', () => {
     }
   });
 
+  it('carries whatsappProfilePictureUrl through when the wire provides it', () => {
+    const out = parseChannelListItem({
+      ...baseValidWa,
+      whatsappProfilePictureUrl: 'https://gateway.hookmyapp.com/media/signed',
+    });
+    expect(out.type).toBe('whatsapp');
+    if (out.type === 'whatsapp') {
+      expect(out.whatsappProfilePictureUrl).toBe('https://gateway.hookmyapp.com/media/signed');
+    }
+  });
+
+  it('normalizes absent whatsappProfilePictureUrl to null (older backends)', () => {
+    const out = parseChannelListItem(baseValidWa);
+    if (out.type === 'whatsapp') {
+      expect(out.whatsappProfilePictureUrl).toBeNull();
+    }
+  });
+
   it('tolerates unknown extras on the wire (forward-compat)', () => {
     expect(() =>
       parseChannelListItem({ ...baseValidWa, newBackendField: 'whatever' }),

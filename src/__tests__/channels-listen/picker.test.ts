@@ -39,6 +39,7 @@ function makeChannel(
     whatsappPhoneNumberId: null,
     whatsappVerifiedName: null,
     whatsappQualityRating: null,
+    whatsappProfilePictureUrl: null,
     ...overrides,
   };
 }
