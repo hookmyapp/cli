@@ -16,6 +16,8 @@ export type DeliveryDestination =
   | null;
 
 export interface DeliveryLog {
+  /** wd_ public id — the handle `channels logs show <id>` takes. */
+  publicId: string;
   receivedAt: string;
   sender: string | null;
   messageId: string | null;
@@ -41,6 +43,7 @@ export interface DeliveriesPage {
 export function cleanDeliveryLog(log: DeliveryLog): DeliveryLog {
   const destination = log.hookmyapp.destination;
   return {
+    publicId: log.publicId,
     receivedAt: log.receivedAt,
     sender: log.sender,
     messageId: log.messageId,

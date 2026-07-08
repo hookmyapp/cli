@@ -22,6 +22,7 @@ import type { DeliveryLog } from '../../commands/channels-logs/api.js';
 
 function deliveryLog(overrides: Partial<DeliveryLog> = {}): DeliveryLog {
   return {
+    publicId: 'wd_u9uElygL',
     receivedAt: new Date().toISOString(),
     sender: '+14155550100',
     messageId: 'wamid.test',
@@ -66,6 +67,7 @@ describe('channels logs list', () => {
     await run(['logs', 'list', 'ch_abc12345']);
 
     const combined = writes.join('');
+    expect(combined).toContain('wd_u9uElygL');
     expect(combined).toContain('+14155550100');
     expect(combined).toContain('Delivered to your app');
     expect(combined).toContain('text');
@@ -95,6 +97,7 @@ describe('channels logs list', () => {
     const parsed = JSON.parse(logs[0]);
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed).toHaveLength(1);
+    expect(parsed[0].publicId).toBe('wd_u9uElygL');
     expect(parsed[0].sender).toBe('+14155550100');
     expect(parsed[0].meta).toEqual({ hello: 'world' });
     expect(parsed[0].hookmyapp.statusText).toBe('Delivered to your app');

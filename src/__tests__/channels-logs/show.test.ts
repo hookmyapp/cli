@@ -20,6 +20,7 @@ import { registerChannelsLogsCommand } from '../../commands/channels-logs/index.
 import { ApiError, ValidationError } from '../../output/error.js';
 
 const DETAIL = {
+  publicId: 'wd_d1d1d1d1',
   receivedAt: '2026-05-20T11:58:00.000Z',
   sender: '+14155550100',
   messageId: 'wamid.m1',
