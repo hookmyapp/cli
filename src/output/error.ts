@@ -226,7 +226,9 @@ export class FeatureDisabledError extends CliError {
   static readonly httpStatus = 403;
   constructor(message: string, code: string) {
     super(message, code, 403);
-    this.exitCode = 1;
+    // Exit 3 — the taxonomy's 403 tier (same as PermissionError). Scripts can
+    // tell "the server said no" (3) apart from generic failure (1).
+    this.exitCode = 3;
   }
 }
 
