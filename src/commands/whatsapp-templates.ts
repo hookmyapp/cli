@@ -41,6 +41,10 @@ export async function runWhatsappTemplatesList(opts: WaTemplatesListOpts, cmd?: 
     return;
   }
   const rows: TemplateRow[] = Array.isArray(res?.data) ? res.data : [];
+  if (rows.length === 0) {
+    process.stdout.write('No templates yet.\n');
+    return;
+  }
   for (const t of rows) {
     process.stdout.write(`${t.name ?? ''}  ${t.status ?? ''}  ${t.category ?? ''}\n`);
   }

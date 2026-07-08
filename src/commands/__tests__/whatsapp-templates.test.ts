@@ -20,6 +20,19 @@ describe('whatsapp templates', () => {
     expect(call.path).toContain('{waba_id}/message_templates');
   });
 
+  it('prints an empty-state line in human mode when there are no templates', async () => {
+    const writes: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+
+    await runWhatsappTemplatesList({ channel: '+1' });
+
+    expect(writes.join('')).toContain('No templates yet.');
+    spy.mockRestore();
+  });
+
   it('appends list filters to the query', async () => {
     await runWhatsappTemplatesList({ channel: '+1', status: 'APPROVED', limit: '5' });
     const call = vi.mocked(gatewayRequest).mock.calls[0][0];
