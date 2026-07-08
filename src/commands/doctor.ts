@@ -1,6 +1,8 @@
 import type { Command } from 'commander';
 import { spawnSync } from 'node:child_process';
 import { readCredentials } from '../auth/store.js';
+import { apiClient } from '../api/client.js';
+import { AuthError, PermissionError } from '../output/error.js';
 import { isJsonMode } from '../output/format.js';
 import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import { readWorkspaceConfig } from './workspace.js';
@@ -53,20 +55,22 @@ export async function collectDoctorReport(
   // Credentials-present alone is a false positive when the stored token is
   // expired or belongs to another env (2026-07-07 audit: doctor said OK, the
   // next command 401'd). When network checks are on, prove the token works
-  // against the ACTIVE env with a real authenticated call.
+  // against the ACTIVE env through apiClient — the SAME path every real
+  // command uses, including the token-refresh attempt. A raw fetch with the
+  // stored accessToken false-FAILs on tokens that are merely expired but
+  // refreshable (2026-07-08 audit).
   let authDetail = loggedIn ? 'credentials present' : 'not logged in — run: hookmyapp login';
   if (loggedIn && opts.checkNetwork !== false) {
     try {
-      const r = await fetch(`${getEffectiveApiUrl()}/workspaces`, {
-        headers: { Authorization: `Bearer ${creds!.accessToken}` },
-      });
-      if (r.status === 401 || r.status === 403) {
+      await apiClient('/workspaces');
+      authDetail = 'credentials valid for this env';
+    } catch (err) {
+      if (err instanceof AuthError || err instanceof PermissionError) {
         loggedIn = false;
         authDetail = 'credentials present but rejected by this env — run: hookmyapp login';
-      } else {
-        authDetail = 'credentials valid for this env';
       }
-    } catch { /* network flake — leave the presence-based verdict */ }
+      // Anything else (network flake, 5xx) — leave the presence-based verdict.
+    }
   }
   // Informational: not-logged-in is reported, not a hard prereq failure.
   checks.push({ id: 'auth', label: 'Logged in', ok: loggedIn, hard: false, detail: authDetail });
