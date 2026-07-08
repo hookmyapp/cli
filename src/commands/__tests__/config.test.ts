@@ -33,7 +33,7 @@ describe('config show --json (D7)', () => {
     vi.mocked(getPersistedTelemetry).mockReturnValue(null);
   });
 
-  test('When --json, then output is collapsed to {env, telemetry}', async () => {
+  test('When --json, then output carries the same resolved fields as human mode', async () => {
     const program = new Command();
     program.option('--json');
     registerConfigCommand(program);
@@ -41,9 +41,17 @@ describe('config show --json (D7)', () => {
 
     const output = (stdoutSpy.mock.calls[0][0] as string).trim();
     const parsed = JSON.parse(output);
-    expect(Object.keys(parsed).sort()).toEqual(['env', 'telemetry']);
+    expect(Object.keys(parsed).sort()).toEqual([
+      'apiUrl',
+      'appUrl',
+      'env',
+      'telemetry',
+      'workosClientId',
+    ]);
     expect(typeof parsed.env).toBe('string');
-    expect(typeof parsed.telemetry).toBe('string');
+    expect(parsed.apiUrl).toMatch(/^https?:\/\//);
+    expect(parsed.appUrl).toMatch(/^https?:\/\//);
+    expect(typeof parsed.workosClientId).toBe('string');
     expect(['on', 'off']).toContain(parsed.telemetry);
   });
 });
