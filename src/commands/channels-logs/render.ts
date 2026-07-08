@@ -12,6 +12,37 @@ function bodyPreview(meta: unknown): string {
   return `"${text.length > 80 ? `${text.slice(0, 80)}...` : text}"`;
 }
 
+/**
+ * Meta status-only webhooks (delivered/sent/read receipts) carry no sender —
+ * dig entry[].changes[].value.statuses[].status out of the payload so the
+ * row reads as e.g. "(status: delivered)" instead of "(unknown)".
+ */
+function statusWebhookStatus(meta: unknown): string | null {
+  if (typeof meta !== 'object' || meta === null) return null;
+  const entry = (meta as Record<string, unknown>).entry;
+  if (!Array.isArray(entry)) return null;
+  for (const e of entry) {
+    const changes = (e as Record<string, unknown> | null)?.changes;
+    if (!Array.isArray(changes)) continue;
+    for (const change of changes) {
+      const value = (change as Record<string, unknown> | null)?.value as
+        | Record<string, unknown>
+        | undefined;
+      const statuses = value?.statuses;
+      if (!Array.isArray(statuses)) continue;
+      const status = (statuses[0] as Record<string, unknown> | undefined)?.status;
+      if (typeof status === 'string' && status.length > 0) return status;
+    }
+  }
+  return null;
+}
+
+function senderLabel(log: DeliveryLog): string {
+  if (log.sender) return log.sender;
+  const status = statusWebhookStatus(log.meta);
+  return status ? `(status: ${status})` : '(unknown)';
+}
+
 function destinationLine(log: DeliveryLog): string | null {
   const destination = log.hookmyapp.destination;
   if (!destination) return null;
@@ -29,7 +60,7 @@ function appResponseText(log: DeliveryLog): string {
 
 export function printSummaryRow(log: DeliveryLog): void {
   const time = new Date(log.receivedAt).toLocaleString();
-  const sender = log.sender ?? '(unknown)';
+  const sender = senderLabel(log);
   const response =
     log.hookmyapp.appResponse.status === null
       ? ''
@@ -39,7 +70,7 @@ export function printSummaryRow(log: DeliveryLog): void {
             : ` in ${log.hookmyapp.appResponse.durationMs}ms`
         }`;
   process.stdout.write(
-    `${time}  ${sender}  ${log.hookmyapp.statusText}${response}  ${bodyPreview(log.meta)}\n`,
+    `${log.publicId}  ${time}  ${sender}  ${log.hookmyapp.statusText}${response}  ${bodyPreview(log.meta)}\n`,
   );
 }
 
@@ -48,7 +79,7 @@ export function renderDeliveryDetail(
   _opts: { verbose?: boolean } = {},
 ): string {
   const lines = [
-    `${log.receivedAt}  ${log.sender ?? '(unknown)'}  ${log.hookmyapp.statusText}`,
+    `${log.publicId}  ${log.receivedAt}  ${senderLabel(log)}  ${log.hookmyapp.statusText}`,
   ];
   const destination = destinationLine(log);
   if (destination) lines.push(destination);

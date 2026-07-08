@@ -46,6 +46,7 @@ const ig: InstagramSandboxSession = {
 
 function makeDelivery(overrides: Partial<DeliveryLog> = {}): DeliveryLog {
   return {
+    publicId: 'wd_u9uElygL',
     receivedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5m ago
     sender: '972545434384',
     messageId: 'wamid.sandbox',

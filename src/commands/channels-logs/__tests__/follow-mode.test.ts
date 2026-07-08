@@ -46,6 +46,7 @@ const igDto = {
 };
 
 const sampleLog: DeliveryLog = {
+  publicId: 'wd_u9uElygL',
   receivedAt: '2026-05-26T14:30:01Z',
   sender: '@ordvir',
   messageId: 'mid-001',

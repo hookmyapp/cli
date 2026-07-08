@@ -7,6 +7,7 @@ import type { DeliveryLog } from '../../commands/channels-logs/api.js';
 
 function detail(overrides: Partial<DeliveryLog> = {}): DeliveryLog {
   return {
+    publicId: 'wd_u9uElygL',
     receivedAt: '2026-05-20T11:58:00.000Z',
     sender: '+14155550100',
     messageId: 'wamid.m1',
@@ -57,9 +58,41 @@ describe('printSummaryRow', () => {
     );
 
     const line = writes.join('');
+    expect(line).toContain('wd_u9uElygL');
     expect(line).toContain('+14155550100');
     expect(line).toContain('Delivered to your app');
     expect(line).toContain('App response: 200 in 100ms');
+  });
+
+  it('shows the receipt status as identity for status-only webhooks (no sender)', () => {
+    const writes: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+
+    printSummaryRow(
+      detail({
+        sender: null,
+        meta: { entry: [{ changes: [{ value: { statuses: [{ status: 'delivered' }] } }] }] },
+      }),
+    );
+
+    const line = writes.join('');
+    expect(line).toContain('(status: delivered)');
+    expect(line).not.toContain('(unknown)');
+  });
+
+  it('falls back to (unknown) when no sender and no statuses in the payload', () => {
+    const writes: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+
+    printSummaryRow(detail({ sender: null, meta: { entry: [] } }));
+
+    expect(writes.join('')).toContain('(unknown)');
   });
 
   it('does not crash and falls back when no destination or response exists', () => {
@@ -87,6 +120,7 @@ describe('printSummaryRow', () => {
 describe('renderDeliveryDetail', () => {
   it('renders the clean public sections for a forwarded delivery', () => {
     const out = renderDeliveryDetail(detail());
+    expect(out).toContain('wd_u9uElygL');
     expect(out).toContain('Meta payload');
     expect(out).toContain('To: https://customer.app/webhook');
     expect(out).toContain('Your app responded');

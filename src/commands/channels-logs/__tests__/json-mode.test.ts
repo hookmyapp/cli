@@ -38,6 +38,7 @@ const igDto = {
 
 function deliveryLog(overrides: Partial<DeliveryLog> = {}): DeliveryLog {
   return {
+    publicId: 'wd_u9uElygL',
     receivedAt: '2026-05-26T14:30:01Z',
     sender: '@ordvir',
     messageId: 'mid-001',
@@ -93,6 +94,8 @@ describe('channels logs list --json emits a clean JSON array', () => {
       expect(dto.humanStatusColor).toBeUndefined();
       expect(dto.routingDecision).toBeUndefined();
       expect(dto.requestId).toBeUndefined();
+      // The wd_ handle for `logs show <id>` carries through.
+      expect(dto.publicId).toBe('wd_u9uElygL');
       // Sender chain carries through.
       expect(dto.sender).toBe('@ordvir');
     }

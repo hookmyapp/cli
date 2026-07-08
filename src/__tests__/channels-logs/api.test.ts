@@ -54,6 +54,21 @@ describe('fetchDeliveriesPage', () => {
     expect(path).not.toContain('until=');
     expect(path).not.toContain('cursor=');
   });
+
+  it('keeps the wd_ publicId on cleaned rows (logs show handle)', async () => {
+    mocks.apiClient.mockResolvedValue({
+      logs: [row({ publicId: 'wd_abc12345' })],
+      nextCursor: null,
+    });
+
+    const page = await fetchDeliveriesPage({
+      channelPublicId: 'ch_abc12345',
+      workspaceId: 'ws_w1',
+      limit: 50,
+    });
+
+    expect(page.logs[0].publicId).toBe('wd_abc12345');
+  });
 });
 
 describe('fetchDeliveryDetail', () => {
@@ -74,6 +89,7 @@ describe('fetchDeliveryDetail', () => {
 
 function row(overrides: Partial<DeliveryLog> = {}): DeliveryLog {
   return {
+    publicId: 'wd_u9uElygL',
     receivedAt: '2026-05-20T11:58:00.000Z',
     sender: '15551234567',
     messageId: 'wamid.test',
