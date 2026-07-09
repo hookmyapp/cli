@@ -266,6 +266,13 @@ async function main(): Promise<void> {
     // Same fail-open policy as the migration calls above.
   }
 
+  // AIT-24 — update-available banner, once at boot BEFORE the command runs
+  // (so long-running commands like `channels listen` show it in their boot
+  // banner and are never interrupted mid-stream). stderr-only; suppressed on
+  // --json / non-TTY / CI; fail-open like everything above.
+  const { maybeNotifyUpdate } = await import('./update-check.js');
+  await maybeNotifyUpdate(pkg.version);
+
   const startedAt = Date.now();
   try {
     await program.parseAsync();

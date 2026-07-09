@@ -73,7 +73,11 @@ await build({
   // dist/cli.js bundle under the Plan 10 target of ≤ 100KB gzip delta
   // and the dynamic-import fast path in posthog.ts loads it only when
   // telemetry is enabled + token baked.
-  external: ['@sentry/node', 'posthog-node'],
+  // update-notifier must ALSO stay external: it spawns a detached child
+  // process from a file inside its own package dir (check.js), which cannot
+  // exist inside a bundle. It resolves from the installed dependency tree
+  // like the other two.
+  external: ['@sentry/node', 'posthog-node', 'update-notifier'],
 });
 
 console.log('Built dist/cli.js');
