@@ -615,32 +615,39 @@ async function persistAgentCredential(
  * Non-fatal by design — a scope-limited credential must never fail login.
  */
 async function revalidateActiveWorkspace(json?: boolean): Promise<void> {
+  const { readWorkspaceConfig, writeWorkspaceConfig } = await import(
+    '../commands/workspace.js'
+  );
+  const existing = readWorkspaceConfig();
+  if (!existing.activeWorkspaceId) return;
+  let workspaces: unknown;
   try {
-    const { readWorkspaceConfig, writeWorkspaceConfig } = await import(
-      '../commands/workspace.js'
-    );
-    const existing = readWorkspaceConfig();
-    if (!existing.activeWorkspaceId) return;
     const { apiClient } = await import('../api/client.js');
-    const workspaces = (await apiClient('/workspaces')) as Workspace[];
-    if (workspaces.some((w) => w.id === existing.activeWorkspaceId)) return;
-    const only = workspaces.length === 1 ? workspaces[0] : undefined;
-    writeWorkspaceConfig({
-      activeWorkspaceId: only?.id,
-      activeWorkspaceSlug: only?.name,
-    });
-    if (!json) {
-      console.log(
-        only
-          ? `${c.warn('!')} Previous workspace no longer exists; switched to ${c.dim(only.name)}`
-          : `${c.warn('!')} Previous workspace no longer exists. Run: ${c.dim(
-              `${cliCommandPrefix()} workspace use <name>`,
-            )}`,
-      );
-    }
+    workspaces = await apiClient('/workspaces');
   } catch {
     // Workspace listing can fail for scope-limited credentials; the login
     // itself succeeded, so let the next command surface any real error.
+    return;
+  }
+  // Bad 2xx shape → keep the config untouched rather than clearing on junk.
+  if (!Array.isArray(workspaces)) return;
+  const list = workspaces as Workspace[];
+  if (list.some((w) => w.id === existing.activeWorkspaceId)) return;
+  const only = list.length === 1 ? list[0] : undefined;
+  writeWorkspaceConfig({
+    activeWorkspaceId: only?.id,
+    activeWorkspaceSlug: only?.name,
+  });
+  if (!json) {
+    const hint =
+      list.length === 0
+        ? `Run: ${c.dim(`${cliCommandPrefix()} workspace new <name>`)}`
+        : `Run: ${c.dim(`${cliCommandPrefix()} workspace use <name>`)}`;
+    console.log(
+      only
+        ? `${c.warn('!')} Previous workspace no longer exists; switched to ${c.dim(only.name)}`
+        : `${c.warn('!')} Previous workspace no longer exists. ${hint}`,
+    );
   }
 }
 
