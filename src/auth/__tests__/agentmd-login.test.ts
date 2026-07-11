@@ -1,5 +1,5 @@
 import { expect, test, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -123,4 +123,101 @@ test('agent flags without --email are rejected before any browser flow', async (
     program.parseAsync(['node', 'hookmyapp', 'login', '--registration-id', 'r1', '--otp', '123456', '--json']),
   ).rejects.toMatchObject({ exitCode: 2 });
   expect(fetchMock).not.toHaveBeenCalled();
+});
+
+// --- AIT-131: OTP login re-validates the persisted active workspace ---
+
+function seedConfig(activeWorkspaceId: string, slug = 'Old Workspace') {
+  writeFileSync(
+    join(DIR, 'config.json'),
+    JSON.stringify({ activeWorkspaceId, activeWorkspaceSlug: slug }, null, 2),
+  );
+}
+
+function readConfig() {
+  return JSON.parse(readFileSync(join(DIR, 'config.json'), 'utf-8'));
+}
+
+function fetchByUrl(workspaces: unknown[]) {
+  return vi.fn(async (url: unknown) => {
+    const u = String(url);
+    if (u.endsWith('/agent/auth/claim/complete')) {
+      return okJson({ accessToken: 'ac_live_z', tokenType: 'Bearer', scopes: ['workspace.read'], credentialPublicId: 'ac_pub3' });
+    }
+    if (u.endsWith('/workspaces')) return okJson(workspaces);
+    return okJson({});
+  });
+}
+
+test('otp login with stale workspace + one live workspace → re-resolves to it', async () => {
+  seedConfig('ws_stale123');
+  vi.stubGlobal('fetch', fetchByUrl([{ id: 'ws_fresh456', name: 'Fresh', workosOrganizationId: 'org_1' }]));
+  const mod = await import('../login.js');
+
+  await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
+
+  expect(readConfig().activeWorkspaceId).toBe('ws_fresh456');
+  expect(readConfig().activeWorkspaceSlug).toBe('Fresh');
+});
+
+test('otp login with stale workspace + several live workspaces → clears the selection', async () => {
+  seedConfig('ws_stale123');
+  vi.stubGlobal('fetch', fetchByUrl([
+    { id: 'ws_fresh456', name: 'Fresh', workosOrganizationId: 'org_1' },
+    { id: 'ws_other789', name: 'Other', workosOrganizationId: 'org_2' },
+  ]));
+  const mod = await import('../login.js');
+
+  await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
+
+  expect(readConfig().activeWorkspaceId).toBeUndefined();
+});
+
+test('otp login with a still-valid workspace → selection untouched', async () => {
+  seedConfig('ws_fresh456', 'Fresh');
+  vi.stubGlobal('fetch', fetchByUrl([{ id: 'ws_fresh456', name: 'Fresh', workosOrganizationId: 'org_1' }]));
+  const mod = await import('../login.js');
+
+  await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
+
+  expect(readConfig().activeWorkspaceId).toBe('ws_fresh456');
+  expect(readConfig().activeWorkspaceSlug).toBe('Fresh');
+});
+
+test('otp login when the workspace listing fails → login still succeeds, config untouched', async () => {
+  seedConfig('ws_stale123');
+  const fetchMock = vi.fn(async (url: unknown) => {
+    const u = String(url);
+    if (u.endsWith('/agent/auth/claim/complete')) {
+      return okJson({ accessToken: 'ac_live_z', tokenType: 'Bearer', scopes: ['message.send'], credentialPublicId: 'ac_pub3' });
+    }
+    return okJson({ message: 'insufficient scope' }, 403);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const mod = await import('../login.js');
+
+  await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
+
+  expect(readCreds().accessToken).toBe('ac_live_z');
+  expect(readConfig().activeWorkspaceId).toBe('ws_stale123');
+});
+
+test('otp login with stale workspace + zero live workspaces → clears the selection', async () => {
+  seedConfig('ws_stale123');
+  vi.stubGlobal('fetch', fetchByUrl([]));
+  const mod = await import('../login.js');
+
+  await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
+
+  expect(readConfig().activeWorkspaceId).toBeUndefined();
+});
+
+test('otp login when /workspaces returns a non-array 2xx → config untouched', async () => {
+  seedConfig('ws_stale123');
+  vi.stubGlobal('fetch', fetchByUrl({ workspaces: [] } as unknown as unknown[]));
+  const mod = await import('../login.js');
+
+  await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
+
+  expect(readConfig().activeWorkspaceId).toBe('ws_stale123');
 });
