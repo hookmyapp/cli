@@ -588,6 +588,7 @@ async function persistAgentCredential(
     credentialPublicId: cred.credentialPublicId,
     scopes: cred.scopes,
   });
+  await revalidateActiveWorkspace(json);
   if (json) {
     process.stdout.write(
       JSON.stringify({
@@ -602,6 +603,45 @@ async function persistAgentCredential(
   console.log(
     `${c.success(icon.success)} Logged in as ${email} (${n} scope${n === 1 ? '' : 's'})`,
   );
+}
+
+/**
+ * AIT-131: scripted email logins (`--registration-id --otp`) never run the
+ * wizard, so a stale activeWorkspaceId in config.json survives a backend
+ * reset and the first post-login command 404s. After the new credential is
+ * saved, check the stored selection against the live workspace list: keep a
+ * valid one, adopt the only workspace when there is exactly one, otherwise
+ * clear it so the next command falls back to the picker/hint path.
+ * Non-fatal by design — a scope-limited credential must never fail login.
+ */
+async function revalidateActiveWorkspace(json?: boolean): Promise<void> {
+  try {
+    const { readWorkspaceConfig, writeWorkspaceConfig } = await import(
+      '../commands/workspace.js'
+    );
+    const existing = readWorkspaceConfig();
+    if (!existing.activeWorkspaceId) return;
+    const { apiClient } = await import('../api/client.js');
+    const workspaces = (await apiClient('/workspaces')) as Workspace[];
+    if (workspaces.some((w) => w.id === existing.activeWorkspaceId)) return;
+    const only = workspaces.length === 1 ? workspaces[0] : undefined;
+    writeWorkspaceConfig({
+      activeWorkspaceId: only?.id,
+      activeWorkspaceSlug: only?.name,
+    });
+    if (!json) {
+      console.log(
+        only
+          ? `${c.warn('!')} Previous workspace no longer exists; switched to ${c.dim(only.name)}`
+          : `${c.warn('!')} Previous workspace no longer exists. Run: ${c.dim(
+              `${cliCommandPrefix()} workspace use <name>`,
+            )}`,
+      );
+    }
+  } catch {
+    // Workspace listing can fail for scope-limited credentials; the login
+    // itself succeeded, so let the next command surface any real error.
+  }
 }
 
 export function loginCommand(program: Command): void {
