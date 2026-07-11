@@ -68,6 +68,16 @@ describe('mapApiError — Wave 0 RED', () => {
     expect(err.message).toBe('M');
   });
 
+  it('404 + WORKSPACE_NOT_FOUND → ApiError hinting workspace use (AIT-51)', async () => {
+    const { mapApiError } = await import('../client.js');
+    const err = (await (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mapApiError as any
+    )(mkRes(404, { code: 'WORKSPACE_NOT_FOUND', message: 'Workspace not found' }))) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.message).toMatch(/workspace use/);
+  });
+
   it('410 + BILLING_PORTAL_RETIRED → ApiError pointing at billing manage', async () => {
     const { mapApiError } = await import('../client.js');
     const err = (await (

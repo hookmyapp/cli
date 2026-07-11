@@ -60,9 +60,15 @@ export async function collectDoctorReport(
   // stored accessToken false-FAILs on tokens that are merely expired but
   // refreshable (2026-07-08 audit).
   let authDetail = loggedIn ? 'credentials present' : 'not logged in — run: hookmyapp login';
+  // Kept from the auth probe so the workspace check below can validate the
+  // persisted activeWorkspaceId against the backend instead of trusting the
+  // cache (AIT-51: after a DB re-seed doctor said OK while every scoped
+  // command 404'd).
+  let workspaces: Array<{ id?: string }> | null = null;
   if (loggedIn && opts.checkNetwork !== false) {
     try {
-      await apiClient('/workspaces');
+      const res = await apiClient('/workspaces');
+      if (Array.isArray(res)) workspaces = res;
       authDetail = 'credentials valid for this env';
     } catch (err) {
       if (err instanceof AuthError || err instanceof PermissionError) {
@@ -75,9 +81,23 @@ export async function collectDoctorReport(
   // Informational: not-logged-in is reported, not a hard prereq failure.
   checks.push({ id: 'auth', label: 'Logged in', ok: loggedIn, hard: false, detail: authDetail });
 
-  let activeWs: string | undefined;
-  try { activeWs = readWorkspaceConfig().activeWorkspaceSlug ?? undefined; } catch { /* ignore */ }
-  checks.push({ id: 'workspace', label: 'Active workspace', ok: true, hard: false, detail: activeWs ?? '(none — auto-resolves on first call)' });
+  let wsId: string | undefined;
+  let wsSlug: string | undefined;
+  try {
+    const cfg = readWorkspaceConfig();
+    wsId = cfg.activeWorkspaceId ?? undefined;
+    wsSlug = cfg.activeWorkspaceSlug ?? undefined;
+  } catch { /* ignore */ }
+  let wsOk = true;
+  let wsDetail = wsSlug ?? '(none — auto-resolves on first call)';
+  // Only a definitive backend list can fail this check — on a network flake
+  // (workspaces === null) the cache-based verdict stands, matching the auth
+  // probe's fail-open posture above.
+  if (wsId && workspaces && !workspaces.some((w) => w?.id === wsId)) {
+    wsOk = false;
+    wsDetail = `"${wsSlug ?? wsId}" not found on this env (stale selection) — run: hookmyapp workspace use <name>`;
+  }
+  checks.push({ id: 'workspace', label: 'Active workspace', ok: wsOk, hard: false, detail: wsDetail });
   const envChannel = process.env.HOOKMYAPP_CHANNEL_ID;
   checks.push({ id: 'default-channel', label: 'Default channel (HOOKMYAPP_CHANNEL_ID)', ok: true, hard: false, detail: envChannel || '(none — pass --channel or set HOOKMYAPP_CHANNEL_ID)' });
 
