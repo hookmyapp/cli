@@ -140,6 +140,11 @@ export async function mapApiError(res: Response): Promise<CliError> {
   // "already spent code"). ApiError.exitCode defaults to 1; we override
   // to 5 on the instance so the CLI's exit-code contract stays honest
   // ("API rejected the bootstrap code" is a distinct failure class).
+  // AIT-51: a stale activeWorkspaceId (DB re-seed, deleted workspace) makes
+  // every workspace-scoped command 404 — point at the recovery command.
+  if (res.status === 404 && code === 'WORKSPACE_NOT_FOUND') {
+    return new ApiError(`${msg}. Run: hookmyapp workspace use <name>`, 404);
+  }
   if (res.status === 404 && code === 'BOOTSTRAP_NOT_FOUND') {
     const err = new ApiError(
       'Code invalid or already used. Ask the dashboard user to click Copy again.',
