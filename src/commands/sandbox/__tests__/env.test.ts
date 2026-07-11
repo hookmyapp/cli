@@ -55,12 +55,11 @@ describe('buildEnvBlock — WhatsApp regression', () => {
     delete process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
   });
 
-  it('emits the WA block with WEBHOOK_HMAC_SECRET + the VERIFY_TOKEN compat alias', () => {
+  it('emits the WA block with WEBHOOK_HMAC_SECRET', () => {
     const out = buildEnvBlock(wa);
     expect(out).toBe(
       [
         'WEBHOOK_HMAC_SECRET=HMAC_wa_yyy',
-        'VERIFY_TOKEN=HMAC_wa_yyy',
         'PORT=3000',
         'WHATSAPP_API_URL=https://proxy.test/v24.0',
         'WHATSAPP_ACCESS_TOKEN=ACT_wa_xxx',
@@ -79,12 +78,11 @@ describe('buildEnvBlock — Instagram (D2)', () => {
     delete process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
   });
 
-  it('emits the IG block with INSTAGRAM_* vars, v25.0 URL, and both HMAC keys', () => {
+  it('emits the IG block with INSTAGRAM_* vars, v25.0 URL, and WEBHOOK_HMAC_SECRET', () => {
     const out = buildEnvBlock(ig);
     expect(out).toBe(
       [
         'WEBHOOK_HMAC_SECRET=HMAC_ig_yyy',
-        'VERIFY_TOKEN=HMAC_ig_yyy',
         'PORT=3000',
         'INSTAGRAM_API_URL=https://proxy.test/v25.0',
         'INSTAGRAM_ACCESS_TOKEN=ACT_ig_xxx',
@@ -139,7 +137,6 @@ describe('runSandboxEnv --json — flat {KEY: VALUE} object', () => {
     const parsed = JSON.parse((writeSpy.mock.calls[0][0] as string).trim());
     expect(parsed).toEqual({
       WEBHOOK_HMAC_SECRET: 'HMAC_ig_yyy',
-      VERIFY_TOKEN: 'HMAC_ig_yyy',
       PORT: '3000',
       INSTAGRAM_API_URL: 'https://proxy.test/v25.0',
       INSTAGRAM_ACCESS_TOKEN: 'ACT_ig_xxx',
