@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../auth/store.js', () => ({ readCredentials: vi.fn(async () => null) }));
 vi.mock('../../api/client.js', () => ({ apiClient: vi.fn() }));
+vi.mock('../workspace.js', () => ({ readWorkspaceConfig: vi.fn(() => ({})) }));
 import { readCredentials } from '../../auth/store.js';
 import { apiClient } from '../../api/client.js';
+import { readWorkspaceConfig } from '../workspace.js';
 import { AuthError, NetworkError } from '../../output/error.js';
 import { collectDoctorReport } from '../doctor.js';
 
@@ -66,5 +68,53 @@ describe('doctor — auth probe uses the real authenticated request path', () =>
 
     expect(report.loggedIn).toBe(true);
     expect(report.checks.find((c) => c.id === 'auth')!.detail).toBe('credentials present');
+  });
+});
+
+describe('doctor — active workspace is validated against the backend (AIT-51)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200 })));
+    vi.mocked(readCredentials).mockResolvedValue({
+      accessToken: 't',
+      refreshToken: 'rt',
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    vi.mocked(readWorkspaceConfig).mockReturnValue({
+      activeWorkspaceId: 'ws_stale123',
+      activeWorkspaceSlug: 'My Workspace',
+    });
+  });
+
+  it('flags a persisted workspace missing from the backend list as stale', async () => {
+    vi.mocked(apiClient).mockResolvedValue([{ id: 'ws_other456' }]);
+
+    const report = await collectDoctorReport({ checkTools: false });
+
+    const ws = report.checks.find((c) => c.id === 'workspace')!;
+    expect(ws.ok).toBe(false);
+    expect(ws.detail).toContain('workspace use');
+    expect(report.ok).toBe(true); // informational, never a hard gate
+  });
+
+  it('passes when the persisted workspace exists on the backend', async () => {
+    vi.mocked(apiClient).mockResolvedValue([{ id: 'ws_stale123' }]);
+
+    const report = await collectDoctorReport({ checkTools: false });
+
+    const ws = report.checks.find((c) => c.id === 'workspace')!;
+    expect(ws.ok).toBe(true);
+    expect(ws.detail).toBe('My Workspace');
+  });
+
+  it('keeps the cache-based verdict when the workspaces fetch fails', async () => {
+    vi.mocked(apiClient).mockRejectedValue(new NetworkError());
+
+    const report = await collectDoctorReport({ checkTools: false });
+
+    const ws = report.checks.find((c) => c.id === 'workspace')!;
+    expect(ws.ok).toBe(true);
+    expect(ws.detail).toBe('My Workspace');
   });
 });
