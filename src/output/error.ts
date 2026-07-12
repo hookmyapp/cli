@@ -132,6 +132,10 @@ export class AuthError extends CliError {
 export class PermissionError extends CliError {
   static readonly severity = 'sev3' as const;
   static readonly httpStatus = 403;
+  // Single-line, machine-clean summary for the --json envelope. The verbose
+  // `userMessage` below carries multi-line CLI guidance for humans; scripts
+  // consuming --json get this instead (AIT-151).
+  public readonly jsonMessage = 'This action requires workspace admin permission.';
   constructor(activeWorkspaceSlug: string) {
     super(
       `This action requires workspace admin permission.\n\n` +
@@ -199,10 +203,29 @@ export class NetworkError extends CliError {
 
 export class ApiError extends CliError {
   static readonly severity = 'sev3' as const;
-  constructor(message: string, statusCode: number) {
-    const code = statusCode >= 500 ? 'SERVER_ERROR' : 'API_ERROR';
+  // `serverCode` (optional) preserves the API's own `body.code` on generic 4xx
+  // fallbacks so agents can branch on it (AIT-151). When absent we fall back to
+  // the historical SERVER_ERROR / API_ERROR codes.
+  constructor(message: string, statusCode: number, serverCode?: string) {
+    const code = serverCode ?? (statusCode >= 500 ? 'SERVER_ERROR' : 'API_ERROR');
     super(message, code, statusCode);
     this.exitCode = 1;
+  }
+}
+
+/**
+ * Generic 403 that surfaces the server's own `code` + message verbatim, for
+ * denials that are NOT the blanket "requires workspace admin" case (e.g.
+ * AGENT_KEY_REVOKE_SELF_ONLY). Exit 3 — the 403 permission tier, same as
+ * PermissionError — so scripts can tell "the server said no" (3) apart from a
+ * generic failure (1).
+ */
+export class ForbiddenError extends CliError {
+  static readonly severity = 'sev3' as const;
+  static readonly httpStatus = 403;
+  constructor(message: string, code: string) {
+    super(message, code, 403);
+    this.exitCode = 3;
   }
 }
 
@@ -356,9 +379,16 @@ export function outputError(error: CliError, opts: { human?: boolean }): void {
     return;
   }
 
+  // Prefer a machine-clean `jsonMessage` when the error carries one (e.g.
+  // PermissionError, whose `userMessage` is multi-line human CLI guidance).
+  // The --json contract must stay single-line and script-parseable (AIT-151).
+  const jsonMessage = (error as { jsonMessage?: unknown }).jsonMessage;
   const inner: Record<string, unknown> = {
     code: error.code,
-    message: stripCommanderPrefix(error.userMessage),
+    message:
+      typeof jsonMessage === 'string' && jsonMessage.length > 0
+        ? jsonMessage
+        : stripCommanderPrefix(error.userMessage),
     status: resolveStatus(error),
   };
   const hint = (error as { hint?: unknown }).hint;

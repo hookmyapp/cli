@@ -6,6 +6,7 @@ import {
   ClientOutdatedError,
   NetworkError,
   PermissionError,
+  ForbiddenError,
   ConflictError,
   RateLimitError,
   SessionWindowError,
@@ -128,6 +129,15 @@ export async function mapApiError(res: Response): Promise<CliError> {
     if (code === 'INSTAGRAM_DISABLED') {
       return new FeatureDisabledError(msg, code);
     }
+    // AIT-151: any other 403 that carries a server code + message is a specific
+    // denial (e.g. AGENT_KEY_REVOKE_SELF_ONLY) — surface the server's own
+    // message + code verbatim instead of the blanket "requires workspace admin"
+    // guidance, which is wrong for most coded 403s.
+    if (code) {
+      return new ForbiddenError(msg, code);
+    }
+    // Bare 403 with no server code — a genuine permission gate. Keep the
+    // actionable admin guidance.
     // Lazy-import to avoid a cycle with commands/workspace.ts
     const { readWorkspaceConfig } = await import('../commands/workspace.js');
     const cfg = readWorkspaceConfig();
@@ -185,7 +195,9 @@ export async function mapApiError(res: Response): Promise<CliError> {
   if (res.status >= 500) {
     return new ApiError('Something went wrong on our end. Try again later.', res.status);
   }
-  return new ApiError(msg, res.status);
+  // Generic 4xx fallback — preserve the server's own code (AIT-151) so scripts
+  // reading --json can branch on it instead of a flat API_ERROR.
+  return new ApiError(msg, res.status, code);
 }
 
 export function isNetworkFailure(err: unknown): boolean {

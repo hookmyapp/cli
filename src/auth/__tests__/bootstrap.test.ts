@@ -517,13 +517,10 @@ describe('hookmyapp login --code', () => {
     ).rejects.toThrow(/expired or already used/i);
   });
 
-  test('--code with 403 response → PermissionError exitCode 3', async () => {
-    // mapApiError lazy-imports readWorkspaceConfig for the 403 branch. The
-    // seed config.json lets it resolve the slug for the error message.
-    writeWorkspaceCfg({
-      activeWorkspaceId: 'ws_ABCD1234',
-      activeWorkspaceSlug: 'Some Workspace',
-    });
+  test('--code with a coded 403 → surfaces the server code + message, exitCode 3 (AIT-151)', async () => {
+    // AIT-151: a coded 403 no longer collapses to the blanket "requires
+    // workspace admin" string — the server's own code + message win, while the
+    // 403 permission tier (exit 3) is preserved.
     vi.stubGlobal(
       'fetch',
       vi
@@ -540,7 +537,8 @@ describe('hookmyapp login --code', () => {
       mod.runBootstrapCodeExchange('hma_boot_forbidden', { next: 'exit' }),
     ).rejects.toMatchObject({
       exitCode: 3,
-      code: 'PERMISSION_DENIED',
+      code: 'FORBIDDEN',
+      userMessage: 'not a member',
     });
   });
 
