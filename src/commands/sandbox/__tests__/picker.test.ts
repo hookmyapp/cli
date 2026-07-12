@@ -155,13 +155,17 @@ describe('pickSession — mismatch paths (E6, E7)', () => {
 });
 
 describe('pickSession — zero and one session', () => {
-  it('throws CliError NO_ACTIVE_SESSIONS exit 2 when sessions array is empty', async () => {
+  it('throws NO_ACTIVE_SESSIONS exit 2 as a ValidationError (non-5xx status) when sessions array is empty', async () => {
     try {
       await pickSession({ sessions: [], isHuman: true });
       throw new Error('expected throw');
     } catch (err) {
       expect((err as CliError).code).toBe('NO_ACTIVE_SESSIONS');
       expect((err as CliError).exitCode).toBe(2);
+      // AIT-159: a user-state precondition must not resolve to a 5xx status in
+      // the --json envelope. ValidationError → httpStatus 400.
+      expect(err).toBeInstanceOf(ValidationError);
+      expect((err as CliError).statusCode).toBe(400);
     }
   });
 
