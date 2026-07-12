@@ -55,11 +55,12 @@
     }
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "files": [
     "bin/",
     "dist/",
+    "!dist/**/*.map",
     "README.md"
   ],
   "license": "MIT",

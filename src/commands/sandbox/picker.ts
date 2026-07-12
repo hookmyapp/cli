@@ -11,10 +11,7 @@
 //     used at sandbox-listen/picker.ts:60-66
 
 import { select } from '@inquirer/prompts';
-import {
-  CliError,
-  ValidationError,
-} from '../../output/error.js';
+import { ValidationError } from '../../output/error.js';
 import { sessionIdentifier, sessionLabel } from './helpers.js';
 import type { SandboxSession } from '../../api/sandbox-session.js';
 import { parseIdentifier } from '../../lib/parseIdentifier.js';
@@ -57,14 +54,14 @@ export async function pickSession(args: PickSessionArgs): Promise<SandboxSession
     );
   }
 
-  // 2. Zero sessions → hard exit 2.
+  // 2. Zero sessions → hard exit 2. ValidationError (not a bare CliError) so
+  //    the --json envelope reports status 400 for this user-state precondition
+  //    instead of the misleading 500 a code-less CliError resolves to (AIT-159).
   if (sessions.length === 0) {
-    const err = new CliError(
+    throw new ValidationError(
       'No active sandbox sessions. Run: hookmyapp sandbox start',
       'NO_ACTIVE_SESSIONS',
     );
-    err.exitCode = 2;
-    throw err;
   }
 
   // 3a. Positional identifier path (D3) — shape-detected.
@@ -129,13 +126,11 @@ export async function pickSession(args: PickSessionArgs): Promise<SandboxSession
           (s) => s.type === 'instagram' && s.senderInstagramUsername === null,
         );
       if (allUsernamesNull) {
-        const err = new CliError(
+        throw new ValidationError(
           'Instagram session has no username yet (still resolving from Meta). ' +
             'Use --session <ssn_X> to select by id. Run: hookmyapp sandbox status to list.',
           'SESSION_MISMATCH',
         );
-        err.exitCode = 2;
-        throw err;
       }
       return throwMismatch(`--username=${usernameFlag}`, sessions);
     }
@@ -155,13 +150,11 @@ export async function pickSession(args: PickSessionArgs): Promise<SandboxSession
 
   // 5. Multiple sessions OR alwaysShowPicker, with no flag.
   if (!isHuman) {
-    const err = new CliError(
+    throw new ValidationError(
       'Multiple active sessions. Disambiguate with --phone, --username, or --session ' +
         '(required in --json / non-TTY mode).',
       'SESSION_MISMATCH',
     );
-    err.exitCode = 2;
-    throw err;
   }
 
   // 6. Interactive select.
@@ -176,11 +169,9 @@ export async function pickSession(args: PickSessionArgs): Promise<SandboxSession
 
 function throwMismatch(needle: string, sessions: SandboxSession[]): never {
   const available = sessions.map(sessionIdentifier).join(', ');
-  const err = new CliError(
+  throw new ValidationError(
     `No active session matches ${needle}. Available: ${available}. ` +
       `Run: hookmyapp sandbox status`,
     'SESSION_MISMATCH',
   );
-  err.exitCode = 2;
-  throw err;
 }

@@ -8,7 +8,7 @@ HookMyApp CLI, No BS. Just go live.
 npm install -g @gethookmyapp/cli
 ```
 
-Requires Node.js >= 18.
+Requires Node.js >= 20.
 
 ## Quick Start
 
