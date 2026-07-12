@@ -50,6 +50,18 @@ describe('billingManage — opens the app Billing page (portal retired)', () => 
 
     expect(vi.mocked(open)).not.toHaveBeenCalled();
   });
+
+  test('When --json, then it emits the billing URL as JSON and opens no browser (AIT-164)', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce(workspaces);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await billingManage({ json: true });
+
+    expect(vi.mocked(open)).not.toHaveBeenCalled();
+    const parsed = JSON.parse(logSpy.mock.calls.at(-1)![0] as string);
+    expect(parsed).toEqual({ billingUrl: 'https://app.test/org/org_abc12345/billing' });
+    logSpy.mockRestore();
+  });
 });
 
 describe('billingUpgrade — active subscription path (portal retired)', () => {

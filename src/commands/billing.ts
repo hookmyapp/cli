@@ -37,9 +37,16 @@ function orgBillingUrl(orgPublicId: string): string {
   return `${getEffectiveAppUrl()}/org/${orgPublicId}/billing`;
 }
 
-export async function billingManage(): Promise<void> {
+export async function billingManage(opts: { json?: boolean } = {}): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
   const url = orgBillingUrl(await resolveOrgPublicId(workspaceId));
+
+  // --json is a machine contract: emit the URL and take NO interactive side
+  // effect (no browser open, no human text) so agents/CI get clean JSON.
+  if (opts.json) {
+    output({ billingUrl: url }, { json: true });
+    return;
+  }
 
   console.log('Opening your Billing page...');
   await open(url);
@@ -175,7 +182,8 @@ export function registerBillingCommand(_program: Command): void {
     .command('manage')
     .description('Open your Billing page in the app')
     .action(async () => {
-      await billingManage();
+      const { program: rootProgram } = await import('../index.js');
+      await billingManage({ json: !!rootProgram.opts().json });
     });
 
   const billingUpgradeCmd = billing
