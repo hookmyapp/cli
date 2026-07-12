@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { spawnSync } from 'node:child_process';
 import { readCredentials } from '../auth/store.js';
 import { apiClient } from '../api/client.js';
-import { AuthError, PermissionError } from '../output/error.js';
+import { AuthError, ForbiddenError, PermissionError } from '../output/error.js';
 import { isJsonMode } from '../output/format.js';
 import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import { readWorkspaceConfig } from './workspace.js';
@@ -71,7 +71,9 @@ export async function collectDoctorReport(
       if (Array.isArray(res)) workspaces = res;
       authDetail = 'credentials valid for this env';
     } catch (err) {
-      if (err instanceof AuthError || err instanceof PermissionError) {
+      // ForbiddenError is what coded 403s map to since AIT-151 — a denial is
+      // still a rejected credential, not a network flake.
+      if (err instanceof AuthError || err instanceof PermissionError || err instanceof ForbiddenError) {
         loggedIn = false;
         authDetail = 'credentials present but rejected by this env — run: hookmyapp login';
       }

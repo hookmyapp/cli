@@ -3,6 +3,7 @@ import {
   CliError,
   AuthError,
   PermissionError,
+  ForbiddenError,
   NetworkError,
   NotFoundError,
   ApiError,
@@ -130,6 +131,31 @@ describe('outputError JSON envelope (D1)', () => {
     const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
     expect(parsed.error.message).toBe("missing required argument 'channel'");
     expect(parsed.error.message).not.toMatch(/^error: /);
+  });
+
+  test('When PermissionError in JSON mode, then message is the clean single-line summary (not multi-line CLI guidance) (AIT-151)', () => {
+    const err = new PermissionError('acme');
+    outputError(err, { human: false });
+    const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
+    expect(parsed.error.message).toBe('This action requires workspace admin permission.');
+    expect(parsed.error.message).not.toMatch(/\n/);
+    expect(parsed.error.code).toBe('PERMISSION_DENIED');
+    expect(parsed.error.status).toBe(403);
+  });
+
+  test('When ForbiddenError (coded 403), then it carries the server code + message and exits 3 (AIT-151)', () => {
+    const err = new ForbiddenError(
+      'An API key can only revoke itself. Manage other keys from the dashboard.',
+      'AGENT_KEY_REVOKE_SELF_ONLY',
+    );
+    expect(err.exitCode).toBe(3);
+    outputError(err, { human: false });
+    const parsed = JSON.parse((stderrSpy.mock.calls[0][0] as string).trim());
+    expect(parsed.error.code).toBe('AGENT_KEY_REVOKE_SELF_ONLY');
+    expect(parsed.error.message).toBe(
+      'An API key can only revoke itself. Manage other keys from the dashboard.',
+    );
+    expect(parsed.error.status).toBe(403);
   });
 
   test('When NotFoundError (used for CHANNEL_NOT_FOUND), then status resolves to 404', () => {
