@@ -31,6 +31,31 @@ describe('apiClient permission handling (RBAC-UX-05/06/07)', () => {
     await expect(apiClient('/workspaces')).rejects.not.toThrow(/role:\s*member/);
   });
 
+  it('AIT-151: a coded 403 (AGENT_KEY_REVOKE_SELF_ONLY) surfaces the server message + code, not the blanket admin string', async () => {
+    const body = JSON.stringify({
+      statusCode: 403,
+      code: 'AGENT_KEY_REVOKE_SELF_ONLY',
+      message: 'An API key can only revoke itself. Manage other keys from the dashboard.',
+    });
+    // Fresh Response per call — a Response body can only be read once, and this
+    // test invokes apiClient multiple times.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(body, { status: 403 }))),
+    );
+    const { apiClient } = await import('../api/client.js');
+    await expect(apiClient('/agent/credentials/ac_x', { method: 'DELETE' })).rejects.toMatchObject({
+      exitCode: 3,
+      code: 'AGENT_KEY_REVOKE_SELF_ONLY',
+    });
+    await expect(
+      apiClient('/agent/credentials/ac_x', { method: 'DELETE' }),
+    ).rejects.toThrow(/can only revoke itself/);
+    await expect(
+      apiClient('/agent/credentials/ac_x', { method: 'DELETE' }),
+    ).rejects.not.toThrow(/workspace admin permission/);
+  });
+
   it('RBAC-UX-06: 401 response throws AuthError with exitCode 4', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 401 })));
     const { apiClient } = await import('../api/client.js');
