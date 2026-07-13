@@ -1,6 +1,6 @@
 {
   "name": "@gethookmyapp/cli",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "HookMyApp CLI, No BS. Just go live.",
   "type": "module",
   "bin": {
@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "node build.mjs",
+    "prepublishOnly": "npm run build && npm run test:unit",
     "dev": "tsx src/index.ts",
     "test": "vitest run --reporter=verbose",
     "test:unit": "vitest run --reporter=verbose",
