@@ -31,7 +31,14 @@ jobs:
       - name: Verify build
         run: node bin/hookmyapp.js --version
       - name: Publish to npm (OIDC + provenance)
+        # prepublishOnly reruns the build during `npm publish`; keep the same
+        # env as the Build step so the rebuild bakes identical release values.
         run: npm publish --provenance --access public
+        env:
+          HOOKMYAPP_SENTRY_DSN: ${{ secrets.HOOKMYAPP_CLI_SENTRY_DSN }}
+          HOOKMYAPP_CLI_RELEASE: ${{ github.ref_name }}
+          HOOKMYAPP_POSTHOG_TOKEN: ${{ secrets.HOOKMYAPP_POSTHOG_TOKEN }}
+          HOOKMYAPP_POSTHOG_HOST: ${{ secrets.HOOKMYAPP_POSTHOG_HOST }}
 
   notify-failure:
     needs: [publish]
