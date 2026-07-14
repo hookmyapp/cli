@@ -18,13 +18,12 @@ import type { Channel } from '../api/channel.js';
  * authentication failure from CI scripts that check exit codes.
  */
 async function listWorkspacesOrEmpty(): Promise<
-  Array<{ id: string; name: string; workosOrganizationId?: string }>
+  Array<{ id: string; name: string }>
 > {
   try {
     return (await apiClient('/workspaces')) as Array<{
       id: string;
       name: string;
-      workosOrganizationId?: string;
     }>;
   } catch (err) {
     if (err instanceof AuthError || err instanceof NetworkError) {
@@ -66,7 +65,6 @@ export async function getDefaultWorkspaceId(): Promise<string> {
       (w) =>
         w.name === flag ||
         w.name.toLowerCase() === flag.toLowerCase() ||
-        w.workosOrganizationId === flag ||
         w.id === flag,
     );
     if (!match) {

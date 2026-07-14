@@ -18,6 +18,7 @@ process.env.HOOKMYAPP_CONFIG_DIR = CONFIG_DIR;
 vi.mock('../api/client.js', () => ({
   apiClient: vi.fn(),
   forceTokenRefresh: vi.fn().mockResolvedValue(undefined),
+  rescopeWorkspaceToken: vi.fn().mockResolvedValue(undefined),
   setWorkspaceContext: vi.fn(),
 }));
 
@@ -32,15 +33,16 @@ vi.mock('../auth/store.js', () => ({
 
 const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-import { apiClient, forceTokenRefresh } from '../api/client.js';
+import { apiClient, rescopeWorkspaceToken } from '../api/client.js';
 const mockedApi = vi.mocked(apiClient);
-const mockedRefresh = vi.mocked(forceTokenRefresh);
+const mockedRescope = vi.mocked(rescopeWorkspaceToken);
 
 const CONFIG_PATH = path.join(TMP_HOME, '.hookmyapp', 'config.json');
 
+// AIT-182 — the workspaces wire no longer carries workosOrganizationId.
 const fakeWorkspaces = [
-  { id: 'ws_TEST0001', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
-  { id: 'ws_TEST0002', name: 'Globex', workosOrganizationId: 'org_01B', role: 'member', createdAt: '2026-02-01', kind: 'team' },
+  { id: 'ws_TEST0001', name: 'Acme', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
+  { id: 'ws_TEST0002', name: 'Globex', role: 'member', createdAt: '2026-02-01', kind: 'team' },
 ];
 
 let originalIsTTY: boolean | undefined;
@@ -48,8 +50,8 @@ let originalIsTTY: boolean | undefined;
 beforeEach(async () => {
   vi.resetModules();
   mockedApi.mockReset();
-  mockedRefresh.mockReset();
-  mockedRefresh.mockResolvedValue(undefined);
+  mockedRescope.mockReset();
+  mockedRescope.mockResolvedValue(undefined);
   mockConsoleLog.mockClear();
   originalIsTTY = process.stdout.isTTY;
 });
@@ -88,10 +90,10 @@ describe('workspace use (RBAC-UX-01/02/03)', () => {
     expect(cfg.activeWorkspaceSlug).toBe('Acme');
   });
 
-  it('RBAC-UX-03: calls forceTokenRefresh(workosOrganizationId) after persist', async () => {
+  it('RBAC-UX-03: calls rescopeWorkspaceToken(ws publicId) after persist (AIT-182)', async () => {
     mockedApi.mockResolvedValue(fakeWorkspaces);
     await runWorkspaceUse(['Acme']);
-    expect(mockedRefresh).toHaveBeenCalledWith('org_01A');
+    expect(mockedRescope).toHaveBeenCalledWith('ws_TEST0001');
   });
 
   it('RBAC-UX-02: no-arg TTY uses @inquirer/prompts select and switches', async () => {
@@ -112,7 +114,7 @@ describe('workspace use (RBAC-UX-01/02/03)', () => {
     );
     const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
     expect(cfg.activeWorkspaceId).toBe('ws_TEST0002');
-    expect(mockedRefresh).toHaveBeenCalledWith('org_01B');
+    expect(mockedRescope).toHaveBeenCalledWith('ws_TEST0002');
   });
 
   it('RBAC-UX-02: no-arg non-TTY throws ValidationError with exitCode 2', async () => {
@@ -128,7 +130,7 @@ describe('workspace use (RBAC-UX-01/02/03)', () => {
   it('refuses to switch into a customer workspace (customers use owns that)', async () => {
     mockedApi.mockResolvedValue([
       ...fakeWorkspaces,
-      { id: 'ws_TEST0009', name: 'Client Co', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-03-01', kind: 'customer' },
+      { id: 'ws_TEST0009', name: 'Client Co', role: 'admin', createdAt: '2026-03-01', kind: 'customer' },
     ]);
 
     await expect(runWorkspaceUse(['Client Co'])).rejects.toThrow(/workspace "Client Co" not found/);

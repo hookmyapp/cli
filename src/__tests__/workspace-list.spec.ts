@@ -14,6 +14,7 @@ process.env.HOOKMYAPP_CONFIG_DIR = CONFIG_DIR;
 vi.mock('../api/client.js', () => ({
   apiClient: vi.fn(),
   forceTokenRefresh: vi.fn(),
+  rescopeWorkspaceToken: vi.fn().mockResolvedValue(undefined),
   setWorkspaceContext: vi.fn(),
 }));
 
@@ -30,9 +31,10 @@ const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 const CONFIG_PATH = path.join(TMP_HOME, '.hookmyapp', 'config.json');
 
 // Phase 117: every workspace id fixture is a ws_ publicId.
+// AIT-182: the workspaces wire no longer carries workosOrganizationId.
 const fakeWorkspaces = [
-  { id: 'ws_TEST0001', name: 'Acme', workosOrganizationId: 'org_01A', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
-  { id: 'ws_TEST0002', name: 'Globex', workosOrganizationId: 'org_01B', role: 'member', createdAt: '2026-02-01', kind: 'customer' },
+  { id: 'ws_TEST0001', name: 'Acme', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
+  { id: 'ws_TEST0002', name: 'Globex', role: 'member', createdAt: '2026-02-01', kind: 'customer' },
 ];
 
 beforeEach(async () => {
@@ -110,7 +112,7 @@ describe('workspace list (RBAC-UX-04)', () => {
   it('is team-only in JSON mode too, and an unknown kind never renders as team', async () => {
     mockedApi.mockResolvedValue([
       ...fakeWorkspaces,
-      { id: 'ws_TEST0003', name: 'Mystery', workosOrganizationId: 'org_01C', role: 'admin', createdAt: '2026-03-01', kind: 'weird' },
+      { id: 'ws_TEST0003', name: 'Mystery', role: 'admin', createdAt: '2026-03-01', kind: 'weird' },
     ]);
     await runList(['--json'], false);
 

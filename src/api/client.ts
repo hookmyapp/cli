@@ -43,16 +43,12 @@ function decodeJwtExp(token: string): number {
 
 async function refreshToken(
   refreshTokenValue: string,
-  organizationId?: string,
 ): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> {
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: refreshTokenValue,
     client_id: getEffectiveWorkosClientId(),
   });
-  if (organizationId) {
-    params.set('organization_id', organizationId);
-  }
   const res = await fetch('https://api.workos.com/user_management/authenticate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -84,22 +80,71 @@ async function refreshToken(
   };
 }
 
-export async function forceTokenRefresh(organizationId?: string): Promise<void> {
+export async function forceTokenRefresh(): Promise<void> {
   const creds = await readCredentials();
   if (!creds) {
     throw new AuthError('Not logged in. Run: hookmyapp login');
   }
   // Agent (auth.md) credentials are org-scoped Bearer tokens with no refresh
-  // token; there is nothing to refresh and no org re-scope to perform.
+  // token; there is nothing to refresh.
   if (isAgentCredential(creds)) {
     return;
   }
   try {
-    const refreshed = await refreshToken(creds.refreshToken, organizationId);
+    const refreshed = await refreshToken(creds.refreshToken);
     await saveCredentials(refreshed);
   } catch {
     throw new AuthError('Session expired. Run: hookmyapp login');
   }
+}
+
+/**
+ * Re-scope the stored session to a workspace's organization via the backend
+ * (POST /auth/rescope). The server resolves workspace → org — the CLI never
+ * sees the internal WorkOS organization id (AIT-182).
+ */
+export async function rescopeWorkspaceToken(workspaceId: string): Promise<void> {
+  const creds = await readCredentials();
+  if (!creds) {
+    throw new AuthError('Not logged in. Run: hookmyapp login');
+  }
+  // Agent (auth.md) credentials are org-scoped Bearer tokens with no refresh
+  // token; nothing to rescope.
+  if (isAgentCredential(creds)) {
+    return;
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${getEffectiveApiUrl()}/auth/rescope`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...buildVersionHeaders() },
+      body: JSON.stringify({ refreshToken: creds.refreshToken, workspaceId }),
+    });
+  } catch (err) {
+    if (isNetworkFailure(err)) {
+      throw new NetworkError(
+        `Could not connect to HookMyApp API (${new URL(getEffectiveApiUrl()).host}): ${describeFetchError(err)}. Check your internet connection or try again later.`,
+      );
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw await mapApiError(res);
+  }
+  const data = await res.json().catch(() => null);
+  // Shape guard — never persist a 200 with missing/empty tokens (same rule as
+  // refreshToken above; a corrupt credentials.json is worse than a hard error).
+  if (
+    typeof data?.accessToken !== 'string' || data.accessToken === '' ||
+    typeof data?.refreshToken !== 'string' || data.refreshToken === ''
+  ) {
+    throw new UnexpectedError('rescope response malformed', 'RESCOPE_FAILED');
+  }
+  await saveCredentials({
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+    expiresAt: decodeJwtExp(data.accessToken),
+  });
 }
 
 // Centralized HTTP-status → AppError subclass mapping. Every non-ok response

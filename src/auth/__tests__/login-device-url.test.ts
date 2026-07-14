@@ -15,11 +15,12 @@ vi.mock('../../observability/posthog.js', () => ({
 }));
 
 const apiClientMock = vi.fn(async () => [
-  { id: 'ws_TEST0001', name: 'acme-corp', role: 'admin', workosOrganizationId: 'org_1' },
+  { id: 'ws_TEST0001', name: 'acme-corp', role: 'admin' },
 ]);
 vi.mock('../../api/client.js', () => ({
   apiClient: apiClientMock,
   forceTokenRefresh: vi.fn(),
+  rescopeWorkspaceToken: vi.fn(async () => undefined),
   setWorkspaceContext: vi.fn(),
 }));
 
@@ -35,7 +36,7 @@ describe('login device-flow verification URL', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiClientMock.mockResolvedValue([
-      { id: 'ws_TEST0001', name: 'acme-corp', role: 'admin', workosOrganizationId: 'org_1' },
+      { id: 'ws_TEST0001', name: 'acme-corp', role: 'admin' },
     ]);
   });
 

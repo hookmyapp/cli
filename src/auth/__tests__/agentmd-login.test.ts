@@ -151,7 +151,7 @@ function fetchByUrl(workspaces: unknown[]) {
 
 test('otp login with stale workspace + one live workspace → re-resolves to it', async () => {
   seedConfig('ws_stale123');
-  vi.stubGlobal('fetch', fetchByUrl([{ id: 'ws_fresh456', name: 'Fresh', workosOrganizationId: 'org_1' }]));
+  vi.stubGlobal('fetch', fetchByUrl([{ id: 'ws_fresh456', name: 'Fresh' }]));
   const mod = await import('../login.js');
 
   await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
@@ -163,8 +163,8 @@ test('otp login with stale workspace + one live workspace → re-resolves to it'
 test('otp login with stale workspace + several live workspaces → clears the selection', async () => {
   seedConfig('ws_stale123');
   vi.stubGlobal('fetch', fetchByUrl([
-    { id: 'ws_fresh456', name: 'Fresh', workosOrganizationId: 'org_1' },
-    { id: 'ws_other789', name: 'Other', workosOrganizationId: 'org_2' },
+    { id: 'ws_fresh456', name: 'Fresh' },
+    { id: 'ws_other789', name: 'Other' },
   ]));
   const mod = await import('../login.js');
 
@@ -175,7 +175,7 @@ test('otp login with stale workspace + several live workspaces → clears the se
 
 test('otp login with a still-valid workspace → selection untouched', async () => {
   seedConfig('ws_fresh456', 'Fresh');
-  vi.stubGlobal('fetch', fetchByUrl([{ id: 'ws_fresh456', name: 'Fresh', workosOrganizationId: 'org_1' }]));
+  vi.stubGlobal('fetch', fetchByUrl([{ id: 'ws_fresh456', name: 'Fresh' }]));
   const mod = await import('../login.js');
 
   await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
