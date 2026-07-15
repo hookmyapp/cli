@@ -31,10 +31,11 @@ const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 const CONFIG_PATH = path.join(TMP_HOME, '.hookmyapp', 'config.json');
 
 // Phase 117: every workspace id fixture is a ws_ publicId.
-// AIT-182: the workspaces wire no longer carries workosOrganizationId.
+// AIT-182: fixtures simulate an OLDER backend that still sends
+// workosOrganizationId — the CLI must scrub it at the output boundary.
 const fakeWorkspaces = [
-  { id: 'ws_TEST0001', name: 'Acme', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
-  { id: 'ws_TEST0002', name: 'Globex', role: 'member', createdAt: '2026-02-01', kind: 'customer' },
+  { id: 'ws_TEST0001', name: 'Acme', role: 'admin', createdAt: '2026-01-01', kind: 'team', workosOrganizationId: 'org_01INTERNAL' },
+  { id: 'ws_TEST0002', name: 'Globex', role: 'member', createdAt: '2026-02-01', kind: 'customer', workosOrganizationId: 'org_01INTERNAL' },
 ];
 
 beforeEach(async () => {

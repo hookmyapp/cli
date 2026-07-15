@@ -3,7 +3,7 @@ import { apiClient, rescopeWorkspaceToken } from '../api/client.js';
 import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
-import type { Workspace } from '../types/workspace.js';
+import { dropWorkosOrgId, type Workspace } from '../types/workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
 import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
@@ -208,7 +208,7 @@ export function registerWorkspaceCommand(program: Command): void {
       // Workspaces vs Customers split. Strict equality also enforces
       // the fail-safe: an unknown kind never renders as a team workspace.
       const all = (await apiClient('/workspaces')) as Workspace[];
-      const data = all.filter((w) => w.kind === 'team');
+      const data = all.filter((w) => w.kind === 'team').map(dropWorkosOrgId);
       const config = readWorkspaceConfig();
       if (opts.json) {
         console.log(JSON.stringify(data, null, 2));
@@ -236,16 +236,16 @@ export function registerWorkspaceCommand(program: Command): void {
         method: 'POST',
         body: JSON.stringify({ name }),
       });
+      // Re-scope the JWT to the newly-created workspace's org (server-side,
+      // AIT-182) BEFORE persisting the switch — a failed rescope must not
+      // leave config pointing at a workspace the token isn't valid for.
+      await rescopeWorkspaceToken(result.id);
       // The create endpoint returns the public DTO where `id` IS the ws_
       // publicId (AIT-147) — safe to persist directly.
       writeWorkspaceConfig({
         activeWorkspaceId: result.id,
         activeWorkspaceSlug: result.name,
       });
-      // Re-scope the JWT to the newly-created workspace's org (server-side,
-      // AIT-182); without this, subsequent commands (e.g. `workspace current`)
-      // hit the backend with a token still bound to the previous org and get 403.
-      await rescopeWorkspaceToken(result.id);
       if (!program.opts().json) {
         console.log(`Created workspace "${result.name}" and switched to it`);
       } else {
@@ -264,7 +264,7 @@ export function registerWorkspaceCommand(program: Command): void {
         apiClient(`/workspaces/${workspaceId}`),
       ]);
       const listEntry = workspaces.find((w: any) => w.id === workspaceId);
-      const merged = { ...detail, role: listEntry?.role };
+      const merged = dropWorkosOrgId({ ...detail, role: listEntry?.role });
       if (!program.opts().json) {
         console.log(`Name:          ${merged.name}`);
         console.log(`ID:            ${merged.id}`);

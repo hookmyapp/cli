@@ -3,7 +3,7 @@ import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
-import type { Workspace } from '../types/workspace.js';
+import { dropWorkosOrgId, type Workspace } from '../types/workspace.js';
 import { readWorkspaceConfig, switchActiveWorkspace } from './workspace.js';
 
 interface OnboardingLinkRow {
@@ -30,7 +30,7 @@ export function registerCustomersCommand(program: Command): void {
       const all = (await apiClient('/workspaces')) as Workspace[];
       const customers = all.filter((w) => w.kind === 'customer');
       if (opts.json || program.opts().json) {
-        console.log(JSON.stringify(customers, null, 2));
+        console.log(JSON.stringify(customers.map(dropWorkosOrgId), null, 2));
         return;
       }
       const config = readWorkspaceConfig();

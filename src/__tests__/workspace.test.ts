@@ -50,6 +50,9 @@ const fakeWorkspaceDetail = {
   channelCount: 2,
   createdAt: '2026-01-01',
   updatedAt: '2026-01-15',
+  // AIT-182 rollout skew: an older backend may still send this — the CLI
+  // must scrub it before output.
+  workosOrganizationId: 'org_01INTERNAL',
 };
 
 describe('resolveWorkspace', () => {
