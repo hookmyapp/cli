@@ -2,6 +2,16 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## Unreleased
+
+### Added
+
+- `sandbox env` now emits `VERIFY_TOKEN` (AIT-179) — the session's webhook verify token, distinct from `WEBHOOK_HMAC_SECRET`. `sandbox webhook set` runs the verify-GET handshake against it, so an unmodified starter-kit receiver configured via `sandbox env` now passes verification.
+
+### Changed
+
+- Sandbox session boundary parser requires `verifyToken` on every session; older backends without it surface as `MALFORMED_SANDBOX_SESSION`.
+
 ## 0.12.7 — 2026-05-30
 
 ### Breaking

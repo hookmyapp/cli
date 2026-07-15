@@ -19,6 +19,7 @@ const ig = {
   senderInstagramUsername: 'ordvir',
   accessToken: 'tok',
   hmacSecret: 'hmac',
+  verifyToken: 'VT_test',
   status: 'active',
   origin: 'demo_handoff',
 };

@@ -18,6 +18,7 @@ const wa: WhatsAppSandboxSession = {
   whatsappApiVersion: 'v24.0',
   accessToken: 'ACT_wa_xxx',
   hmacSecret: 'HMAC_wa',
+  verifyToken: 'VT_test',
   status: 'active',
   origin: 'manual',
 };
@@ -30,6 +31,7 @@ const igWithUsername: InstagramSandboxSession = {
   senderInstagramUsername: 'ordvir',
   accessToken: 'ACT_ig_xxx',
   hmacSecret: 'HMAC_ig',
+  verifyToken: 'VT_test',
   status: 'active',
   origin: 'demo_handoff',
 };
