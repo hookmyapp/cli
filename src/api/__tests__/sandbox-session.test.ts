@@ -13,6 +13,7 @@ const baseShared = {
   id: 'ssn_TEST0001',
   accessToken: 'ACT_xxx',
   hmacSecret: 'HMAC_yyy',
+  verifyToken: 'VT_test',
   status: 'active',
   origin: 'manual',
 };
@@ -72,6 +73,7 @@ describe('parseSandboxSession', () => {
       type: 'instagram',
       accessToken: 'ACT_xxx',
       hmacSecret: 'HMAC_yyy',
+      verifyToken: 'VT_test',
       status: 'active',
       origin: 'manual',
       senderInstagramId: '12345',

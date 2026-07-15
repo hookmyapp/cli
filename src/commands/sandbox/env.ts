@@ -5,10 +5,9 @@
 // Per D2: WA block uses the WHATSAPP_* prefix (including the WA quirk where
 // WHATSAPP_PHONE_NUMBER_ID carries the tester's phone, per spec D4). IG block
 // uses the INSTAGRAM_* prefix. Both blocks carry the session's webhook HMAC
-// signing secret as WEBHOOK_HMAC_SECRET. No VERIFY_TOKEN is written: the
-// sandbox tunnel never issues the verify-GET handshake, and the temporary
-// compat alias for pre-split starter-kits was dropped alongside
-// webhook-starter-kit v3 (AIT-126).
+// signing secret as WEBHOOK_HMAC_SECRET and, since AIT-179, the session's
+// VERIFY_TOKEN — `sandbox webhook set` runs the verify-GET handshake against
+// it (distinct from the HMAC secret; Verify Token ≠ HMAC).
 
 import * as fs from 'node:fs';
 import type { Command } from 'commander';
@@ -42,6 +41,7 @@ export function buildEnvPairs(session: SandboxSession): [string, string][] {
     case 'whatsapp':
       return [
         ['WEBHOOK_HMAC_SECRET', session.hmacSecret],
+        ['VERIFY_TOKEN', session.verifyToken],
         ['PORT', '3000'],
         ['WHATSAPP_API_URL', `${proxyBase}/${session.whatsappApiVersion}`],
         ['WHATSAPP_ACCESS_TOKEN', session.accessToken],
@@ -50,6 +50,7 @@ export function buildEnvPairs(session: SandboxSession): [string, string][] {
     case 'instagram':
       return [
         ['WEBHOOK_HMAC_SECRET', session.hmacSecret],
+        ['VERIFY_TOKEN', session.verifyToken],
         ['PORT', '3000'],
         ['INSTAGRAM_API_URL', `${proxyBase}/${INSTAGRAM_GRAPH_VERSION}`],
         ['INSTAGRAM_ACCESS_TOKEN', session.accessToken],

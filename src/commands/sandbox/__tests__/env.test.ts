@@ -31,6 +31,7 @@ const wa: WhatsAppSandboxSession = {
   whatsappApiVersion: 'v24.0',
   accessToken: 'ACT_wa_xxx',
   hmacSecret: 'HMAC_wa_yyy',
+  verifyToken: 'VT_wa_zzz',
   status: 'active',
   origin: 'manual',
 };
@@ -43,6 +44,7 @@ const ig: InstagramSandboxSession = {
   senderInstagramUsername: 'ordvir',
   accessToken: 'ACT_ig_xxx',
   hmacSecret: 'HMAC_ig_yyy',
+  verifyToken: 'VT_ig_zzz',
   status: 'active',
   origin: 'demo_handoff',
 };
@@ -60,6 +62,7 @@ describe('buildEnvBlock — WhatsApp regression', () => {
     expect(out).toBe(
       [
         'WEBHOOK_HMAC_SECRET=HMAC_wa_yyy',
+        'VERIFY_TOKEN=VT_wa_zzz',
         'PORT=3000',
         'WHATSAPP_API_URL=https://proxy.test/v24.0',
         'WHATSAPP_ACCESS_TOKEN=ACT_wa_xxx',
@@ -83,6 +86,7 @@ describe('buildEnvBlock — Instagram (D2)', () => {
     expect(out).toBe(
       [
         'WEBHOOK_HMAC_SECRET=HMAC_ig_yyy',
+        'VERIFY_TOKEN=VT_ig_zzz',
         'PORT=3000',
         'INSTAGRAM_API_URL=https://proxy.test/v25.0',
         'INSTAGRAM_ACCESS_TOKEN=ACT_ig_xxx',
@@ -137,6 +141,7 @@ describe('runSandboxEnv --json — flat {KEY: VALUE} object', () => {
     const parsed = JSON.parse((writeSpy.mock.calls[0][0] as string).trim());
     expect(parsed).toEqual({
       WEBHOOK_HMAC_SECRET: 'HMAC_ig_yyy',
+      VERIFY_TOKEN: 'VT_ig_zzz',
       PORT: '3000',
       INSTAGRAM_API_URL: 'https://proxy.test/v25.0',
       INSTAGRAM_ACCESS_TOKEN: 'ACT_ig_xxx',

@@ -23,6 +23,10 @@ interface SandboxSessionBase {
   id: string;
   accessToken: string;
   hmacSecret: string;
+  /** GET-handshake echo value for webhook verification. Distinct from
+   *  hmacSecret (Verify Token ≠ HMAC). Exported as VERIFY_TOKEN by
+   *  `sandbox env` (AIT-179). */
+  verifyToken: string;
   status: 'pending_activation' | 'active' | 'replaced' | 'expired';
   origin: string;
   // Optional fields tolerated when present (not required for parser success):
@@ -89,6 +93,7 @@ export function parseSandboxSession(dto: unknown): SandboxSession {
   if (!isNonEmptyString(d.id)) malformed(id, 'id missing');
   if (!isNonEmptyString(d.accessToken)) malformed(id, 'accessToken missing');
   if (!isNonEmptyString(d.hmacSecret)) malformed(id, 'hmacSecret missing');
+  if (!isNonEmptyString(d.verifyToken)) malformed(id, 'verifyToken missing');
   if (!isNonEmptyString(d.status)) malformed(id, 'status missing');
   // Validate status against the closed union declared on SandboxSessionBase.
   // A typo like 'pending_activision' would otherwise pass through and lie to

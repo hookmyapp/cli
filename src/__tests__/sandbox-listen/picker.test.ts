@@ -25,6 +25,7 @@ function makeSession(overrides: Partial<WhatsAppSandboxSession> = {}): WhatsAppS
     status: 'active',
     accessToken: 'ACT_test',
     hmacSecret: 'HMAC_test',
+    verifyToken: 'VT_test',
     origin: 'test',
     whatsappPhone: '+15550001',
     whatsappPhoneNumberId: 'PNID_test',
@@ -114,6 +115,7 @@ describe('pickSession', () => {
       senderInstagramUsername: 'ordvir',
       accessToken: 'ACT_ig',
       hmacSecret: 'HMAC_ig',
+      verifyToken: 'VT_test',
       status: 'active',
       origin: 'demo_handoff',
     };
