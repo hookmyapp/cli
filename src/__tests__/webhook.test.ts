@@ -60,6 +60,7 @@ vi.stubGlobal('fetch', mockFetch);
 
 describe('webhook commands', () => {
   let runChannelWebhookShow: typeof import('../commands/webhook.js').runChannelWebhookShow;
+  let runChannelWebhookHmacShow: typeof import('../commands/webhook.js').runChannelWebhookHmacShow;
   let runChannelWebhookSet: typeof import('../commands/webhook.js').runChannelWebhookSet;
   let runChannelWebhookClear: typeof import('../commands/webhook.js').runChannelWebhookClear;
 
@@ -72,6 +73,7 @@ describe('webhook commands', () => {
 
     const mod = await import('../commands/webhook.js');
     runChannelWebhookShow = mod.runChannelWebhookShow;
+    runChannelWebhookHmacShow = mod.runChannelWebhookHmacShow;
     runChannelWebhookSet = mod.runChannelWebhookSet;
     runChannelWebhookClear = mod.runChannelWebhookClear;
   });
@@ -89,6 +91,18 @@ describe('webhook commands', () => {
     expect(mockedApiClient).toHaveBeenCalledWith('/meta/channels', { workspaceId: 'ws_TEST0010' });
     expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/ch_TEST0001');
     expect(mockedOutput).toHaveBeenCalledWith(config, expect.objectContaining({}));
+  });
+
+  it('hmac show calls apiClient /webhook-config/:channelId/hmac — a surface separate from webhook show', async () => {
+    const secret = { channelId: 'ch_TEST0001', hmacSecret: 'hmac-secret-1' };
+    mockedApiClient
+      .mockResolvedValueOnce(fakeChannels)
+      .mockResolvedValueOnce(secret);
+
+    await runChannelWebhookHmacShow('ch_TEST0001');
+
+    expect(mockedApiClient).toHaveBeenCalledWith('/webhook-config/ch_TEST0001/hmac');
+    expect(mockedOutput).toHaveBeenCalledWith(secret, expect.objectContaining({ kind: 'read' }));
   });
 
   it('setWebhook calls apiClient to configure webhook for channel', async () => {
