@@ -21,6 +21,21 @@ export async function runChannelWebhookShow(
 }
 
 /**
+ * Canonical handler for `hookmyapp channels webhook hmac show <channel>`.
+ * The HMAC signing secret (X-HookMyApp-Signature-256) is a DISTINCT secret
+ * from the verify token, so it has its own surface — never bundled into
+ * `webhook show` (AIT-183).
+ */
+export async function runChannelWebhookHmacShow(
+  channelRef: string,
+  opts: { json?: boolean } = {},
+): Promise<void> {
+  const channel = await resolveChannel(channelRef);
+  const data = await apiClient(`/webhook-config/${channel.id}/hmac`);
+  output(data, { json: !!opts.json, kind: 'read' });
+}
+
+/**
  * Canonical handler for `hookmyapp channels webhook set <channel>`.
  */
 export async function runChannelWebhookSet(

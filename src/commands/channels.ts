@@ -16,6 +16,7 @@ import { runChannelToken } from './token.js';
 import { runChannelHealth } from './health.js';
 import {
   runChannelWebhookShow,
+  runChannelWebhookHmacShow,
   runChannelWebhookSet,
   runChannelWebhookClear,
   type WebhookSetOptions,
@@ -616,6 +617,18 @@ export function registerChannelsCommand(program: Command): void {
       await runChannelWebhookClear(channelRef, { json: !!program.opts().json });
     });
 
+  const channelsWebhookHmac = channelsWebhook
+    .command('hmac')
+    .description('Manage the HMAC signing secret for delivered payloads (X-HookMyApp-Signature-256)');
+
+  const channelsWebhookHmacShow = channelsWebhookHmac
+    .command('show')
+    .description('Show the HMAC signing secret for a channel (distinct from the verify token)')
+    .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
+    .action(async (channelRef: string) => {
+      await runChannelWebhookHmacShow(channelRef, { json: !!program.opts().json });
+    });
+
   addExamples(
     channels,
     `
@@ -738,6 +751,7 @@ EXAMPLES:
   $ hookmyapp channels webhook show ch_AAAAAAAA
   $ hookmyapp channels webhook set ch_AAAAAAAA --url https://example.com/hook
   $ hookmyapp channels webhook clear ch_AAAAAAAA
+  $ hookmyapp channels webhook hmac show ch_AAAAAAAA
 `,
   );
 
@@ -765,6 +779,24 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp channels webhook clear ch_AAAAAAAA
   $ hookmyapp channels webhook clear ch_AAAAAAAA --json
+`,
+  );
+
+  addExamples(
+    channelsWebhookHmac,
+    `
+EXAMPLES:
+  $ hookmyapp channels webhook hmac show ch_AAAAAAAA
+  $ hookmyapp channels webhook hmac show ch_AAAAAAAA --json
+`,
+  );
+
+  addExamples(
+    channelsWebhookHmacShow,
+    `
+EXAMPLES:
+  $ hookmyapp channels webhook hmac show ch_AAAAAAAA
+  $ hookmyapp channels webhook hmac show ch_AAAAAAAA --json
 `,
   );
 }
