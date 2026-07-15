@@ -30,6 +30,7 @@ const ig: InstagramSandboxSession = {
   senderInstagramUsername: 'ordvir',
   accessToken: 'ACT_ig',
   hmacSecret: 'HMAC_ig',
+  verifyToken: 'VT_test',
   status: 'active',
   origin: 'demo_handoff',
 };

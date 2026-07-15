@@ -195,6 +195,7 @@ describe('post-login wizard', () => {
           status: 'active',
           accessToken: 'abc12345',
           hmacSecret: 'secret',
+          verifyToken: 'VT_test',
           origin: 'sandbox',
         },
       ]);

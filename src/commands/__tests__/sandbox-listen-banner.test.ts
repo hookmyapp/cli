@@ -16,6 +16,7 @@ const SESSION: WhatsAppSandboxSession = {
   status: 'active',
   accessToken: 'ACT_banner',
   hmacSecret: 'HMAC_banner',
+  verifyToken: 'VT_test',
   origin: 'test',
   whatsappPhone: '+15551234567',
   whatsappPhoneNumberId: 'PNID_banner',
