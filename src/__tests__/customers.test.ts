@@ -16,6 +16,7 @@ process.env.HOOKMYAPP_CONFIG_DIR = CONFIG_DIR;
 vi.mock('../api/client.js', () => ({
   apiClient: vi.fn(),
   forceTokenRefresh: vi.fn().mockResolvedValue(undefined),
+  rescopeWorkspaceToken: vi.fn().mockResolvedValue(undefined),
   setWorkspaceContext: vi.fn(),
 }));
 
@@ -26,22 +27,23 @@ vi.mock('../auth/store.js', () => ({
 
 const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-import { apiClient, forceTokenRefresh } from '../api/client.js';
+import { apiClient, rescopeWorkspaceToken } from '../api/client.js';
 const mockedApi = vi.mocked(apiClient);
-const mockedRefresh = vi.mocked(forceTokenRefresh);
+const mockedRescope = vi.mocked(rescopeWorkspaceToken);
 
 const CONFIG_PATH = path.join(TMP_HOME, '.hookmyapp', 'config.json');
 
+// AIT-182 — the workspaces wire no longer carries workosOrganizationId.
 const fakeWorkspaces = [
-  { id: 'ws_TEAM0001', name: 'HR', workosOrganizationId: 'org_01A', organizationPublicId: 'org_pub_A', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
-  { id: 'ws_CUST0001', name: 'Acme', workosOrganizationId: 'org_01A', organizationPublicId: 'org_pub_A', role: 'admin', createdAt: '2026-02-01', kind: 'customer' },
+  { id: 'ws_TEAM0001', name: 'HR', organizationPublicId: 'org_pub_A', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
+  { id: 'ws_CUST0001', name: 'Acme', organizationPublicId: 'org_pub_A', role: 'admin', createdAt: '2026-02-01', kind: 'customer' },
 ];
 
 beforeEach(async () => {
   vi.resetModules();
   mockedApi.mockReset();
-  mockedRefresh.mockReset();
-  mockedRefresh.mockResolvedValue(undefined);
+  mockedRescope.mockReset();
+  mockedRescope.mockResolvedValue(undefined);
   mockConsoleLog.mockClear();
 });
 
@@ -95,7 +97,7 @@ describe('customers use', () => {
 
     const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
     expect(cfg.activeWorkspaceId).toBe('ws_CUST0001');
-    expect(mockedRefresh).toHaveBeenCalledWith('org_01A');
+    expect(mockedRescope).toHaveBeenCalledWith('ws_CUST0001');
   });
 
   it('refuses to switch into a team workspace', async () => {

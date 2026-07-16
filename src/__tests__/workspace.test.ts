@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../api/client.js', () => ({
   apiClient: vi.fn(),
   forceTokenRefresh: vi.fn().mockResolvedValue(undefined),
+  rescopeWorkspaceToken: vi.fn().mockResolvedValue(undefined),
   setWorkspaceContext: vi.fn(),
 }));
 
@@ -25,20 +26,21 @@ const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
 
 const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-import { apiClient, forceTokenRefresh } from '../api/client.js';
+import { apiClient, rescopeWorkspaceToken } from '../api/client.js';
 import { output } from '../output/format.js';
 
 const mockedApiClient = vi.mocked(apiClient);
 const mockedOutput = vi.mocked(output);
-const mockedForceTokenRefresh = vi.mocked(forceTokenRefresh);
+const mockedRescopeWorkspaceToken = vi.mocked(rescopeWorkspaceToken);
 
 // Phase 117 — every id fixture below is a publicId (ws_/ch_/ssn_/mem_/inv_ prefix, 8-char
 // alphanumeric body). Raw UUIDs are rejected with a typed ValidationError at every
 // external flag/header/body surface; see workspace.ts resolveWorkspace + _helpers.ts.
+// AIT-182 — the workspaces wire no longer carries workosOrganizationId.
 const fakeWorkspaces = [
-  { id: 'ws_TEST0001', name: 'Alpha Workspace', workosOrganizationId: 'org_01ALPHA', role: 'owner', createdAt: '2026-01-01', kind: 'team' },
-  { id: 'ws_TEST0002', name: 'Beta Workspace', workosOrganizationId: 'org_01BETAA', role: 'member', createdAt: '2026-02-01', kind: 'team' },
-  { id: 'ws_TEST0003', name: 'Beta Workspace', workosOrganizationId: 'org_01BETAB', role: 'admin', createdAt: '2026-03-01', kind: 'team' },
+  { id: 'ws_TEST0001', name: 'Alpha Workspace', role: 'owner', createdAt: '2026-01-01', kind: 'team' },
+  { id: 'ws_TEST0002', name: 'Beta Workspace', role: 'member', createdAt: '2026-02-01', kind: 'team' },
+  { id: 'ws_TEST0003', name: 'Beta Workspace', role: 'admin', createdAt: '2026-03-01', kind: 'team' },
 ];
 
 const fakeWorkspaceDetail = {
@@ -48,8 +50,9 @@ const fakeWorkspaceDetail = {
   channelCount: 2,
   createdAt: '2026-01-01',
   updatedAt: '2026-01-15',
-  // Internal AuthKit plumbing on the detail wire — must never reach stdout.
-  workosOrganizationId: 'org_01ALPHA',
+  // AIT-182 rollout skew: an older backend may still send this — the CLI
+  // must scrub it before output.
+  workosOrganizationId: 'org_01INTERNAL',
 };
 
 describe('resolveWorkspace', () => {
@@ -73,12 +76,6 @@ describe('resolveWorkspace', () => {
   it('resolves workspace by case-insensitive name', async () => {
     mockedApiClient.mockResolvedValue(fakeWorkspaces);
     const result = await resolveWorkspace('alpha workspace');
-    expect(result).toEqual(fakeWorkspaces[0]);
-  });
-
-  it('resolves workspace by workosOrganizationId (slug)', async () => {
-    mockedApiClient.mockResolvedValue(fakeWorkspaces);
-    const result = await resolveWorkspace('org_01ALPHA');
     expect(result).toEqual(fakeWorkspaces[0]);
   });
 
@@ -225,14 +222,11 @@ describe('workspace commands', () => {
   });
 
   describe('workspace new', () => {
-    // The create endpoint returns the raw Prisma row: `id` is the raw DB UUID,
-    // `publicId` is the ws_ handle. The CLI must persist/emit the publicId, never
-    // the raw UUID (which writeWorkspaceConfig rejects → the exit-2 break).
+    // The create endpoint returns the public DTO (AIT-147/AIT-182): `id` IS
+    // the ws_ publicId — no raw UUID, no workosOrganizationId on the wire.
     const created = {
-      id: 'a79634d0-7d8b-435c-8d49-9e5a524645ae',
-      publicId: 'ws_TEST0004',
+      id: 'ws_TEST0004',
       name: 'New WS',
-      workosOrganizationId: 'org_NEW0001',
       createdAt: '2026-04-01',
       updatedAt: '2026-04-01',
     };
@@ -262,7 +256,7 @@ describe('workspace commands', () => {
       registerWorkspaceCommand(program);
       await program.parseAsync(['workspace', 'new', 'New WS', '--json'], { from: 'user' });
 
-      // publicId-as-id, name only — never the raw `id` UUID or workosOrganizationId.
+      // publicId-as-id, name only — never the raw `id` UUID.
       expect(mockedOutput).toHaveBeenCalledWith(
         { id: 'ws_TEST0004', name: 'New WS' },
         { human: false },
@@ -410,12 +404,11 @@ describe('workspace commands', () => {
     });
 
     it('outputs a clean public DTO under --json (no raw UUID)', async () => {
-      // PATCH returns the raw row (raw UUID `id` + workosOrganizationId).
+      // PATCH returns the public DTO (AIT-147): `id` is the ws_ publicId.
       mockedApiClient.mockResolvedValue({
-        id: 'a79634d0-7d8b-435c-8d49-9e5a524645ae',
-        publicId: 'ws_TEST0001',
+        id: 'ws_TEST0001',
         name: 'Renamed WS',
-        workosOrganizationId: 'org_01ALPHA',
+        updatedAt: '2026-04-02',
       });
 
       const fs = await import('node:fs');
@@ -476,8 +469,8 @@ describe('workspace commands', () => {
       }
     });
 
-    it('re-scopes the token to the target org and emits a clean DTO under --json', async () => {
-      mockedForceTokenRefresh.mockClear();
+    it('re-scopes the token via the server rescope endpoint and emits a clean DTO under --json', async () => {
+      mockedRescopeWorkspaceToken.mockClear();
       mockedApiClient.mockResolvedValue(fakeWorkspaces);
 
       const fs = await import('node:fs');
@@ -495,9 +488,9 @@ describe('workspace commands', () => {
         registerWorkspaceCommand(program);
         await program.parseAsync(['workspace', 'use', 'Alpha Workspace', '--json'], { from: 'user' });
 
-        // Token re-scoped to the resolved workspace's WorkOS org before the
-        // switch is persisted (the list DTO carries workosOrganizationId).
-        expect(mockedForceTokenRefresh).toHaveBeenCalledWith('org_01ALPHA');
+        // AIT-182 — the server resolves workspace → org; the CLI only sends
+        // the ws_ publicId to POST /auth/rescope.
+        expect(mockedRescopeWorkspaceToken).toHaveBeenCalledWith('ws_TEST0001');
         expect(mockedOutput).toHaveBeenCalledWith(
           { id: 'ws_TEST0001', name: 'Alpha Workspace' },
           { human: false },

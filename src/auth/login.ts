@@ -25,7 +25,6 @@ interface ExchangeBootstrapResponseDto {
   workspace: {
     id: string; // ws_<8> publicId
     name: string;
-    workosOrganizationId: string;
   };
   user: {
     publicId: string; // usr_<8>
@@ -38,7 +37,6 @@ interface Workspace {
   id: string;
   name: string;
   role?: string;
-  workosOrganizationId: string;
   slug?: string;
 }
 
@@ -125,7 +123,7 @@ async function pollForTokens(opts: {
  * tried to listen, which the backend rejects.
  */
 export async function runWizard(opts: WizardOpts = {}): Promise<void> {
-  const { apiClient, forceTokenRefresh } = await import('../api/client.js');
+  const { apiClient, rescopeWorkspaceToken } = await import('../api/client.js');
   const { writeWorkspaceConfig, readWorkspaceConfig } = await import('../commands/workspace.js');
   const { select } = await import('@inquirer/prompts');
 
@@ -143,7 +141,6 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
 
   let activeWorkspaceId: string;
   let activeWorkspaceName: string;
-  let activeWorkspaceOrg: string;
 
   // Honor an already-active workspace (from prior `workspace use` or an
   // integration-test seed). This keeps the wizard idempotent across repeat
@@ -156,7 +153,6 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
   if (preselected) {
     activeWorkspaceId = preselected.id;
     activeWorkspaceName = preselected.name;
-    activeWorkspaceOrg = preselected.workosOrganizationId;
     console.log(
       `${c.success(icon.success)} Using workspace: ${c.dim(activeWorkspaceName)}`,
     );
@@ -164,7 +160,6 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
     const only = workspaces[0];
     activeWorkspaceId = only.id;
     activeWorkspaceName = only.name;
-    activeWorkspaceOrg = only.workosOrganizationId;
     writeWorkspaceConfig({
       activeWorkspaceId,
       activeWorkspaceSlug: activeWorkspaceName,
@@ -182,22 +177,20 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
     })) as Workspace;
     activeWorkspaceId = chosen.id;
     activeWorkspaceName = chosen.name;
-    activeWorkspaceOrg = chosen.workosOrganizationId;
     writeWorkspaceConfig({
       activeWorkspaceId,
       activeWorkspaceSlug: activeWorkspaceName,
     });
   }
 
-  // Refresh JWT so it carries the picked org's context (role + org_id
-  // claims). Device-code grant issues a user-scoped token; without this
-  // step, workspace-admin endpoints 403 even for actual admins.
-  if (activeWorkspaceOrg) {
-    try {
-      await forceTokenRefresh(activeWorkspaceOrg);
-    } catch {
-      // non-fatal: next apiClient call will surface auth errors
-    }
+  // Re-scope JWT so it carries the picked org's context (role + org_id
+  // claims), via the backend (AIT-182). Device-code grant issues a
+  // user-scoped token; without this step, workspace-admin endpoints 403
+  // even for actual admins.
+  try {
+    await rescopeWorkspaceToken(activeWorkspaceId);
+  } catch {
+    // non-fatal: next apiClient call will surface auth errors
   }
 
   // Step 2 — non-interactive next steps.

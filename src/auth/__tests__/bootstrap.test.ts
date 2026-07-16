@@ -59,7 +59,7 @@ function makeExchangeResponse(overrides: {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
-  workspace: { id: string; name: string; workosOrganizationId: string };
+  workspace: { id: string; name: string };
   user: { publicId: string; email: string };
 } {
   return {
@@ -72,7 +72,6 @@ function makeExchangeResponse(overrides: {
     workspace: {
       id: overrides.workspaceId ?? 'ws_NEWWS001',
       name: overrides.workspaceName ?? "Or's Workspace",
-      workosOrganizationId: 'org_new',
     },
     user: {
       publicId: 'usr_NEW00001',

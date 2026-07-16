@@ -21,7 +21,7 @@ const wa = {
 // A customer workspace (kind='customer') is a valid cross-kind move target —
 // resolveWorkspace() is called with no kind restriction, so it matches by name
 // across both team and customer workspaces.
-const customer = { id: 'ws_CUST0001', name: 'Acme Cafe', role: 'admin', kind: 'customer', workosOrganizationId: 'org_x' };
+const customer = { id: 'ws_CUST0001', name: 'Acme Cafe', role: 'admin', kind: 'customer' };
 
 describe('channels move — cross-kind (team → customer)', () => {
   beforeEach(() => vi.mocked(apiClient).mockReset());

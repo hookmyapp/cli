@@ -25,6 +25,6 @@ test('forceTokenRefresh is a no-op for an agent credential (no WorkOS call)', as
   const fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
   const { forceTokenRefresh } = await import('../client.js');
-  await expect(forceTokenRefresh('org_123')).resolves.toBeUndefined();
+  await expect(forceTokenRefresh()).resolves.toBeUndefined();
   expect(fetchMock).not.toHaveBeenCalled();
 });
