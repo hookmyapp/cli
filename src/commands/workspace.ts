@@ -1,9 +1,9 @@
 import type { Command } from 'commander';
-import { apiClient, forceTokenRefresh } from '../api/client.js';
+import { apiClient, rescopeWorkspaceToken } from '../api/client.js';
 import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
-import type { Workspace } from '../types/workspace.js';
+import { dropWorkosOrgId, type Workspace } from '../types/workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
 import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
@@ -12,20 +12,6 @@ import { resolveEnv } from '../config/env-profiles.js';
 export interface WorkspaceConfig {
   activeWorkspaceId?: string;
   activeWorkspaceSlug?: string;
-}
-
-/**
- * Drop `workosOrganizationId` from a workspace before it is displayed. Per the
- * CLI-output-cleanup decision (spec 2026-05-27) it is a DROP-list field: the
- * WorkOS org id is internal plumbing the CLI passes to WorkOS for token
- * re-scoping (`workspace use`), not a customer-facing identifier. The ws_
- * publicId (`id`) and the HookMyApp-native `organizationPublicId` are the
- * identifiers scripts should key on. Everything else the backend sends passes
- * through untouched.
- */
-export function stripInternalWorkspaceFields(w: Workspace): Omit<Workspace, 'workosOrganizationId'> {
-  const { workosOrganizationId: _drop, ...rest } = w;
-  return rest;
 }
 
 /**
@@ -96,11 +82,11 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
   safeWriteFileSync(getConfigFile(), JSON.stringify(merged, null, 2) + '\n');
 }
 
-export async function resolveWorkspace(nameOrId: string, kind?: 'team' | 'customer'): Promise<{ id: string; name: string; role: string; workosOrganizationId: string }> {
-  // Phase 117: raw UUID input is not an accepted shape. A `ws_` publicId,
-  // a workspace name, or a WorkOS organizationId (slug) are the three
-  // accepted identifier shapes — matching what the backend now surfaces
-  // over HTTP. If the caller passes a UUID, short-circuit with a typed
+export async function resolveWorkspace(nameOrId: string, kind?: 'team' | 'customer'): Promise<{ id: string; name: string; role: string }> {
+  // Phase 117: raw UUID input is not an accepted shape. A `ws_` publicId or
+  // a workspace name are the accepted identifier shapes — matching what the
+  // backend surfaces over HTTP (AIT-182 removed the internal WorkOS org id
+  // from the wire). If the caller passes a UUID, short-circuit with a typed
   // error instead of silently accepting it (would 400 at the backend).
   if (isLikelyUuid(nameOrId)) {
     throw new ValidationError(
@@ -119,9 +105,6 @@ export async function resolveWorkspace(nameOrId: string, kind?: 'team' | 'custom
     if (found) return found;
     throw new ValidationError(`${noun} "${nameOrId}" not found`);
   }
-  // WorkOS organization id shape (slug) — exact match, case-sensitive.
-  const orgMatch = workspaces.find((w: any) => w.workosOrganizationId === nameOrId);
-  if (orgMatch) return orgMatch;
   // Case-insensitive name match
   const matches = workspaces.filter((w: any) => w.name.toLowerCase() === nameOrId.toLowerCase());
   if (matches.length === 1) return matches[0];
@@ -139,7 +122,8 @@ export async function resolveWorkspace(nameOrId: string, kind?: 'team' | 'custom
 
 /**
  * Resolve (or interactively pick) a workspace, re-scope the token to its
- * WorkOS org, and persist it as the active workspace. Shared by
+ * organization via the backend (POST /auth/rescope, AIT-182), and persist it
+ * as the active workspace. Shared by
  * `workspace use` and `customers use`; `opts.kind` restricts the candidate
  * set (both resolve and picker) to that kind.
  */
@@ -165,7 +149,7 @@ export async function switchActiveWorkspace(
       choices: workspaces.map((w) => ({
         name: `${w.name} (${w.role})`,
         value: w.id,
-        description: w.workosOrganizationId,
+        description: w.id,
       })),
     });
     workspace = workspaces.find((w) => w.id === chosenId)!;
@@ -173,7 +157,7 @@ export async function switchActiveWorkspace(
   // Re-scope the token to the target org BEFORE persisting the switch, so
   // a failed refresh never leaves config pointing at a workspace the token
   // isn't valid for (previously config was written first → poisoned state).
-  await forceTokenRefresh(workspace.workosOrganizationId);
+  await rescopeWorkspaceToken(workspace.id);
   writeWorkspaceConfig({
     activeWorkspaceId: workspace.id,
     activeWorkspaceSlug: workspace.name,
@@ -224,10 +208,10 @@ export function registerWorkspaceCommand(program: Command): void {
       // Workspaces vs Customers split. Strict equality also enforces
       // the fail-safe: an unknown kind never renders as a team workspace.
       const all = (await apiClient('/workspaces')) as Workspace[];
-      const data = all.filter((w) => w.kind === 'team');
+      const data = all.filter((w) => w.kind === 'team').map(dropWorkosOrgId);
       const config = readWorkspaceConfig();
       if (opts.json) {
-        console.log(JSON.stringify(data.map(stripInternalWorkspaceFields), null, 2));
+        console.log(JSON.stringify(data, null, 2));
         return;
       }
       if (!program.opts().json) {
@@ -241,7 +225,7 @@ export function registerWorkspaceCommand(program: Command): void {
         return;
       }
       // Default (non-human, no --json): still emit JSON array
-      console.log(JSON.stringify(data.map(stripInternalWorkspaceFields), null, 2));
+      console.log(JSON.stringify(data, null, 2));
     });
 
   const wsNew = ws.command('new')
@@ -252,24 +236,20 @@ export function registerWorkspaceCommand(program: Command): void {
         method: 'POST',
         body: JSON.stringify({ name }),
       });
-      // Persist the ws_ publicId, never the raw DB UUID (`result.id`). The
-      // create endpoint returns the raw row whose `id` is the UUID;
-      // writeWorkspaceConfig rejects a non-publicId, which previously broke
-      // `workspace new` with exit 2.
+      // Re-scope the JWT to the newly-created workspace's org (server-side,
+      // AIT-182) BEFORE persisting the switch — a failed rescope must not
+      // leave config pointing at a workspace the token isn't valid for.
+      await rescopeWorkspaceToken(result.id);
+      // The create endpoint returns the public DTO where `id` IS the ws_
+      // publicId (AIT-147) — safe to persist directly.
       writeWorkspaceConfig({
-        activeWorkspaceId: result.publicId,
+        activeWorkspaceId: result.id,
         activeWorkspaceSlug: result.name,
       });
-      // Refresh JWT so it's scoped to the newly-created workspace's WorkOS org;
-      // without this, subsequent commands (e.g. `workspace current`) hit the
-      // backend with a token still bound to the previous org and get 403.
-      if (result.workosOrganizationId) {
-        await forceTokenRefresh(result.workosOrganizationId);
-      }
       if (!program.opts().json) {
         console.log(`Created workspace "${result.name}" and switched to it`);
       } else {
-        output({ id: result.publicId, name: result.name }, { human: false });
+        output({ id: result.id, name: result.name }, { human: false });
       }
     });
 
@@ -284,10 +264,7 @@ export function registerWorkspaceCommand(program: Command): void {
         apiClient(`/workspaces/${workspaceId}`),
       ]);
       const listEntry = workspaces.find((w: any) => w.id === workspaceId);
-      // Drop workosOrganizationId before display — internal AuthKit plumbing,
-      // same rule as stripInternalWorkspaceFields on the list path.
-      const { workosOrganizationId: _drop, ...detailPublic } = detail;
-      const merged = { ...detailPublic, role: listEntry?.role };
+      const merged = dropWorkosOrgId({ ...detail, role: listEntry?.role });
       if (!program.opts().json) {
         console.log(`Name:          ${merged.name}`);
         console.log(`ID:            ${merged.id}`);
@@ -312,9 +289,8 @@ export function registerWorkspaceCommand(program: Command): void {
       if (!program.opts().json) {
         console.log(`Renamed workspace to "${result.name}"`);
       } else {
-        // Emit a clean public DTO; the PATCH endpoint returns the raw row
-        // (raw UUID `id` + workosOrganizationId) which must never reach stdout.
-        output({ id: result.publicId, name: result.name }, { human: false });
+        // PATCH returns the public DTO (AIT-147): `id` is the ws_ publicId.
+        output({ id: result.id, name: result.name }, { human: false });
       }
     });
 

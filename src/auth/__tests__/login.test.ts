@@ -15,9 +15,11 @@ vi.mock('@inquirer/prompts', () => ({
 }));
 
 const apiClientMock = vi.fn();
+const rescopeWorkspaceTokenMock = vi.fn();
 vi.mock('../../api/client.js', () => ({
   apiClient: apiClientMock,
   forceTokenRefresh: vi.fn(),
+  rescopeWorkspaceToken: rescopeWorkspaceTokenMock,
   setWorkspaceContext: vi.fn(),
 }));
 
@@ -81,7 +83,6 @@ describe('post-login wizard', () => {
         id: 'ws_TEST0001',
         name: 'acme-corp',
         role: 'admin',
-        workosOrganizationId: 'org_1',
       },
     ]);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -107,19 +108,16 @@ describe('post-login wizard', () => {
         id: 'ws_TESTw001',
         name: 'acme-corp',
         role: 'admin',
-        workosOrganizationId: 'org_1',
       },
       {
         id: 'ws_TESTw002',
         name: 'beta-workspace',
         role: 'member',
-        workosOrganizationId: 'org_2',
       },
     ]);
     selectMock.mockResolvedValueOnce({
       id: 'ws_TESTw001',
       name: 'acme-corp',
-      workosOrganizationId: 'org_1',
     }); // workspace picker only
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     await runWizard();
@@ -156,7 +154,6 @@ describe('post-login wizard', () => {
         id: 'ws_TEST0001',
         name: 'acme-corp',
         role: 'admin',
-        workosOrganizationId: 'org_1',
       },
     ]);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -176,7 +173,6 @@ describe('post-login wizard', () => {
           id: 'ws_TEST0001',
           name: 'acme',
           role: 'admin',
-          workosOrganizationId: 'org_1',
         },
       ])
       // sandbox sessions fetch — the session already exists (bound previously
@@ -231,7 +227,6 @@ describe('post-login wizard', () => {
         id: 'ws_TEST0001',
         name: 'acme',
         role: 'admin',
-        workosOrganizationId: 'org_1',
       },
     ]);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -249,7 +244,6 @@ describe('post-login wizard', () => {
         id: 'ws_TEST0001',
         name: 'acme-corp',
         role: 'admin',
-        workosOrganizationId: 'org_1',
       },
     ]);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});

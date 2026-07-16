@@ -90,7 +90,7 @@ describe('forceTokenRefresh — refresh endpoint failure', () => {
     stubRefreshResponse(400, { error: 'invalid_grant' });
     const { forceTokenRefresh } = await import('../client.js');
 
-    await expect(forceTokenRefresh('org_123')).rejects.toBeInstanceOf(AuthError);
+    await expect(forceTokenRefresh()).rejects.toBeInstanceOf(AuthError);
     expect(storedCredentials()).toBe(STORED);
   });
 });
