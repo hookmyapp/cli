@@ -13,9 +13,11 @@ export interface Workspace {
  * workosOrganizationId on workspace rows. Drop it at the output boundary so
  * the CLI never prints it regardless of backend version.
  */
-export function dropWorkosOrgId<T extends object>(row: T): T {
+export function dropWorkosOrgId<T extends object>(
+  row: T,
+): Omit<T, 'workosOrganizationId'> {
   const { workosOrganizationId: _drop, ...rest } = row as T & {
     workosOrganizationId?: unknown;
   };
-  return rest as T;
+  return rest;
 }
