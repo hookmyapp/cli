@@ -45,6 +45,11 @@ hookmyapp login --email you@example.com --json
 hookmyapp login --email you@example.com --registration-id <id> --otp 123456 --json
 ```
 
+Run the initiation command once and retain its `registrationId`. Any unexpired
+code sent to the same email during that 10-minute login window can complete the
+login. On failure, keep the registration ID and stop; do not request another
+code unless the existing codes have expired or locked and the human approves.
+
 This stores an organization-scoped credential (`ac_…`). Pass `--scope <name>`
 (repeatable) to request a narrower set than the default full access.
 
