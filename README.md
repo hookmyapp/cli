@@ -45,8 +45,8 @@ hookmyapp login --email you@example.com --json
 hookmyapp login --email you@example.com --registration-id <id> --otp 123456 --json
 ```
 
-Run the initiation command once and retain its `registrationId`. Any unexpired
-code sent to the same email during that 10-minute login window can complete the
+Run the initiation command once. Complete with its returned `registrationId`
+before `expiresAt`; any unexpired code sent to the same email can complete that
 login. On failure, keep the registration ID and stop; do not request another
 code unless the existing codes have expired or locked and the human approves.
 
