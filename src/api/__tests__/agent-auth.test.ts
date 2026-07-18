@@ -36,13 +36,13 @@ test('initiateClaim POSTs email + scopes and returns registrationId + expiresAt'
 
 test('completeClaim POSTs registrationId + otp and returns the ac_ credential', async () => {
   const fetchMock = vi.fn().mockResolvedValue(
-    okJson({ accessToken: 'ac_live_x', tokenType: 'Bearer', scopes: ['workspace.read'], credentialPublicId: 'ac_pub1' }),
+    okJson({ accessToken: 'hmok_live_x', tokenType: 'Bearer', scopes: ['workspace.read'], credentialPublicId: 'ac_pub1' }),
   );
   vi.stubGlobal('fetch', fetchMock);
   const { completeClaim } = await import('../agent-auth.js');
   const out = await completeClaim({ registrationId: '11111111-1111-1111-1111-111111111111', otp: '123456' });
   expect(String(fetchMock.mock.calls[0][0])).toBe('https://test.example.com/agent/auth/claim/complete');
-  expect(out.accessToken).toBe('ac_live_x');
+  expect(out.accessToken).toBe('hmok_live_x');
   expect(out.credentialPublicId).toBe('ac_pub1');
 });
 

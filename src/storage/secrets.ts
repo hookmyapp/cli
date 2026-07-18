@@ -32,7 +32,7 @@ export interface Secrets {
   scopes?: string[];
 }
 
-/** True for an auth.md-issued org-scoped `ac_` credential (no refresh token). */
+/** True for an auth.md-issued org-scoped agent credential (no refresh token). */
 export function isAgentCredential(creds: Secrets): boolean {
   return creds.kind === 'agent';
 }
