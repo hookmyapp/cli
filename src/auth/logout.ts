@@ -10,7 +10,7 @@ export function logoutCommand(program: Command): void {
     .action(async () => {
       const json = !!program.opts().json;
 
-      // AIT-153: for an agent credential (an `ac_`/API key), also revoke it
+      // AIT-153: for an agent credential (org API key), also revoke it
       // server-side so it can't keep being used after logout. Best-effort — an
       // offline host (or an already-revoked key) must still clear local
       // credentials. WorkOS sessions carry no CLI-side revoke, so this only

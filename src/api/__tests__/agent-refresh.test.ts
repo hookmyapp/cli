@@ -20,7 +20,7 @@ afterEach(() => {
 test('forceTokenRefresh is a no-op for an agent credential (no WorkOS call)', async () => {
   writeFileSync(
     join(DIR, 'credentials.json'),
-    JSON.stringify({ accessToken: 'ac_live_x', refreshToken: '', expiresAt: 0, kind: 'agent', credentialPublicId: 'ac_pub1', scopes: [] }),
+    JSON.stringify({ accessToken: 'hmok_live_x', refreshToken: '', expiresAt: 0, kind: 'agent', credentialPublicId: 'ac_pub1', scopes: [] }),
   );
   const fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);

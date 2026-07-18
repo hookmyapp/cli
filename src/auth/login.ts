@@ -483,7 +483,7 @@ export async function runBootstrapCodeExchange(
  * two invocations keyed by registrationId:
  *   1. `login --email <e> --json`        -> prints { registrationId, expiresAt }
  *   2. `login --email <e> --registration-id <id> --otp <code> --json` -> completes
- * Persists an org-scoped `ac_` credential (no refresh token).
+ * Persists an org-scoped agent credential — an opaque hmok_ token (no refresh token).
  */
 export async function runAgentClaimLogin(opts: {
   email: string;

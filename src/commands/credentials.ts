@@ -11,7 +11,7 @@ interface AgentCredentialRow {
   scopes?: string[];
 }
 
-/** Manage auth.md agent credentials (ac_ Bearer tokens). */
+/** Manage auth.md agent credentials (opaque hmok_ Bearer tokens, listed by their ac_ public ids). */
 export function registerCredentialsCommand(program: Command): void {
   const credentials = program
     .command('credentials')
