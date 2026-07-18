@@ -10,7 +10,7 @@ export interface ClaimInitiated {
 }
 
 export interface AgentCredentialResponse {
-  accessToken: string; // "ac_…" Bearer credential
+  accessToken: string; // opaque "hmok_…" Bearer token (the ac_ id is the credential's public row id, not the secret)
   tokenType: string; // "Bearer"
   scopes: string[];
   credentialPublicId: string;

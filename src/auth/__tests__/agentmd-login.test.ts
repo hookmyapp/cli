@@ -39,7 +39,7 @@ test('interactive: claims with full scopes, prompts OTP, completes, saves ac_ cr
   const fetchMock = vi.fn()
     .mockResolvedValueOnce(okJson({ scopes_supported: ['workspace.read', 'message.send'] })) // discovery
     .mockResolvedValueOnce(okJson({ registrationId: '11111111-1111-1111-1111-111111111111', expiresAt: 'x', message: 'sent' }, 202)) // claim
-    .mockResolvedValueOnce(okJson({ accessToken: 'ac_live_x', tokenType: 'Bearer', scopes: ['workspace.read', 'message.send'], credentialPublicId: 'ac_pub1' })); // complete
+    .mockResolvedValueOnce(okJson({ accessToken: 'hmok_live_x', tokenType: 'Bearer', scopes: ['workspace.read', 'message.send'], credentialPublicId: 'ac_pub1' })); // complete
   vi.stubGlobal('fetch', fetchMock);
   inputMock.mockResolvedValue('123456');
   const origIsTty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
@@ -52,7 +52,7 @@ test('interactive: claims with full scopes, prompts OTP, completes, saves ac_ cr
 
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).scopes).toEqual(['workspace.read', 'message.send']);
     const creds = readCreds();
-    expect(creds.accessToken).toBe('ac_live_x');
+    expect(creds.accessToken).toBe('hmok_live_x');
     expect(creds.kind).toBe('agent');
     expect(creds.credentialPublicId).toBe('ac_pub1');
   } finally {
@@ -92,7 +92,7 @@ test('json split step 1: no --otp prints registrationId + expiresAt and does NOT
 
 test('json split step 2: --registration-id + --otp completes without a new claim call', async () => {
   const fetchMock = vi.fn().mockResolvedValue(
-    okJson({ accessToken: 'ac_live_y', tokenType: 'Bearer', scopes: ['workspace.read'], credentialPublicId: 'ac_pub2' }),
+    okJson({ accessToken: 'hmok_live_y', tokenType: 'Bearer', scopes: ['workspace.read'], credentialPublicId: 'ac_pub2' }),
   );
   vi.stubGlobal('fetch', fetchMock);
   const mod = await import('../login.js');
@@ -101,7 +101,7 @@ test('json split step 2: --registration-id + --otp completes without a new claim
 
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(String(fetchMock.mock.calls[0][0])).toBe('https://test.example.com/agent/auth/claim/complete');
-  expect(readCreds().accessToken).toBe('ac_live_y');
+  expect(readCreds().accessToken).toBe('hmok_live_y');
 });
 
 test('--otp without --registration-id is a ValidationError (exit 2)', async () => {
@@ -142,7 +142,7 @@ function fetchByUrl(workspaces: unknown[]) {
   return vi.fn(async (url: unknown) => {
     const u = String(url);
     if (u.endsWith('/agent/auth/claim/complete')) {
-      return okJson({ accessToken: 'ac_live_z', tokenType: 'Bearer', scopes: ['workspace.read'], credentialPublicId: 'ac_pub3' });
+      return okJson({ accessToken: 'hmok_live_z', tokenType: 'Bearer', scopes: ['workspace.read'], credentialPublicId: 'ac_pub3' });
     }
     if (u.endsWith('/workspaces')) return okJson(workspaces);
     return okJson({});
@@ -189,7 +189,7 @@ test('otp login when the workspace listing fails → login still succeeds, confi
   const fetchMock = vi.fn(async (url: unknown) => {
     const u = String(url);
     if (u.endsWith('/agent/auth/claim/complete')) {
-      return okJson({ accessToken: 'ac_live_z', tokenType: 'Bearer', scopes: ['message.send'], credentialPublicId: 'ac_pub3' });
+      return okJson({ accessToken: 'hmok_live_z', tokenType: 'Bearer', scopes: ['message.send'], credentialPublicId: 'ac_pub3' });
     }
     return okJson({ message: 'insufficient scope' }, 403);
   });
@@ -198,7 +198,7 @@ test('otp login when the workspace listing fails → login still succeeds, confi
 
   await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
 
-  expect(readCreds().accessToken).toBe('ac_live_z');
+  expect(readCreds().accessToken).toBe('hmok_live_z');
   expect(readConfig().activeWorkspaceId).toBe('ws_stale123');
 });
 
