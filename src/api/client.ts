@@ -80,6 +80,28 @@ async function refreshToken(
   };
 }
 
+async function validAccessToken(
+  creds: NonNullable<Awaited<ReturnType<typeof readCredentials>>>,
+): Promise<string> {
+  if (isAgentCredential(creds)) return creds.accessToken;
+  const exp = decodeJwtExp(creds.accessToken);
+  if (exp === 0 || Date.now() / 1000 <= exp - 60) return creds.accessToken;
+  try {
+    const refreshed = await refreshToken(creds.refreshToken);
+    await saveCredentials(refreshed);
+    return refreshed.accessToken;
+  } catch {
+    throw new AuthError('Session expired. Run: hookmyapp login');
+  }
+}
+
+/** Return the same fresh Bearer token used by normal CLI API requests. */
+export async function getValidAccessToken(): Promise<string> {
+  const creds = await readCredentials();
+  if (!creds) throw new AuthError('Not logged in. Run: hookmyapp login');
+  return validAccessToken(creds);
+}
+
 export async function forceTokenRefresh(): Promise<void> {
   const creds = await readCredentials();
   if (!creds) {
@@ -288,19 +310,7 @@ export async function apiClient(
     }
   })();
 
-  let { accessToken } = creds;
-
-  // Check if token is expired (with 60-second buffer)
-  const exp = decodeJwtExp(accessToken);
-  if (exp > 0 && Date.now() / 1000 > exp - 60) {
-    try {
-      const refreshed = await refreshToken(creds.refreshToken);
-      await saveCredentials(refreshed);
-      accessToken = refreshed.accessToken;
-    } catch {
-      throw new AuthError('Session expired. Run: hookmyapp login');
-    }
-  }
+  const accessToken = await validAccessToken(creds);
 
   const baseUrl = getEffectiveApiUrl();
 
