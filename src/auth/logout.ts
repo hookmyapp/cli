@@ -31,14 +31,22 @@ export function logoutCommand(program: Command): void {
       }
 
       await deleteCredentials();
-      removeClaudeMcp();
+      const mcpCleanup = removeClaudeMcp();
 
       if (json) {
         process.stdout.write(
-          JSON.stringify({ status: 'logged_out', revoked }) + '\n',
+          JSON.stringify({
+            status: mcpCleanup.ok ? 'logged_out' : 'logged_out_with_warning',
+            revoked,
+            mcpCleanup,
+          }) + '\n',
         );
       } else {
-        console.log('\n✓ Logged out\n');
+        console.log(
+          mcpCleanup.ok
+            ? '\n✓ Logged out\n'
+            : `\n✓ Logged out\n⚠ ${mcpCleanup.detail}\n`,
+        );
       }
     });
 
