@@ -7,6 +7,7 @@ import { isJsonMode } from '../output/format.js';
 import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import { readWorkspaceConfig } from './workspace.js';
 import { addExamples } from '../output/help.js';
+import { getClaudeMcpStatus } from './mcp.js';
 
 // `hard` checks gate the prereq (a FAIL → non-zero exit). Informational checks
 // (auth/workspace/default-channel) are reported, never a crash or exit failure.
@@ -37,6 +38,8 @@ export async function collectDoctorReport(
     checks.push({ id: 'npm', label: 'npm', ok: npm !== null, hard: true, detail: npm ?? 'not found on PATH' });
     const npx = toolVersion('npx');
     checks.push({ id: 'npx', label: 'npx', ok: npx !== null, hard: true, detail: npx ?? 'not found on PATH' });
+    const mcp = getClaudeMcpStatus();
+    checks.push({ id: 'mcp', label: 'HookMyApp MCP (Claude)', ok: mcp.ok, hard: false, detail: mcp.detail });
   }
 
   if (opts.checkNetwork !== false) {

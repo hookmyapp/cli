@@ -17,6 +17,7 @@ import { registerCustomersCommand } from './commands/customers.js';
 import { registerSandboxCommand } from './commands/sandbox/index.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { registerConfigCommand } from './commands/config.js';
+import { registerMcpCommand } from './commands/mcp.js';
 import {
   CliError,
   UnexpectedError,
@@ -162,6 +163,7 @@ program.configureOutput({
 loginCommand(program);
 logoutCommand(program);
 registerCredentialsCommand(program);
+registerMcpCommand(program);
 
 // Channel management
 registerChannelsCommand(program);
