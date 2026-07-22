@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { readCredentials, deleteCredentials } from './store.js';
 import { isAgentCredential } from '../storage/secrets.js';
 import { addExamples } from '../output/help.js';
+import { removeClaudeMcp } from '../commands/mcp.js';
 
 export function logoutCommand(program: Command): void {
   const logout = program
@@ -30,6 +31,7 @@ export function logoutCommand(program: Command): void {
       }
 
       await deleteCredentials();
+      removeClaudeMcp();
 
       if (json) {
         process.stdout.write(
