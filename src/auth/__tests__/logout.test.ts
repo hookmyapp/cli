@@ -60,7 +60,11 @@ describe('logout', () => {
 
     expect(existsSync(credsPath)).toBe(false);
     const written = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
-    expect(JSON.parse(written.trim())).toEqual({ status: 'logged_out', revoked: false });
+    expect(JSON.parse(written.trim())).toEqual({
+      status: 'logged_out',
+      revoked: false,
+      mcpCleanup: { ok: true },
+    });
     // The human check line must NOT be printed in --json mode.
     expect(logSpy.mock.calls.flat().join('')).not.toMatch(/Logged out/);
   });

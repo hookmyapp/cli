@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { Command } from 'commander';
 import { getValidAccessToken } from '../../api/client.js';
 
 vi.mock('node:child_process', () => ({ spawnSync: vi.fn() }));
@@ -8,7 +9,7 @@ vi.mock('../../config/env-profiles.js', () => ({
   getEffectiveApiUrl: () => 'https://api.hookmyapp.com',
 }));
 
-import { installClaudeMcp, maybeInstallClaudeMcp, printMcpHeaders, removeClaudeMcp } from '../mcp.js';
+import { installClaudeMcp, maybeInstallClaudeMcp, printMcpHeaders, registerMcpCommand, removeClaudeMcp } from '../mcp.js';
 
 describe('MCP setup', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -38,7 +39,7 @@ describe('MCP setup', () => {
       JSON.stringify({
         type: 'http',
         url: 'https://api.hookmyapp.com/mcp',
-        headersHelper: 'hookmyapp mcp-headers',
+        headersHelper: `${JSON.stringify(process.execPath)} ${JSON.stringify(process.argv[1])} mcp-headers`,
       }),
     ]);
     expect(JSON.stringify(args)).not.toContain('Bearer');
@@ -74,6 +75,29 @@ describe('MCP setup', () => {
 
     expect(spawnSync).toHaveBeenCalledWith('claude', ['mcp', 'remove', '--scope', 'user', 'hookmyapp'], {
       encoding: 'utf8',
+      timeout: 10_000,
     });
+  });
+
+  test('reports a bounded Claude status timeout', async () => {
+    vi.mocked(spawnSync).mockReturnValue({
+      status: null,
+      error: Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }),
+    } as never);
+    const { getClaudeMcpStatus } = await import('../mcp.js');
+
+    expect(getClaudeMcpStatus()).toEqual({ ok: false, detail: 'Claude MCP check timed out' });
+    expect(vi.mocked(spawnSync).mock.calls[0][2]).toMatchObject({ timeout: 10_000 });
+  });
+
+  test('emits JSON for mcp install in global JSON mode', async () => {
+    vi.mocked(spawnSync).mockReturnValue({ status: 0 } as never);
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const program = new Command().option('--json');
+    registerMcpCommand(program);
+
+    await program.parseAsync(['node', 'hookmyapp', '--json', 'mcp', 'install', '--agent', 'claude']);
+
+    expect(JSON.parse(String(write.mock.calls.at(-1)?.[0]))).toEqual({ status: 'configured', agent: 'claude' });
   });
 });
