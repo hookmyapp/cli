@@ -5,6 +5,11 @@ import { join } from 'node:path';
 import { Command } from 'commander';
 import { logoutCommand } from '../logout.js';
 
+const removeClaudeMcpMock = vi.hoisted(() =>
+  vi.fn<() => { ok: boolean; detail?: string }>(() => ({ ok: true })),
+);
+vi.mock('../../commands/mcp.js', () => ({ removeClaudeMcp: removeClaudeMcpMock }));
+
 // logout against the real file-backed store in a temp HOOKMYAPP_CONFIG_DIR
 // (same seam as agent-refresh.test.ts / the storage tests).
 
@@ -13,6 +18,7 @@ const SAVED = process.env.HOOKMYAPP_CONFIG_DIR;
 let logSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
+  removeClaudeMcpMock.mockReset().mockReturnValue({ ok: true });
   DIR = mkdtempSync(join(tmpdir(), 'hma-logout-'));
   process.env.HOOKMYAPP_CONFIG_DIR = DIR;
   logSpy = vi.spyOn(console, 'log').mockReturnValue(undefined);
@@ -67,6 +73,18 @@ describe('logout', () => {
     });
     // The human check line must NOT be printed in --json mode.
     expect(logSpy.mock.calls.flat().join('')).not.toMatch(/Logged out/);
+  });
+
+  test('reports MCP cleanup failure after credentials are removed', async () => {
+    removeClaudeMcpMock.mockReturnValue({ ok: false, detail: 'Claude MCP cleanup timed out' });
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    await runLogout(['--json']);
+
+    expect(JSON.parse(String(stdoutSpy.mock.calls[0][0]))).toMatchObject({
+      status: 'logged_out_with_warning',
+      mcpCleanup: { ok: false, detail: 'Claude MCP cleanup timed out' },
+    });
   });
 
   test('agent credential → self-revokes server-side before clearing local creds (AIT-153)', async () => {

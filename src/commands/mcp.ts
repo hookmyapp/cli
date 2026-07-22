@@ -9,7 +9,11 @@ const MCP_NAME = 'hookmyapp';
 const CLAUDE_OPTIONS = { encoding: 'utf8' as const, timeout: 10_000 };
 
 function headersHelper(): string {
-  return `${JSON.stringify(process.execPath)} ${JSON.stringify(resolve(process.argv[1]))} mcp-headers`;
+  return `${shellQuote(process.execPath)} ${shellQuote(resolve(process.argv[1]))} mcp-headers`;
+}
+
+export function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 function timedOut(error: Error | undefined): boolean {
@@ -36,7 +40,10 @@ export function installClaudeMcp(): void {
   let result = spawnSync('claude', args, CLAUDE_OPTIONS);
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   if (result.status !== 0 && output.includes('already exists')) {
-    removeClaudeMcp(true);
+    const cleanup = removeClaudeMcp(true);
+    if (!cleanup.ok) {
+      throw new ConfigurationError(cleanup.detail ?? 'Claude MCP cleanup failed', 'MCP_INSTALL_FAILED');
+    }
     result = spawnSync('claude', args, CLAUDE_OPTIONS);
   }
   if (result.error || result.status !== 0) {
@@ -64,6 +71,7 @@ export function maybeInstallClaudeMcp(force = false): void {
 export function removeClaudeMcp(force = false): { ok: boolean; detail?: string } {
   if (!force && process.env.NODE_ENV === 'test') return { ok: true };
   const result = spawnSync('claude', ['mcp', 'remove', '--scope', 'user', MCP_NAME], CLAUDE_OPTIONS);
+  if ((result.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') return { ok: true };
   if (!result.error && result.status === 0) return { ok: true };
   return {
     ok: false,
