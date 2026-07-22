@@ -12,7 +12,8 @@ function headersHelper(): string {
   return `${shellQuote(process.execPath)} ${shellQuote(resolve(process.argv[1]))} mcp-headers`;
 }
 
-export function shellQuote(value: string): string {
+export function shellQuote(value: string, platform = process.platform): string {
+  if (platform === 'win32') return `"${value}"`;
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
@@ -73,6 +74,10 @@ export function removeClaudeMcp(force = false): { ok: boolean; detail?: string }
   const result = spawnSync('claude', ['mcp', 'remove', '--scope', 'user', MCP_NAME], CLAUDE_OPTIONS);
   if ((result.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') return { ok: true };
   if (!result.error && result.status === 0) return { ok: true };
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.toLowerCase();
+  if (output.includes('not found') || output.includes('does not exist') || output.includes('no mcp server')) {
+    return { ok: true };
+  }
   return {
     ok: false,
     detail: timedOut(result.error)

@@ -65,7 +65,10 @@ describe('MCP setup', () => {
   });
 
   test('shell-quotes helper paths without expanding metacharacters', () => {
-    expect(shellQuote('/tmp/$(`unsafe`)/it\'s')).toBe(`'/tmp/$(\`unsafe\`)/it'"'"'s'`);
+    expect(shellQuote('/tmp/$(`unsafe`)/it\'s', 'linux')).toBe(`'/tmp/$(\`unsafe\`)/it'"'"'s'`);
+    expect(shellQuote('C:\\Program Files\\nodejs\\node.exe', 'win32')).toBe(
+      '"C:\\Program Files\\nodejs\\node.exe"',
+    );
   });
 
   test('replaces an existing Claude entry', () => {
@@ -96,6 +99,12 @@ describe('MCP setup', () => {
       status: null,
       error: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }),
     } as never);
+
+    expect(removeClaudeMcp(true)).toEqual({ ok: true });
+  });
+
+  test('treats an absent MCP entry as successful cleanup', () => {
+    vi.mocked(spawnSync).mockReturnValue({ status: 1, stderr: 'MCP server hookmyapp not found' } as never);
 
     expect(removeClaudeMcp(true)).toEqual({ ok: true });
   });
