@@ -6,6 +6,7 @@ import { readBodyFlag, assertBodyXorFlags } from './_body.js';
 import { isJsonMode } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { registerInstagramComments } from './instagram-comments.js';
+import { registerInstagramPublish } from './instagram-publish.js';
 
 export interface IgSendOpts {
   channel?: string;
@@ -104,7 +105,7 @@ export function registerInstagramCommand(program: Command): Command {
   const instagram = program
     .command('instagram')
     .alias('ig')
-    .description('Instagram comments and direct messages');
+    .description('Instagram comments, direct messages, publishing, and insights');
 
   addExamples(
     instagram,
@@ -119,6 +120,7 @@ EXAMPLES:
 
   registerInstagramMessages(instagram);
   registerInstagramComments(instagram);
+  registerInstagramPublish(instagram);
 
   return instagram;
 }
