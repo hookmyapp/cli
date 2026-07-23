@@ -10,10 +10,10 @@ import { createHash } from 'node:crypto';
  * sides keeps the paste-into-wrong-AI safety net working while the raw
  * address never appears on screen (screen-recording safety).
  *
- * The trailing `[xxxx]` is a non-reversible discriminator (first 4 hex of
- * SHA-256 of the normalized address) so two accounts sharing a masked
- * prefix (jo***@g***.com is common) still render distinct echoes and a
- * wrong-account paste cannot collide its way past the check.
+ * The trailing `[xxxxxxxx]` is a non-reversible discriminator (first 8 hex
+ * of SHA-256 of the normalized address) so two accounts sharing a masked
+ * prefix (jo***@g***.com is common) still render distinct echoes. It is a
+ * sanity check against accidental wrong-account pastes, not authentication.
  *
  * `--json` output is exempt: machine consumers get the raw email.
  */
@@ -21,7 +21,7 @@ export function displayEmail(email: string): string {
   const tag = createHash('sha256')
     .update(email.trim().toLowerCase())
     .digest('hex')
-    .slice(0, 4);
+    .slice(0, 8);
   const at = email.indexOf('@');
   if (at <= 0) return `*** [${tag}]`;
   const local = email.slice(0, at);
