@@ -244,7 +244,7 @@ describe('hookmyapp login --code', () => {
     // Identity echo present in stdout.
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).toMatch(
-      /Logged in as info@ordvir\.com, workspace "Or's Workspace"/,
+      /Logged in as in\*\*\*@o\*\*\*\.com, workspace "Or's Workspace"/,
     );
 
     // runWizard was invoked — the /workspaces apiClient mock confirms it.
@@ -399,10 +399,10 @@ describe('hookmyapp login --code', () => {
 
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).toMatch(
-      /Replaced previous session \(was: old@other\.com, workspace "Old Workspace"\)/,
+      /Replaced previous session \(was: ol\*\*\*@o\*\*\*\.com, workspace "Old Workspace"\)/,
     );
     expect(out).toMatch(
-      /Logged in as info@ordvir\.com, workspace "Or's Workspace"/,
+      /Logged in as in\*\*\*@o\*\*\*\.com, workspace "Or's Workspace"/,
     );
     // "was:" MUST appear before the "Logged in as" line.
     const wasIdx = out.search(/Replaced previous session/);
@@ -440,7 +440,7 @@ describe('hookmyapp login --code', () => {
 
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).not.toMatch(/Replaced previous session/);
-    expect(out).toMatch(/Logged in as info@ordvir\.com/);
+    expect(out).toMatch(/Logged in as in\*\*\*@o\*\*\*\.com/);
     logSpy.mockRestore();
   });
 
@@ -582,7 +582,7 @@ describe('hookmyapp login --code', () => {
     // literal "Logged in as", email, comma, space, workspace name in
     // double quotes. House style bans em-dashes in user-facing copy.
     expect(out).toMatch(
-      /\u2713.*Logged in as info@ordvir\.com, workspace "Or's Workspace"/,
+      /\u2713.*Logged in as in\*\*\*@o\*\*\*\.com, workspace "Or's Workspace"/,
     );
     logSpy.mockRestore();
   });

@@ -3,6 +3,7 @@ import { saveCredentials, peekIdentity } from './store.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
+import { displayEmail } from '../output/mask.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import {
   getEffectiveApiUrl,
@@ -468,11 +469,11 @@ export async function runBootstrapCodeExchange(
     (prior.email !== data.user.email || prior.workspaceSlug !== data.workspace.name)
   ) {
     console.log(
-      `${c.success(icon.success)} Replaced previous session (was: ${prior.email}, workspace "${prior.workspaceSlug}")`,
+      `${c.success(icon.success)} Replaced previous session (was: ${displayEmail(prior.email)}, workspace "${prior.workspaceSlug}")`,
     );
   }
   console.log(
-    `${c.success(icon.success)} Logged in as ${data.user.email}, workspace "${data.workspace.name}"`,
+    `${c.success(icon.success)} Logged in as ${displayEmail(data.user.email)}, workspace "${data.workspace.name}"`,
   );
 
   await runWizard({ phone: opts.phone, next: opts.next, json: opts.json });
@@ -598,7 +599,7 @@ async function persistAgentCredential(
   }
   const n = cred.scopes.length;
   console.log(
-    `${c.success(icon.success)} Logged in as ${email} (${n} scope${n === 1 ? '' : 's'})`,
+    `${c.success(icon.success)} Logged in as ${displayEmail(email)} (${n} scope${n === 1 ? '' : 's'})`,
   );
 }
 
