@@ -473,7 +473,7 @@ export async function runBootstrapCodeExchange(
     );
   }
   console.log(
-    `${c.success(icon.success)} Logged in as ${displayEmail(data.user.email)}, workspace "${data.workspace.name}"`,
+    `${c.success(icon.success)} Logged in as ${displayEmail(data.user.email)}, workspace "${data.workspace.name}" (${data.workspace.id})`,
   );
 
   await runWizard({ phone: opts.phone, next: opts.next, json: opts.json });

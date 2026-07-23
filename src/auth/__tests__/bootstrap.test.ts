@@ -244,7 +244,7 @@ describe('hookmyapp login --code', () => {
     // Identity echo present in stdout.
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).toMatch(
-      /Logged in as in\*\*\*@o\*\*\*\.com \[115c9dc4\], workspace "Or's Workspace"/,
+      /Logged in as in\*\*\*@o\*\*\*\.com, workspace "Or's Workspace" \(ws_/,
     );
 
     // runWizard was invoked — the /workspaces apiClient mock confirms it.
@@ -399,10 +399,10 @@ describe('hookmyapp login --code', () => {
 
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).toMatch(
-      /Replaced previous session \(was: ol\*\*\*@o\*\*\*\.com \[a913eca2\], workspace "Old Workspace"\)/,
+      /Replaced previous session \(was: ol\*\*\*@o\*\*\*\.com, workspace "Old Workspace"\)/,
     );
     expect(out).toMatch(
-      /Logged in as in\*\*\*@o\*\*\*\.com \[115c9dc4\], workspace "Or's Workspace"/,
+      /Logged in as in\*\*\*@o\*\*\*\.com, workspace "Or's Workspace" \(ws_/,
     );
     // Raw addresses must never reach the human-readable output.
     expect(out).not.toContain('info@ordvir.com');
@@ -443,7 +443,7 @@ describe('hookmyapp login --code', () => {
 
     const out = logSpy.mock.calls.flat().join('\n');
     expect(out).not.toMatch(/Replaced previous session/);
-    expect(out).toMatch(/Logged in as in\*\*\*@o\*\*\*\.com \[115c9dc4\]/);
+    expect(out).toMatch(/Logged in as in\*\*\*@o\*\*\*\.com, workspace/);
     expect(out).not.toContain('info@ordvir.com');
     logSpy.mockRestore();
   });
@@ -586,7 +586,7 @@ describe('hookmyapp login --code', () => {
     // literal "Logged in as", email, comma, space, workspace name in
     // double quotes. House style bans em-dashes in user-facing copy.
     expect(out).toMatch(
-      /\u2713.*Logged in as in\*\*\*@o\*\*\*\.com \[115c9dc4\], workspace "Or's Workspace"/,
+      /\u2713.*Logged in as in\*\*\*@o\*\*\*\.com, workspace "Or's Workspace" \(ws_/,
     );
     logSpy.mockRestore();
   });

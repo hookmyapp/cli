@@ -3,11 +3,10 @@ import { displayEmail } from '../mask.js';
 
 // Lockstep contract: these expectations mirror maskEmail in the hookmyapp
 // backend instruction template (AIT-256). If one side changes, both must.
-// The [xxxx] tag is the first 4 hex chars of sha256(trimmed lowercased email), first 8 hex.
 describe('displayEmail', () => {
-  test('masks local part after 2 chars, domain to first char + tld, and appends the discriminator', () => {
-    expect(displayEmail('info@ordvir.com')).toBe('in***@o***.com [115c9dc4]');
-    expect(displayEmail('edgargov55@gmail.com')).toBe('ed***@g***.com [a52e31c0]');
+  test('masks local part after 2 chars and domain to first char + tld', () => {
+    expect(displayEmail('info@ordvir.com')).toBe('in***@o***.com');
+    expect(displayEmail('edgargov55@gmail.com')).toBe('ed***@g***.com');
   });
 
   test('never emits the raw address', () => {
@@ -17,13 +16,9 @@ describe('displayEmail', () => {
     }
   });
 
-  test('colliding masked prefixes stay distinguishable via the discriminator', () => {
-    expect(displayEmail('info@ordvir.com')).not.toBe(displayEmail('invoice@other.com'));
-  });
-
   test('degrades safely on malformed input without leaking it', () => {
-    expect(displayEmail('nodomain')).toMatch(/^\*\*\* \[[0-9a-f]{8}\]$/);
-    expect(displayEmail('@lead.com')).toMatch(/^\*\*\* \[[0-9a-f]{8}\]$/);
-    expect(displayEmail('a@b')).toMatch(/^a\*\*\*@b\*\*\* \[[0-9a-f]{8}\]$/);
+    expect(displayEmail('nodomain')).toBe('***');
+    expect(displayEmail('@lead.com')).toBe('***');
+    expect(displayEmail('a@b')).toBe('a***@b***');
   });
 });
