@@ -7,6 +7,7 @@ import { isJsonMode } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { registerInstagramComments } from './instagram-comments.js';
 import { registerInstagramPublish } from './instagram-publish.js';
+import { registerInstagramInsights } from './instagram-insights.js';
 
 export interface IgSendOpts {
   channel?: string;
@@ -121,6 +122,7 @@ EXAMPLES:
   registerInstagramMessages(instagram);
   registerInstagramComments(instagram);
   registerInstagramPublish(instagram);
+  registerInstagramInsights(instagram);
 
   return instagram;
 }
