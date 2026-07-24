@@ -83,6 +83,12 @@ describe('customers list', () => {
     expect(parsed[0].kind).toBe('customer');
   });
 
+  it('AIT-263: a stale active workspace throws the actionable ValidationError instead of an empty list', async () => {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'ws_GONE0001', activeWorkspaceSlug: 'gone' }));
+    mockedApi.mockResolvedValue(fakeWorkspaces);
+    await expect(runCustomers(['list', '--json'])).rejects.toThrow(/workspace use/);
+  });
+
   it('human mode renders customer rows only', async () => {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'ws_TEAM0001', activeWorkspaceSlug: 'HR' }));
     mockedApi.mockResolvedValue(fakeWorkspaces);

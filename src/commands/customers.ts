@@ -40,6 +40,13 @@ export function registerCustomersCommand(program: Command): void {
       const workspaceId = await getDefaultWorkspaceId();
       const all = (await apiClient('/workspaces')) as WorkspaceRow[];
       const activeOrg = all.find((w) => w.id === workspaceId)?.organizationPublicId;
+      if (!activeOrg) {
+        // A stale/absent active workspace must surface actionably — never as a
+        // silently empty list. Same contract as resolveOrgPublicIdForWorkspace.
+        throw new ValidationError(
+          'No organization found for your active workspace. Run: hookmyapp workspace use <name|id>',
+        );
+      }
       const customers = all.filter(
         (w) => w.kind === 'customer' && w.organizationPublicId === activeOrg,
       );
