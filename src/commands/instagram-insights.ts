@@ -40,6 +40,7 @@ export async function runInstagramInsights(opts: IgInsightsOpts, cmd?: Command):
   const values: Record<string, number | null> = {};
   const unavailable: string[] = [];
   let firstRejection: ValidationError | null = null;
+  let rejectedCount = 0;
   // Per-metric isolation (spec §Error handling): one Meta-rejected metric never fails the whole call.
   for (const metric of metrics) {
     const params = new URLSearchParams(
@@ -63,15 +64,17 @@ export async function runInstagramInsights(opts: IgInsightsOpts, cmd?: Command):
       if (err instanceof ValidationError && err.code === 'META_REJECTED') {
         unavailable.push(metric);
         firstRejection ??= err;
+        rejectedCount += 1;
       } else {
         throw err;
       }
     }
   }
-  // Every metric Meta-rejected and none resolved or came back empty: that is a
-  // target-level failure (bad media id, inaccessible account), not N unavailable
-  // metrics — surface the real error instead of an empty success.
-  if (firstRejection && Object.keys(values).length === 0 && unavailable.length === metrics.length) {
+  // EVERY metric Meta-rejected (not merely empty-data): that is a target-level
+  // failure (bad media id, inaccessible account), not N unavailable metrics —
+  // surface the real error instead of an empty success. A mix of empty-data
+  // and rejected metrics stays on the isolation path (sparse account).
+  if (firstRejection && rejectedCount === metrics.length) {
     throw firstRejection;
   }
   if (cmd && isJsonMode(cmd)) {

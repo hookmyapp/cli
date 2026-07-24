@@ -110,6 +110,10 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
     // cover_url is a Reels-only container field — Meta rejects it on stories.
     throw new ValidationError('--cover is not supported with --story (reels only).', 'PUBLISH_STORY_COVER');
   }
+  if (opts.story && opts.caption) {
+    // Stories have no captions — Meta rejects caption on STORIES containers.
+    throw new ValidationError('--caption is not supported with --story (feed, reels, and carousels only).', 'PUBLISH_STORY_CAPTION');
+  }
   if (opts.carousel && (opts.story || opts.reel)) {
     throw new ValidationError('--carousel cannot be combined with --story or --reel.', 'PUBLISH_CAROUSEL_FLAGS');
   }

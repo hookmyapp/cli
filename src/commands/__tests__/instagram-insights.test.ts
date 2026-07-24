@@ -122,6 +122,18 @@ describe('instagram insights', () => {
     await expect(runInstagramInsights({ channel: '@acme', media: '178090', metrics: 'reach,views' })).rejects.toBe(err);
   });
 
+  it('a mix of empty-data and rejected metrics stays on the isolation path (sparse account, exit 0)', async () => {
+    const [out, restore] = captureStdout();
+    vi.mocked(gatewayRequest)
+      .mockResolvedValueOnce({ data: [] })                       // reach: nothing recorded
+      .mockRejectedValueOnce(new ValidationError('(#10) Not enough viewers', 'META_REJECTED'));
+    await expect(
+      runInstagramInsights({ channel: '@acme', media: '178090', metrics: 'reach,views' }),
+    ).resolves.toBeUndefined();
+    restore();
+    expect(out()).toContain('Unavailable: reach, views');
+  });
+
   it('rejects a malformed metric name without calling the gateway', async () => {
     await expect(runInstagramInsights({ channel: '@acme', metrics: 'reach,bad&metric' })).rejects.toThrow(/metric/i);
     expect(gatewayRequest).not.toHaveBeenCalled();
