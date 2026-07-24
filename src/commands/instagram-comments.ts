@@ -6,6 +6,7 @@ import { isJsonMode } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 
 const DEFAULT_GET_FIELDS = 'id,text,username,timestamp,replies{id,text,username}';
+const DEFAULT_LIST_FIELDS = 'from,text,timestamp';
 
 export interface IgCommentsListOpts {
   channel?: string;
@@ -18,6 +19,7 @@ export async function runInstagramCommentsList(opts: IgCommentsListOpts, cmd?: C
   const channel = await resolveChannelRefOrDefault(opts.channel, 'instagram');
   const params = new URLSearchParams();
   if (opts.limit) params.set('limit', opts.limit);
+  params.set('fields', DEFAULT_LIST_FIELDS);
   const qs = params.toString();
   const res = await gatewayRequest({
     channel,

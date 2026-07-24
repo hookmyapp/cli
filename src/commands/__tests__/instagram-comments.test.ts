@@ -22,7 +22,14 @@ describe('instagram comments', () => {
     await runInstagramCommentsList({ channel: '@acme', media: '178090', limit: '50' });
     expect(resolveChannelRefOrDefault).toHaveBeenCalledWith('@acme', 'instagram');
     expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({
-      method: 'GET', path: '/178090/comments?limit=50',
+      method: 'GET', path: '/178090/comments?limit=50&fields=from%2Ctext%2Ctimestamp',
+    }));
+  });
+
+  it('list sends explicit fields even without --limit (Meta default response omits from/text)', async () => {
+    await runInstagramCommentsList({ channel: '@acme', media: '178090' });
+    expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({
+      method: 'GET', path: '/178090/comments?fields=from%2Ctext%2Ctimestamp',
     }));
   });
 
