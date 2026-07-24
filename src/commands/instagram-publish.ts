@@ -104,6 +104,10 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
   if ((opts.reel || opts.cover) && !opts.video) {
     throw new ValidationError('--reel and --cover require --video.', 'PUBLISH_VIDEO_ONLY_FLAG');
   }
+  if (opts.story && opts.cover) {
+    // cover_url is a Reels-only container field — Meta rejects it on stories.
+    throw new ValidationError('--cover is not supported with --story (reels only).', 'PUBLISH_STORY_COVER');
+  }
   if (opts.carousel && (opts.story || opts.reel)) {
     throw new ValidationError('--carousel cannot be combined with --story or --reel.', 'PUBLISH_CAROUSEL_FLAGS');
   }

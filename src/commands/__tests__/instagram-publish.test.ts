@@ -98,6 +98,7 @@ describe('instagram publish', () => {
     await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', video: 'https://x/v.mp4' })).rejects.toThrow(/exactly one/i);
     await expect(runInstagramPublish({ channel: '@acme', video: 'https://x/v.mp4', story: true, reel: true })).rejects.toThrow(/mutually exclusive/i);
     await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', cover: 'https://x/c.jpg' })).rejects.toThrow(/--cover/i);
+    await expect(runInstagramPublish({ channel: '@acme', video: 'https://x/v.mp4', story: true, cover: 'https://x/c.jpg' })).rejects.toThrow(/--cover is not supported with --story/i);
     expect(gatewayRequest).not.toHaveBeenCalled();
   });
 

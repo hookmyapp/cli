@@ -105,6 +105,17 @@ describe('instagram insights', () => {
     expect(gatewayRequest).not.toHaveBeenCalled();
   });
 
+  it('rejects a non-numeric --media id without calling the gateway', async () => {
+    await expect(runInstagramInsights({ channel: '@acme', media: 'abc/../x' })).rejects.toThrow(/numeric/i);
+    expect(gatewayRequest).not.toHaveBeenCalled();
+  });
+
+  it('throws the Meta rejection when EVERY metric is rejected (target-level failure, not unavailable)', async () => {
+    const err = new ValidationError('Unsupported get request. Object does not exist', 'META_REJECTED');
+    vi.mocked(gatewayRequest).mockRejectedValue(err);
+    await expect(runInstagramInsights({ channel: '@acme', media: '178090', metrics: 'reach,views' })).rejects.toBe(err);
+  });
+
   it('rejects a malformed metric name without calling the gateway', async () => {
     await expect(runInstagramInsights({ channel: '@acme', metrics: 'reach,bad&metric' })).rejects.toThrow(/metric/i);
     expect(gatewayRequest).not.toHaveBeenCalled();

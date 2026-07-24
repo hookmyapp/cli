@@ -10,6 +10,9 @@ const DEFAULT_MEDIA_METRICS = 'reach,views,total_interactions,saved';
 // Shape-only validation; Meta's evolving metric list is deliberately NOT mirrored here —
 // a well-formed unknown metric surfaces as a Meta rejection → unavailable.
 const METRIC_NAME_RE = /^[a-z0-9_]+$/i;
+// Meta media ids are numeric Graph object ids — anything else can smuggle path
+// segments into the route and would only surface as a confusing per-metric rejection.
+const IG_MEDIA_ID_RE = /^\d+$/;
 
 export interface IgInsightsOpts {
   channel?: string;
@@ -30,9 +33,13 @@ export async function runInstagramInsights(opts: IgInsightsOpts, cmd?: Command):
       throw new ValidationError(`Invalid metric name: ${JSON.stringify(metric)}.`, 'INSIGHTS_BAD_METRIC');
     }
   }
+  if (opts.media && !IG_MEDIA_ID_RE.test(opts.media)) {
+    throw new ValidationError(`--media must be a numeric Instagram media id (got: ${opts.media}).`, 'INSIGHTS_BAD_MEDIA_ID');
+  }
   const channel = await resolveChannelRefOrDefault(opts.channel, 'instagram');
   const values: Record<string, number | null> = {};
   const unavailable: string[] = [];
+  let firstRejection: ValidationError | null = null;
   // Per-metric isolation (spec §Error handling): one Meta-rejected metric never fails the whole call.
   for (const metric of metrics) {
     const params = new URLSearchParams(
@@ -54,10 +61,17 @@ export async function runInstagramInsights(opts: IgInsightsOpts, cmd?: Command):
       // reconnect-required / unsupported-login-flow, and unknown errors abort the whole command.
       if (err instanceof ValidationError) {
         unavailable.push(metric);
+        firstRejection ??= err;
       } else {
         throw err;
       }
     }
+  }
+  // Every metric Meta-rejected and none resolved or came back empty: that is a
+  // target-level failure (bad media id, inaccessible account), not N unavailable
+  // metrics — surface the real error instead of an empty success.
+  if (firstRejection && Object.keys(values).length === 0 && unavailable.length === metrics.length) {
+    throw firstRejection;
   }
   if (cmd && isJsonMode(cmd)) {
     process.stdout.write(
