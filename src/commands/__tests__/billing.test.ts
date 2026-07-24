@@ -2,13 +2,20 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../api/client.js', () => ({
   apiClient: vi.fn(),
+  setWorkspaceContext: vi.fn(),
 }));
 
 // getDefaultWorkspaceId is read off the user's local profile; stub to a fixed
-// string so the test doesn't depend on profile state.
-vi.mock('../_helpers.js', () => ({
-  getDefaultWorkspaceId: vi.fn(async () => 'ws_test'),
-}));
+// string so the test doesn't depend on profile state. resolveOrgPublicIdForWorkspace
+// stays REAL (via importOriginal) so it exercises the actual active-workspace
+// org derivation against the mocked apiClient union (AIT-263).
+vi.mock('../_helpers.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../_helpers.js')>();
+  return {
+    ...actual,
+    getDefaultWorkspaceId: vi.fn(async () => 'ws_test'),
+  };
+});
 
 // billingManage calls `open(url)` after resolving the Billing page URL;
 // without this stub, it would try to launch the user's browser.

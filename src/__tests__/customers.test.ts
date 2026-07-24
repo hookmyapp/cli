@@ -72,6 +72,9 @@ async function runCustomers(args: string[]): Promise<void> {
 
 describe('customers list', () => {
   it('lists only customer-kind workspaces (JSON mode)', async () => {
+    // AIT-263: customers list is scoped to the ACTIVE org, so an active
+    // workspace must be resolvable.
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'ws_TEAM0001', activeWorkspaceSlug: 'HR' }));
     mockedApi.mockResolvedValue(fakeWorkspaces);
     await runCustomers(['list', '--json']);
 
@@ -80,7 +83,14 @@ describe('customers list', () => {
     expect(parsed[0].kind).toBe('customer');
   });
 
+  it('AIT-263: a stale active workspace throws the actionable ValidationError instead of an empty list', async () => {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'ws_GONE0001', activeWorkspaceSlug: 'gone' }));
+    mockedApi.mockResolvedValue(fakeWorkspaces);
+    await expect(runCustomers(['list', '--json'])).rejects.toThrow(/workspace use/);
+  });
+
   it('human mode renders customer rows only', async () => {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'ws_TEAM0001', activeWorkspaceSlug: 'HR' }));
     mockedApi.mockResolvedValue(fakeWorkspaces);
     await runCustomers(['list']);
 
@@ -108,6 +118,7 @@ describe('customers use', () => {
 
 describe('customers new', () => {
   it('creates an empty customer via POST /organizations/:orgId/customers', async () => {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'ws_TEAM0001', activeWorkspaceSlug: 'HR' }));
     mockedApi.mockImplementation(async (path: string) => {
       if (path === '/workspaces') return fakeWorkspaces;
       return { id: 'ws_NEWCUST1', name: 'Fresh Client', externalId: 'crm-9' };
@@ -120,6 +131,25 @@ describe('customers new', () => {
     });
     const logs = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
     expect(logs).toContain('ws_NEWCUST1');
+  });
+
+  it('AIT-263: targets the ACTIVE org, never union row[0], for a multi-org user', async () => {
+    // row[0] is org_pub_OTHER; the active workspace ws_TEAM0001 is org_pub_A.
+    // The pre-fix code POSTed to row[0] (wrong org → 403); it must use org_pub_A.
+    const twoOrgUnion = [
+      { id: 'ws_OTHER001', name: 'Other', organizationPublicId: 'org_pub_OTHER', role: 'admin', createdAt: '2026-01-01', kind: 'team' },
+      ...fakeWorkspaces,
+    ];
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ activeWorkspaceId: 'ws_TEAM0001', activeWorkspaceSlug: 'HR' }));
+    mockedApi.mockImplementation(async (path: string) => {
+      if (path === '/workspaces') return twoOrgUnion;
+      return { id: 'ws_NEWCUST2', name: 'Bob', externalId: null };
+    });
+    await runCustomers(['new', 'Bob']);
+
+    const postCall = mockedApi.mock.calls.find((c) => c[1]?.method === 'POST');
+    expect(postCall?.[0]).toBe('/organizations/org_pub_A/customers');
+    expect(String(postCall?.[0])).not.toContain('org_pub_OTHER');
   });
 
   it('does NOT switch the active workspace to the new customer', async () => {
