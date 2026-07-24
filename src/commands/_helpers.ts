@@ -120,6 +120,33 @@ export async function getDefaultWorkspaceId(): Promise<string> {
 }
 
 /**
+ * Resolve the org publicId for an org-scoped CLI action (customers, billing)
+ * from the ACTIVE workspace's row in the /workspaces union.
+ *
+ * Never a bare `row[0]`: the union spans every org the user belongs to, so
+ * row[0] is nondeterministic for a user in 2+ orgs and 403s when it disagrees
+ * with the token's org (the backend `can()` boundary requires
+ * path-org == token-org). Pass the workspaceId from getDefaultWorkspaceId() —
+ * that's the workspace the CLI token is scoped to, so its org is the only one
+ * the backend will authorize. (AIT-263)
+ */
+export async function resolveOrgPublicIdForWorkspace(
+  workspaceId: string,
+): Promise<string> {
+  const all = (await apiClient('/workspaces')) as Array<{
+    id: string;
+    organizationPublicId?: string;
+  }>;
+  const orgPublicId = all.find((w) => w.id === workspaceId)?.organizationPublicId;
+  if (!orgPublicId) {
+    throw new ValidationError(
+      'No organization found for your active workspace. Run: hookmyapp workspace use <name|id>',
+    );
+  }
+  return orgPublicId;
+}
+
+/**
  * Resolve the channel a typed command should act on. Precedence (D6):
  *   1. explicit --channel <phone|@handle|ch_id>
  *   2. `HOOKMYAPP_CHANNEL_ID` env var (non-empty) — written into each project's

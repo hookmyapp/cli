@@ -7,31 +7,17 @@ import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import { getEffectiveAppUrl } from '../config/env-profiles.js';
-import { getDefaultWorkspaceId } from './_helpers.js';
+import { getDefaultWorkspaceId, resolveOrgPublicIdForWorkspace } from './_helpers.js';
 
 // program is lazy-imported inside actions because commands/billing.ts is
 // loaded by index.ts during program setup — a top-level import would form a
 // cycle. Same pattern as other commands that need root-level opts.
 
-/**
- * Billing is org-scoped: the workspace-addressed /stripe/subscription and
- * /stripe/checkout routes are retired (410 BILLING_ROUTE_MOVED), and
- * /stripe/portal before them (410 BILLING_PORTAL_RETIRED). Resolve the org
- * publicId from the /workspaces membership union — every row carries
- * organizationPublicId (same mechanism as customers.ts) — preferring the row
- * for the active workspace.
- */
-async function resolveOrgPublicId(workspaceId: string): Promise<string> {
-  const all = (await apiClient('/workspaces')) as Array<{
-    id: string;
-    organizationPublicId?: string;
-  }>;
-  const orgPublicId = (all.find((w) => w.id === workspaceId) ?? all[0])?.organizationPublicId;
-  if (!orgPublicId) {
-    throw new ValidationError('No organization found for your account. Log in and try again.');
-  }
-  return orgPublicId;
-}
+// Billing is org-scoped (the workspace-addressed /stripe/subscription and
+// /stripe/checkout routes are retired — 410 BILLING_ROUTE_MOVED). The org is
+// resolved from the active workspace's row in the /workspaces union via the
+// shared resolveOrgPublicIdForWorkspace helper (AIT-263 — one derivation for
+// customers + billing, never a bare row[0]).
 
 function orgBillingUrl(orgPublicId: string): string {
   return `${getEffectiveAppUrl()}/org/${orgPublicId}/billing`;
@@ -39,7 +25,7 @@ function orgBillingUrl(orgPublicId: string): string {
 
 export async function billingManage(opts: { json?: boolean } = {}): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
-  const url = orgBillingUrl(await resolveOrgPublicId(workspaceId));
+  const url = orgBillingUrl(await resolveOrgPublicIdForWorkspace(workspaceId));
 
   // --json is a machine contract: emit the URL and take NO interactive side
   // effect (no browser open, no human text) so agents/CI get clean JSON.
@@ -54,7 +40,7 @@ export async function billingManage(opts: { json?: boolean } = {}): Promise<void
 
 export async function billingStatus(opts: { json?: boolean; human?: boolean } = {}): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
-  const orgPublicId = await resolveOrgPublicId(workspaceId);
+  const orgPublicId = await resolveOrgPublicIdForWorkspace(workspaceId);
   const [sub, usage] = await Promise.all([
     apiClient(`/organizations/${orgPublicId}/billing/subscription`),
     apiClient('/webhook/usage', { workspaceId }),
@@ -113,7 +99,7 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
   }
 
   const workspaceId = await getDefaultWorkspaceId();
-  const orgPublicId = await resolveOrgPublicId(workspaceId);
+  const orgPublicId = await resolveOrgPublicIdForWorkspace(workspaceId);
   const sub = await apiClient(`/organizations/${orgPublicId}/billing/subscription`);
   // Phase A drops stripeSubscriptionId. Gate on plan.slug for paid-tier
   // detection AND preserve the existing status check so cancelled or

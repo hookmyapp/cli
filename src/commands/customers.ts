@@ -5,6 +5,10 @@ import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { dropWorkosOrgId, type Workspace } from '../types/workspace.js';
 import { readWorkspaceConfig, switchActiveWorkspace } from './workspace.js';
+import { getDefaultWorkspaceId, resolveOrgPublicIdForWorkspace } from './_helpers.js';
+
+/** A /workspaces union row carries the org it belongs to; the base Workspace type does not. */
+type WorkspaceRow = Workspace & { organizationPublicId?: string };
 
 interface OnboardingLinkRow {
   publicId: string;
@@ -17,8 +21,10 @@ interface OnboardingLinkRow {
  * Customers surface. A customer IS a workspace (`kind='customer'`) —
  * this group is a filtered view over the same `/workspaces` union plus the
  * org onboarding-link endpoints, reusing the workspace active-context
- * machinery. `customers new` is intentionally omitted: a customer is born
- * when its owner connects via an onboarding link.
+ * machinery. Every org-scoped action derives its org from the ACTIVE
+ * workspace (via resolveOrgPublicIdForWorkspace), never a bare union row[0] —
+ * for a user in 2+ orgs, row[0] is nondeterministic and the wrong org 403s
+ * against the token's scope (AIT-263).
  */
 export function registerCustomersCommand(program: Command): void {
   const cust = program.command('customers').description('Manage customers (customer workspaces)');
@@ -27,8 +33,23 @@ export function registerCustomersCommand(program: Command): void {
     .description('List customers')
     .option('--json', 'Output machine-readable JSON')
     .action(async (opts: { json?: boolean }) => {
-      const all = (await apiClient('/workspaces')) as Workspace[];
-      const customers = all.filter((w) => w.kind === 'customer');
+      // Scope to the ACTIVE org: the /workspaces union spans every org the
+      // user belongs to, so an unscoped filter would mix other orgs' customers
+      // into the list (AIT-263). Derive the active org from the active
+      // workspace's row and show only its customers.
+      const workspaceId = await getDefaultWorkspaceId();
+      const all = (await apiClient('/workspaces')) as WorkspaceRow[];
+      const activeOrg = all.find((w) => w.id === workspaceId)?.organizationPublicId;
+      if (!activeOrg) {
+        // A stale/absent active workspace must surface actionably — never as a
+        // silently empty list. Same contract as resolveOrgPublicIdForWorkspace.
+        throw new ValidationError(
+          'No organization found for your active workspace. Run: hookmyapp workspace use <name|id>',
+        );
+      }
+      const customers = all.filter(
+        (w) => w.kind === 'customer' && w.organizationPublicId === activeOrg,
+      );
       if (opts.json || program.opts().json) {
         console.log(JSON.stringify(customers.map(dropWorkosOrgId), null, 2));
         return;
@@ -50,14 +71,13 @@ export function registerCustomersCommand(program: Command): void {
     .option('--external-id <id>', 'Your own identifier for this customer (CRM/system id)')
     .option('--json', 'Output machine-readable JSON')
     .action(async (name: string, opts: { externalId?: string; json?: boolean }) => {
-      // The customers endpoint is org-scoped; resolve the org publicId from the
-      // membership union (every row carries organizationPublicId). Does NOT
-      // switch the active workspace — an empty customer has nothing to work in.
-      const all = (await apiClient('/workspaces')) as Array<Workspace & { organizationPublicId: string }>;
-      const orgPublicId = all[0]?.organizationPublicId;
-      if (!orgPublicId) {
-        throw new ValidationError('No organization found for your account. Log in and try again.');
-      }
+      // The customers endpoint is org-scoped. Resolve the org from the ACTIVE
+      // workspace (the org the CLI token is scoped to) — never a bare union
+      // row[0], which for a multi-org user is nondeterministic and 403s when
+      // it disagrees with the token's org (AIT-263). Does NOT switch the
+      // active workspace — an empty customer has nothing to work in.
+      const workspaceId = await getDefaultWorkspaceId();
+      const orgPublicId = await resolveOrgPublicIdForWorkspace(workspaceId);
       const created = await apiClient(`/organizations/${orgPublicId}/customers`, {
         method: 'POST',
         body: JSON.stringify({ name, ...(opts.externalId ? { externalId: opts.externalId } : {}) }),
