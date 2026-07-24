@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../api/client.js', () => ({
   apiClient: vi.fn(),
+  setWorkspaceContext: vi.fn(),
 }));
 
 // getDefaultWorkspaceId is read off the user's local profile; stub to a fixed
