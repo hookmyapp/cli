@@ -9,6 +9,12 @@ import { Writable } from 'node:stream';
 
 export interface GatewayConfig { token: string; baseUrl: string; }
 
+// A JSON gateway call must never hang a command forever (e.g. a publish flow
+// stuck in createContainer). 60s is far above Meta's normal response time;
+// binary uploads keep their own path without this cap. Shared by the backend
+// config lookup below — every leg of a gateway command is bounded.
+const GATEWAY_JSON_TIMEOUT_MS = 60_000;
+
 /**
  * Fetch a channel's gateway config from the backend in one call: the hmat_ token
  * AND the version-bearing baseUrl (host + /meta + version, e.g.
@@ -17,9 +23,18 @@ export interface GatewayConfig { token: string; baseUrl: string; }
  * `HOOKMYAPP_GATEWAY_URL` override (Task 1) replaces baseUrl verbatim.
  */
 export async function getGatewayConfig(channel: Channel): Promise<GatewayConfig> {
-  const data = (await apiClient(`/meta/channels/${channel.id}/token`, {
-    workspaceId: channel.workspaceId,
-  })) as { token?: string; baseUrl?: string };
+  let data: { token?: string; baseUrl?: string };
+  try {
+    // The config lookup shares the gateway deadline — without it, a stalled
+    // backend token fetch hangs the command before the Meta call even starts.
+    data = (await apiClient(`/meta/channels/${channel.id}/token`, {
+      workspaceId: channel.workspaceId,
+      signal: AbortSignal.timeout(GATEWAY_JSON_TIMEOUT_MS),
+    })) as { token?: string; baseUrl?: string };
+  } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') throw new NetworkError();
+    throw err;
+  }
   if (!data?.token) throw new ApiError('Backend returned no gateway access token for this channel.', 500);
   const baseUrl = getGatewayBaseOverride() ?? data.baseUrl;
   if (!baseUrl) throw new ApiError('Backend returned no gateway baseUrl for this channel.', 500);
@@ -73,11 +88,6 @@ export interface GatewayCall {
 
 /** Make a JSON call to the Meta gateway for a channel. Returns parsed JSON (or undefined for empty 2xx). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-// A JSON gateway call must never hang a command forever (e.g. a publish flow
-// stuck in createContainer). 60s is far above Meta's normal response time;
-// binary uploads keep their own path without this cap.
-const GATEWAY_JSON_TIMEOUT_MS = 60_000;
-
 export async function gatewayRequest(call: GatewayCall): Promise<any> {
   const { token, baseUrl } = await getGatewayConfig(call.channel);
   const url = buildGatewayUrl(baseUrl, substitutePath(call.path, call.channel));
@@ -86,6 +96,7 @@ export async function gatewayRequest(call: GatewayCall): Promise<any> {
     'Content-Type': 'application/json',
   };
   let res: Response;
+  let text: string;
   try {
     res = await fetch(url, {
       method: call.method,
@@ -93,11 +104,17 @@ export async function gatewayRequest(call: GatewayCall): Promise<any> {
       body: call.body !== undefined ? JSON.stringify(call.body) : undefined,
       signal: AbortSignal.timeout(GATEWAY_JSON_TIMEOUT_MS),
     });
+    // The timeout signal can also fire mid-body-read — same NetworkError mapping.
+    text = await res.text();
   } catch (err) {
-    if (isNetworkFailure(err) || (err instanceof Error && err.name === 'TimeoutError')) throw new NetworkError();
+    if (
+      isNetworkFailure(err) ||
+      (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError'))
+    ) {
+      throw new NetworkError();
+    }
     throw err;
   }
-  const text = await res.text();
   let json: unknown;
   try {
     json = text ? JSON.parse(text) : undefined;

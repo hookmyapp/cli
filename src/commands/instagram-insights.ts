@@ -58,8 +58,9 @@ export async function runInstagramInsights(opts: IgInsightsOpts, cmd?: Command):
     } catch (err) {
       // Isolate ONLY metric-level Meta rejections (mapGatewayError → ValidationError/META_REJECTED;
       // numeric codes like 10 are not preserved). AuthError, NetworkError, ApiError (5xx), backend
-      // reconnect-required / unsupported-login-flow, and unknown errors abort the whole command.
-      if (err instanceof ValidationError) {
+      // reconnect-required / unsupported-login-flow, other ValidationErrors (e.g. an unresolvable
+      // {ig_id} placeholder), and unknown errors abort the whole command.
+      if (err instanceof ValidationError && err.code === 'META_REJECTED') {
         unavailable.push(metric);
         firstRejection ??= err;
       } else {

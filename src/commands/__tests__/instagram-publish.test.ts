@@ -178,6 +178,14 @@ describe('instagram publish', () => {
     ).rejects.toThrow(/business account/i);
   });
 
+  it('a non-Meta ValidationError on a story publish is rethrown verbatim (no business-only note)', async () => {
+    const err = new ValidationError('Cannot fill {ig_id} for channel ch_x.', 'PLACEHOLDER_UNRESOLVED');
+    vi.mocked(gatewayRequest).mockRejectedValueOnce(err);
+    await expect(
+      runInstagramPublish({ channel: '@acme', image: 'https://example.com/a.jpg', story: true }),
+    ).rejects.toBe(err);
+  });
+
   it('registers the publish subcommand with examples', () => {
     const instagram = new Command('instagram');
     registerInstagramPublish(instagram);

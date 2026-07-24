@@ -110,6 +110,12 @@ describe('instagram insights', () => {
     expect(gatewayRequest).not.toHaveBeenCalled();
   });
 
+  it('a non-Meta ValidationError (e.g. unresolved {ig_id} placeholder) is rethrown, never folded into unavailable', async () => {
+    const err = new ValidationError('Cannot fill {ig_id} for channel ch_x.', 'PLACEHOLDER_UNRESOLVED');
+    vi.mocked(gatewayRequest).mockRejectedValue(err);
+    await expect(runInstagramInsights({ channel: '@acme' })).rejects.toBe(err);
+  });
+
   it('throws the Meta rejection when EVERY metric is rejected (target-level failure, not unavailable)', async () => {
     const err = new ValidationError('Unsupported get request. Object does not exist', 'META_REJECTED');
     vi.mocked(gatewayRequest).mockRejectedValue(err);

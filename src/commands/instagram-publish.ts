@@ -66,7 +66,9 @@ async function createContainer(channel: Channel, body: Record<string, unknown>):
 
 /** Spec §Error handling: enrich sanitized Meta rejections (quota usage, story business-only note). */
 async function enrichPublishError(err: unknown, channel: Channel, opts: IgPublishOpts): Promise<unknown> {
-  if (!(err instanceof ValidationError)) return err;
+  // Only actual Meta rejections qualify — other ValidationErrors in the flow
+  // (e.g. an unresolvable {ig_id} placeholder) must surface verbatim.
+  if (!(err instanceof ValidationError) || err.code !== 'META_REJECTED') return err;
   if (QUOTA_RE.test(err.message)) {
     try {
       const res = await gatewayRequest({
