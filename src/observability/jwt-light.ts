@@ -8,7 +8,7 @@
 //
 // Safe failure: malformed token → empty string → Sentry.setUser skips (the
 // observability/sentry.ts caller guards on empty sub).
-export function decodeJwtSub(token: string): string {
+function decodeJwtClaim(token: string, claim: string): string {
   try {
     const parts = token.split('.');
     if (parts.length < 2) return '';
@@ -17,9 +17,18 @@ export function decodeJwtSub(token: string): string {
     const payload = JSON.parse(
       Buffer.from(payloadB64, 'base64url').toString('utf8'),
     ) as Record<string, unknown>;
-    const sub = payload.sub;
-    return typeof sub === 'string' ? sub : '';
+    const value = payload[claim];
+    return typeof value === 'string' ? value : '';
   } catch {
     return '';
   }
+}
+
+export function decodeJwtSub(token: string): string {
+  return decodeJwtClaim(token, 'sub');
+}
+
+// Operator alerts must name the human, not just the WorkOS id (AIT-278).
+export function decodeJwtEmail(token: string): string {
+  return decodeJwtClaim(token, 'email');
 }

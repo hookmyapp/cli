@@ -48,7 +48,7 @@
 //    CLI error pre-0.11.0 was caused by violating this rule.
 
 import { isTelemetryEnabled, maybePrintFirstRunDisclosure } from './telemetry.js';
-import { decodeJwtSub } from './jwt-light.js';
+import { decodeJwtSub, decodeJwtEmail } from './jwt-light.js';
 import { shutdownPostHog } from './posthog.js';
 import { getConfigDir } from '../storage/path.js';
 
@@ -213,8 +213,16 @@ export async function setCliUserFromCreds(): Promise<void> {
   if (!creds?.accessToken) return;
 
   const sub = decodeJwtSub(creds.accessToken);
-  if (!sub) return;
-  sentryModule.setUser({ id: sub });
+  const email = decodeJwtEmail(creds.accessToken);
+  if (!sub && !email) return;
+  sentryModule.setUser({
+    ...(sub ? { id: sub } : {}),
+    ...(email ? { email } : {}),
+  });
+  // Tags too: Slack alert rules render user.email/user.id tags, not the
+  // user context (AIT-278).
+  if (sub) sentryModule.setTag('user.id', sub);
+  if (email) sentryModule.setTag('user.email', email);
 }
 
 /**
