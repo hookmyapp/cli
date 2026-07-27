@@ -212,7 +212,8 @@ export async function setCliUserFromCreds(): Promise<void> {
   const creds = await readCredentials();
   const token = creds?.accessToken ?? '';
   const sub = token ? decodeJwtSub(token) : '';
-  const email = token ? decodeJwtEmail(token) : '';
+  // Agent (hmok_) tokens are opaque — the login email is persisted alongside.
+  const email = (token ? decodeJwtEmail(token) : '') || creds?.email || '';
   // Always apply (or clear) — an early return here would leave a previous
   // login's identity attached after a credential change mid-process.
   sentryModule.setUser(sub || email ? {
@@ -269,6 +270,10 @@ export function shouldCaptureToSentry(err: any): boolean {
 export async function captureError(err: unknown): Promise<void> {
   if (!initialized || !sentryModule) return;
   if (!shouldCaptureToSentry(err)) return;
+  // Attach identity here too, not only in apiClient — errors thrown before
+  // the first API call (local validation, arg handling) must still name the
+  // logged-in user in operator alerts (AIT-278). Best-effort.
+  try { await setCliUserFromCreds(); } catch { /* never block capture */ }
   try {
     // Tag with severity + code when available (AppError subclasses).
     if (err && typeof err === 'object') {
