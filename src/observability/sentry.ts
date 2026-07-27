@@ -210,19 +210,19 @@ export async function setCliUserFromCreds(): Promise<void> {
   // touch credentials (--help, --version).
   const { readCredentials } = await import('../auth/store.js');
   const creds = await readCredentials();
-  if (!creds?.accessToken) return;
-
-  const sub = decodeJwtSub(creds.accessToken);
-  const email = decodeJwtEmail(creds.accessToken);
-  if (!sub && !email) return;
-  sentryModule.setUser({
+  const token = creds?.accessToken ?? '';
+  const sub = token ? decodeJwtSub(token) : '';
+  const email = token ? decodeJwtEmail(token) : '';
+  // Always apply (or clear) — an early return here would leave a previous
+  // login's identity attached after a credential change mid-process.
+  sentryModule.setUser(sub || email ? {
     ...(sub ? { id: sub } : {}),
     ...(email ? { email } : {}),
-  });
+  } : null);
   // Tags too: Slack alert rules render user.email/user.id tags, not the
-  // user context (AIT-278).
-  if (sub) sentryModule.setTag('user.id', sub);
-  if (email) sentryModule.setTag('user.email', email);
+  // user context (AIT-278). `undefined` removes the tag.
+  sentryModule.setTag('user.id', sub || undefined);
+  sentryModule.setTag('user.email', email || undefined);
 }
 
 /**
