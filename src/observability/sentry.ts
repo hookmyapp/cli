@@ -48,7 +48,7 @@
 //    CLI error pre-0.11.0 was caused by violating this rule.
 
 import { isTelemetryEnabled, maybePrintFirstRunDisclosure } from './telemetry.js';
-import { decodeJwtSub } from './jwt-light.js';
+import { decodeJwtSub, decodeJwtEmail } from './jwt-light.js';
 import { shutdownPostHog } from './posthog.js';
 import { getConfigDir } from '../storage/path.js';
 
@@ -210,11 +210,20 @@ export async function setCliUserFromCreds(): Promise<void> {
   // touch credentials (--help, --version).
   const { readCredentials } = await import('../auth/store.js');
   const creds = await readCredentials();
-  if (!creds?.accessToken) return;
-
-  const sub = decodeJwtSub(creds.accessToken);
-  if (!sub) return;
-  sentryModule.setUser({ id: sub });
+  const token = creds?.accessToken ?? '';
+  const sub = token ? decodeJwtSub(token) : '';
+  // Agent (hmok_) tokens are opaque — the login email is persisted alongside.
+  const email = (token ? decodeJwtEmail(token) : '') || creds?.email || '';
+  // Always apply (or clear) — an early return here would leave a previous
+  // login's identity attached after a credential change mid-process.
+  sentryModule.setUser(sub || email ? {
+    ...(sub ? { id: sub } : {}),
+    ...(email ? { email } : {}),
+  } : null);
+  // Tags too: Slack alert rules render user.email/user.id tags, not the
+  // user context (AIT-278). `undefined` removes the tag.
+  sentryModule.setTag('user.id', sub || undefined);
+  sentryModule.setTag('user.email', email || undefined);
 }
 
 /**
@@ -261,6 +270,10 @@ export function shouldCaptureToSentry(err: any): boolean {
 export async function captureError(err: unknown): Promise<void> {
   if (!initialized || !sentryModule) return;
   if (!shouldCaptureToSentry(err)) return;
+  // Attach identity here too, not only in apiClient — errors thrown before
+  // the first API call (local validation, arg handling) must still name the
+  // logged-in user in operator alerts (AIT-278). Best-effort.
+  try { await setCliUserFromCreds(); } catch { /* never block capture */ }
   try {
     // Tag with severity + code when available (AppError subclasses).
     if (err && typeof err === 'object') {
