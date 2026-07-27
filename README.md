@@ -311,7 +311,8 @@ expects this token echoed back in the response body.
 HookMyApp CLI reports crashes to our Sentry project so we can fix bugs fast.
 **No command arguments, file contents, or environment variable values are
 sent.** Only the error class, stack trace, CLI version, platform, and (when
-you are logged in) your WorkOS user id are reported.
+you are logged in) your WorkOS user id and account email are reported — the
+email lets us match a crash report to your support request.
 
 Telemetry is ON by default — industry norm for product CLIs (npm, Next.js,
 Vercel, Homebrew). You can disable it any time:
