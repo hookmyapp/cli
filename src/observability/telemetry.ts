@@ -20,9 +20,14 @@ import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 
 type TelemetryFlag = 'on' | 'off';
 
+// Bump when the disclosure text materially changes what is collected (v2:
+// account email + user id, AIT-278) so existing installs see it again.
+const DISCLOSURE_VERSION = 2;
+
 interface Config {
   telemetry?: TelemetryFlag;
   telemetryDisclosureShown?: boolean;
+  telemetryDisclosureVersion?: number;
   // Other existing keys (activeWorkspaceId, activeWorkspaceSlug, env, etc.)
   // are preserved by the read+merge+write pattern below.
   [key: string]: unknown;
@@ -86,7 +91,9 @@ export function unsetPersistedTelemetry(): void {
  */
 export function maybePrintFirstRunDisclosure(): void {
   const cfg = readConfig();
-  if (cfg.telemetryDisclosureShown) return;
+  // Legacy bool counts as v1 — upgraders must see the v2 (email) disclosure.
+  const seen = cfg.telemetryDisclosureVersion ?? (cfg.telemetryDisclosureShown ? 1 : 0);
+  if (seen >= DISCLOSURE_VERSION) return;
   process.stderr.write(
     [
       '',
@@ -98,5 +105,6 @@ export function maybePrintFirstRunDisclosure(): void {
     ].join('\n'),
   );
   cfg.telemetryDisclosureShown = true;
+  cfg.telemetryDisclosureVersion = DISCLOSURE_VERSION;
   writeConfig(cfg);
 }
