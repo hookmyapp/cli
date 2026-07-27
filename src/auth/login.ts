@@ -584,6 +584,7 @@ async function persistAgentCredential(
     kind: 'agent',
     credentialPublicId: cred.credentialPublicId,
     scopes: cred.scopes,
+    email,
   });
   await revalidateActiveWorkspace(json);
   maybeInstallClaudeMcp();

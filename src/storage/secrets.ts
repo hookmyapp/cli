@@ -30,6 +30,9 @@ export interface Secrets {
   credentialPublicId?: string;
   /** Agent credentials only: scopes granted at issue time. */
   scopes?: string[];
+  /** Agent credentials only: login email — the hmok_ token is opaque, so this
+   * is the only human identity available for crash attribution (AIT-278). */
+  email?: string;
 }
 
 /** True for an auth.md-issued org-scoped agent credential (no refresh token). */
