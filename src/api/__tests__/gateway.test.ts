@@ -10,6 +10,7 @@ vi.mock('../../config/env-profiles.js', () => ({
 }));
 
 import { gatewayRequest, substitutePath } from '../gateway.js';
+import { ConflictError, exitCodeFor } from '../../output/error.js';
 
 const waChannel = {
   id: 'ch_abc12345', type: 'whatsapp', workspaceId: 'ws_T0000001',
@@ -70,5 +71,55 @@ describe('gatewayRequest', () => {
     );
     await expect(gatewayRequest({ channel: waChannel, method: 'POST', path: '/{phone_number_id}/messages', body: {} }))
       .rejects.toThrow(/Invalid parameter/);
+  });
+
+  it('explains a Meta account restriction instead of blaming the request body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { message: 'Invalid parameter', code: 100, error_subcode: 2494160 } }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const err = await gatewayRequest({ channel: waChannel, method: 'POST', path: '/{waba_id}/message_templates', body: {} })
+      .then(() => null, (e: unknown) => e);
+
+    // Exit 6 is the conflict tier, NOT ValidationError's 2 — exit 2 tells a
+    // script its input was wrong, the misdiagnosis this mapping exists to
+    // prevent. Scripts should branch on the code, not the exit tier.
+    // exitCodeFor() is asserted because that, not `.exitCode`, is what index.ts
+    // actually exits with.
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err).toMatchObject({ code: 'META_ACCOUNT_RESTRICTED', statusCode: 409 });
+    expect(exitCodeFor(err)).toBe(6);
+    expect((err as ConflictError).userMessage).toMatch(/Business Support Home/);
+  });
+
+  it('still explains the restriction when Meta wraps it in a 401', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { message: 'Invalid parameter', code: 100, error_subcode: 2494160 } }),
+        { status: 401, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const err = await gatewayRequest({ channel: waChannel, method: 'POST', path: '/{waba_id}/message_templates', body: {} })
+      .then(() => null, (e: unknown) => e);
+
+    expect(err).toMatchObject({ code: 'META_ACCOUNT_RESTRICTED' });
+  });
+
+  it('ignores a subcode that only exists on the object prototype', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { message: 'Invalid parameter', code: 100, error_subcode: 'constructor' } }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const err = await gatewayRequest({ channel: waChannel, method: 'POST', path: '/{waba_id}/message_templates', body: {} })
+      .then(() => null, (e: unknown) => e);
+
+    expect(err).toMatchObject({ code: 'META_REJECTED' });
   });
 });

@@ -1,6 +1,6 @@
 import { apiClient, isNetworkFailure } from './client.js';
 import { getGatewayBaseOverride } from '../config/env-profiles.js';
-import { ApiError, NetworkError, ValidationError, AuthError } from '../output/error.js';
+import { ApiError, NetworkError, ValidationError, AuthError, ConflictError } from '../output/error.js';
 import type { Channel } from './channel.js';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
@@ -66,12 +66,52 @@ function buildGatewayUrl(baseUrl: string, path: string): string {
   return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
+// Meta subcodes that mean "Meta has restricted this account from an action",
+// not "your request was malformed". Meta returns them as a generic code-100
+// "Invalid parameter" whose message names no cause, so without this mapping the
+// CLI (and any agent reading it) blames the request body. Each message states
+// what is blocked and where the business sees the expiry — claims beyond that
+// (why it was applied, when it lifts) are Meta's to make, not ours.
+const META_RESTRICTION_SUBCODES: Record<number, string> = {
+  2494160:
+    'Meta has restricted this WhatsApp Business account from creating or editing templates. ' +
+    'Open Business Support Home in Meta Business Manager for the reason, how long it lasts, and ' +
+    'the option to request a review. This restriction does not affect sending templates that are ' +
+    'already approved.',
+};
+
+/**
+ * Looked up through `Object.hasOwn` rather than a bare index: `error_subcode`
+ * is parsed JSON, so a payload carrying `"constructor"` would otherwise resolve
+ * up the prototype chain to a function and be thrown as an error message.
+ */
+function metaRestrictionMessage(subcode: number | undefined): string | undefined {
+  if (subcode === undefined) return undefined;
+  return Object.hasOwn(META_RESTRICTION_SUBCODES, subcode)
+    ? META_RESTRICTION_SUBCODES[subcode]
+    : undefined;
+}
+
 function mapGatewayError(status: number, body: unknown): never {
-  // Meta error shape: { error: { message, code, type, ... } }
-  const metaMsg =
+  // Meta error shape: { error: { message, code, error_subcode, type, ... } }
+  const metaError =
     body && typeof body === 'object' && 'error' in body
-      ? ((body as { error?: { message?: string } }).error?.message ?? null)
-      : null;
+      ? (body as { error?: { message?: string; error_subcode?: number } }).error
+      : undefined;
+  const metaMsg = metaError?.message ?? null;
+  // Ahead of every status branch on purpose: a restriction is the real cause
+  // whatever status Meta wrapped it in, and each status branch below would
+  // rename it into something the reader would act on wrongly — 401 into
+  // "re-authenticate", 400 into "fix your request". ConflictError (exit 6), not
+  // ValidationError (exit 2), for the same reason: exit 2 tells a script its
+  // input was wrong, the misdiagnosis this mapping exists to prevent.
+  // Adding a subcode that can fire on an Instagram path? Check the META_REJECTED
+  // branches in instagram-insights.ts / instagram-publish.ts first — this
+  // returns before them.
+  const restriction = metaRestrictionMessage(metaError?.error_subcode);
+  if (restriction) {
+    throw new ConflictError(restriction, 'META_ACCOUNT_RESTRICTED');
+  }
   if (status === 401) throw new AuthError();
   if (status === 400 || status === 422) {
     throw new ValidationError(metaMsg ?? `Meta rejected the request (${status}).`, 'META_REJECTED');
