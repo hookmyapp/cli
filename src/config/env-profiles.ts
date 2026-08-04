@@ -236,21 +236,16 @@ export function getEffectiveSandboxWhatsAppNumber(): string {
  * for the bind-code IG deep link. Per-env, mirrors WA's pattern:
  *
  *   local + staging → @hookmyappsandboxstaging
- *   production      → not yet provisioned — throws ConfigurationError
+ *   production      → @hookmyappsandbox (IG account 17841433840249531)
  *
- * The production IG sandbox handle is not provisioned yet. Shipping a
- * placeholder would silently produce a broken ig.me deep link that consumes
- * a bind code that never gets matched. Fail fast at the env-profile boundary.
+ * Per-env isolated sandbox IG professional accounts under each env's Meta
+ * App — NEVER cross over (a bind code DM'd to the wrong env's account is
+ * never matched).
  */
 export function getEffectiveSandboxInstagramUsername(): string {
-  const env = resolveEnv();
-  if (env === 'production') {
-    throw new ConfigurationError(
-      'Instagram sandbox is not configured for production yet. Use --type=whatsapp, or switch to staging/local.',
-      'IG_SANDBOX_NOT_CONFIGURED_PROD',
-    );
-  }
-  return '@hookmyappsandboxstaging';
+  return resolveEnv() === 'production'
+    ? '@hookmyappsandbox'
+    : '@hookmyappsandboxstaging';
 }
 
 /**

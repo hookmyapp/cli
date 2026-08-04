@@ -2,7 +2,7 @@
 // WA path: shows the existing wa.me QR + deep link, polls bind code,
 // announces the consumed session. IG path: shows the ig.me/m/{handle}
 // QR + deep link (handle stripped of @, code URL-encoded), same polling
-// loop. Production with --type=instagram throws ConfigurationError per D10.
+// loop. The IG handle is per-env (see getEffectiveSandboxInstagramUsername).
 
 import { select } from '@inquirer/prompts';
 import qrcode from 'qrcode-terminal';
@@ -11,7 +11,6 @@ import pc from 'picocolors';
 import { apiClient, getBindCode } from '../../api/client.js';
 import {
   AuthError,
-  ConfigurationError,
   ConflictError,
   ValidationError,
 } from '../../output/error.js';
@@ -78,12 +77,6 @@ export async function runSandboxStart(opts: {
       '--type is required in non-interactive mode.',
       'TYPE_REQUIRED_IN_JSON',
     );
-  }
-
-  // IG path fails fast in production before any backend call.
-  if (channelType === 'instagram') {
-    // Throws ConfigurationError in production (D10); returns the staging/local handle otherwise.
-    getEffectiveSandboxInstagramUsername();
   }
 
   const workspaceId = await getDefaultWorkspaceId();
