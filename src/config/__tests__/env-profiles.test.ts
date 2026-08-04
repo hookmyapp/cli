@@ -243,12 +243,9 @@ describe('getEffectiveSandboxInstagramUsername', () => {
     expect(getEffectiveSandboxInstagramUsername()).toBe('@hookmyappsandboxstaging');
   });
 
-  it('throws ConfigurationError in production (handle not yet provisioned)', () => {
+  it('returns @hookmyappsandbox in production', () => {
     process.env.HOOKMYAPP_ENV = 'production';
-    expect(() => getEffectiveSandboxInstagramUsername()).toThrow(ConfigurationError);
-    expect(() => getEffectiveSandboxInstagramUsername()).toThrow(
-      /Instagram sandbox is not configured for production yet/,
-    );
+    expect(getEffectiveSandboxInstagramUsername()).toBe('@hookmyappsandbox');
   });
 });
 

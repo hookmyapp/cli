@@ -11,7 +11,7 @@ vi.mock('../../_helpers.js', () => ({
   getDefaultWorkspaceId: vi.fn().mockResolvedValue('ws_TEST0001'),
 }));
 
-import { ValidationError, ConfigurationError } from '../../../output/error.js';
+import { ValidationError } from '../../../output/error.js';
 import { runSandboxStart } from '../start.js';
 
 describe('runSandboxStart — flag validation', () => {
@@ -30,7 +30,7 @@ describe('runSandboxStart — flag validation', () => {
   });
 });
 
-describe('runSandboxStart — Instagram in production (E2/D10)', () => {
+describe('runSandboxStart — Instagram in production', () => {
   const originalEnv = process.env.HOOKMYAPP_ENV;
   beforeEach(() => {
     process.env.HOOKMYAPP_ENV = 'production';
@@ -40,13 +40,13 @@ describe('runSandboxStart — Instagram in production (E2/D10)', () => {
     else process.env.HOOKMYAPP_ENV = originalEnv;
   });
 
-  it('throws ConfigurationError when --type=instagram is used in production', async () => {
-    await expect(
-      runSandboxStart({ type: 'instagram', json: true }),
-    ).rejects.toThrow(ConfigurationError);
-    await expect(
-      runSandboxStart({ type: 'instagram', json: true }),
-    ).rejects.toThrow(/Instagram sandbox is not configured for production yet/);
+  it('builds the prod ig.me deep link for @hookmyappsandbox', async () => {
+    const { buildInstagramDeepLink } = await import('../start.js');
+    const { getEffectiveSandboxInstagramUsername } = await import(
+      '../../../config/env-profiles.js'
+    );
+    const url = buildInstagramDeepLink(getEffectiveSandboxInstagramUsername(), 'hmp3gj54');
+    expect(url).toBe('https://ig.me/m/hookmyappsandbox?text=hmp3gj54');
   });
 });
 

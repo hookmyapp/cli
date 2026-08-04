@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Isolated mocks for the --json success path. Kept in a separate file from
 // start.test.ts because that file deliberately uses the REAL env-profiles
-// (its production test asserts getEffectiveSandboxInstagramUsername throws);
-// mocking env-profiles here would break those.
+// (its tests assert the real per-env sandbox handles); mocking env-profiles
+// here would break those.
 vi.mock('../../../api/client.js', () => ({
   apiClient: vi.fn(),
   getBindCode: vi.fn(),
