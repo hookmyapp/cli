@@ -68,6 +68,9 @@ function printDetail(detail: TicketDetail): void {
   }
   console.log('(showing up to the 20 most recent messages)');
   if (detail.note) console.log(detail.note);
+  if (detail.nextCursor) {
+    console.log(`Next check: hookmyapp support show ${detail.ticketId} --wait 20 --after ${detail.nextCursor}`);
+  }
 }
 
 export function registerSupportCommand(program: Command): void {
@@ -183,13 +186,14 @@ EXAMPLES:
     .command('reply')
     .description('Send a follow-up on a ticket (replying to a resolved ticket reopens it)')
     .argument('<id>', 'Ticket id (sup_…)')
-    .requiredOption('-m, --message <message>', 'Your follow-up message')
+    .option('-m, --message <message>', 'Your follow-up message (or pipe it on stdin)')
     .option('--wait <seconds>', 'Hold up to N seconds (1-25) for a support reply')
     .option('--after <cursor>', 'Opaque cursor from a previous response (nextCursor)')
     .option('--json', 'Output machine-readable JSON')
-    .action(async (id: string, opts: { message: string; wait?: string; after?: string; json?: boolean }) => {
+    .action(async (id: string, opts: { message?: string; wait?: string; after?: string; json?: boolean }) => {
       assertTicketId(id);
-      const body: Record<string, unknown> = { message: opts.message };
+      const message = opts.message ?? (await readStdinBody());
+      const body: Record<string, unknown> = { message };
       if (opts.wait !== undefined) body.wait = parseWait(opts.wait);
       if (opts.after) body.afterCursor = opts.after;
       const detail = (await apiClient(`/support/tickets/${id}/messages`, {
@@ -208,6 +212,7 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp support reply sup_42 -m "Still failing after retry"
   $ hookmyapp support reply sup_42 -m "More details attached below" --wait 20
+  $ hookmyapp support reply sup_42 < more-details.md
 `,
   );
 }

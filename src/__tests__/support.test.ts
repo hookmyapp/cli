@@ -120,6 +120,25 @@ describe('support reply', () => {
     });
   });
 
+  it('reads the message from stdin when -m is absent', async () => {
+    mockedApi.mockResolvedValue({ ticketId: 'sup_1', subject: 's', status: 'open', messages: [], nextCursor: 'c' });
+    const stdin = process.stdin as NodeJS.ReadStream & { push?: (chunk: string | null) => void };
+    const runP = run(['support', 'reply', 'sup_1']);
+    stdin.push?.('piped follow-up');
+    stdin.push?.(null);
+    await runP;
+    expect(mockedApi).toHaveBeenCalledWith('/support/tickets/sup_1/messages', {
+      method: 'POST',
+      body: JSON.stringify({ message: 'piped follow-up' }),
+    });
+  });
+
+  it('prints the next-check command with the cursor in human output', async () => {
+    mockedApi.mockResolvedValue({ ticketId: 'sup_1', subject: 's', status: 'open', messages: [], nextCursor: 'cur9' });
+    await run(['support', 'reply', 'sup_1', '-m', 'more']);
+    expect(logged()).toContain('hookmyapp support show sup_1 --wait 20 --after cur9');
+  });
+
   it('global --json flag also switches output to JSON', async () => {
     mockedApi.mockResolvedValue({ ticketId: 'sup_1', subject: 's', status: 'open', messages: [], nextCursor: 'c' });
     const program = makeProgram();
