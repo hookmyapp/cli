@@ -119,7 +119,7 @@ EXAMPLES:
 
   const sList = support
     .command('list')
-    .description('List your 20 most recent support tickets')
+    .description("List your organization's 20 most recent support tickets")
     .option('--json', 'Output machine-readable JSON')
     .action(async (opts: { json?: boolean }) => {
       const res = (await apiClient('/support/tickets')) as { tickets: TicketSummary[] };
