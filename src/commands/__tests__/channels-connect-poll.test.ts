@@ -102,7 +102,7 @@ describe('pollForNewChannels — D2 acceptance criteria', () => {
     expect(result.map((c) => c.id)).toEqual(['ch_REAUTH']);
   });
 
-  it('legacy backend (no updatedAt on DTO): existing channel ignored even if row updated → falls back to id-diff', async () => {
+  it('legacy backend (no updatedAt on DTO): existing channel ignored even if row updated → falls back to id-diff, keeps waiting', async () => {
     const reauthedNoTimestamp = {
       id: 'ch_REAUTH', type: 'whatsapp', workspaceId: 'ws_TEST0001',
       metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
@@ -115,30 +115,37 @@ describe('pollForNewChannels — D2 acceptance criteria', () => {
     const snapshot = new Map<string, string | undefined>([
       ['ch_REAUTH', undefined], // older snapshot had no updatedAt either
     ]);
+    let settled = false;
     const promise = pollForNewChannels('ws_TEST0001', snapshot);
-    promise.catch(() => {});
-    for (let elapsed = 0; elapsed < 5 * 60 * 1000 + 1000; elapsed += 30_000) {
-      await vi.advanceTimersByTimeAsync(30_000);
-    }
-    await expect(promise).rejects.toThrow(/No channels appeared within 5 minutes/);
+    void promise.finally(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe(false); // existing channel never reported; still polling
   }, 30_000);
 
-  it('rejects with CONNECT_TIMEOUT after 5 minutes of no new channels', async () => {
-    vi.mocked(apiClient).mockResolvedValue([]); // every poll returns no new channels
+  it('no hard timeout (AIT-334): resolves with a channel arriving after 6 minutes instead of rejecting at 5', async () => {
+    vi.mocked(apiClient).mockResolvedValue([]); // nothing new for the first 6 min
     const promise = pollForNewChannels('ws_TEST0001', new Map());
-    // Attach a no-op catch synchronously so an unhandled rejection cannot
-    // bubble while we're advancing fake timers iteration-by-iteration. The
-    // real assertion is still done via `await expect(...).rejects.toThrow`
-    // below.
-    promise.catch(() => {});
-    // 150 iterations × 2000ms of fake-timer advance need a generous real-time
-    // budget because each iteration drains microtasks (the awaited apiClient
-    // mock promise) before the next setTimeout resolves. Vitest's default
-    // 5s test timeout is real-wall-clock and trips before the fake-time
-    // 5min loop completes. Advance in 30s chunks to amortize microtask drain.
-    for (let elapsed = 0; elapsed < 5 * 60 * 1000 + 1000; elapsed += 30_000) {
+    // Advance in 30s chunks to amortize microtask drain (each iteration
+    // awaits the mocked apiClient promise before the next setTimeout).
+    for (let elapsed = 0; elapsed < 6 * 60 * 1000; elapsed += 30_000) {
       await vi.advanceTimersByTimeAsync(30_000);
     }
-    await expect(promise).rejects.toThrow(/No channels appeared within 5 minutes/);
+    vi.mocked(apiClient).mockResolvedValue([wa]); // OAuth finally completed
+    await vi.advanceTimersByTimeAsync(2000); // poll picks it up
+    await vi.advanceTimersByTimeAsync(4000); // stability window
+    const result = await promise;
+    expect(result.map((c) => c.id)).toEqual(['ch_NEW_WA']);
+  }, 30_000);
+
+  it('fires onStillWaiting roughly every 30s while nothing has appeared, then stops once a channel shows', async () => {
+    vi.mocked(apiClient).mockResolvedValue([]);
+    const hints: number[] = [];
+    const promise = pollForNewChannels('ws_TEST0001', new Map(), (ms) => hints.push(ms));
+    await vi.advanceTimersByTimeAsync(70_000); // ~2 hint intervals
+    expect(hints.length).toBe(2);
+    vi.mocked(apiClient).mockResolvedValue([wa]);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(4000);
+    await promise;
   }, 30_000);
 });

@@ -213,10 +213,32 @@ export async function runChannelsConnect(
   //    channel could be included in the snapshot and never reported.
   //    updatedAt lets the poll also detect re-auth of an existing channel
   //    (token rotation bumps the row without creating a new id).
-  const initialDtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
+  const initialChannels = (
+    (await apiClient('/meta/channels', { workspaceId })) as unknown[]
+  ).map(parseChannelListItem);
   const snapshot = new Map<string, string | undefined>(
-    initialDtos.map(parseChannelListItem).map((c) => [c.id, c.updatedAt]),
+    initialChannels.map((c) => [c.id, c.updatedAt]),
   );
+
+  // AIT-334: if a connected channel of this type already exists, say so up
+  // front — the poll below only reports NEW connections, so a user re-running
+  // connect on an already-connected workspace would otherwise wait on a
+  // channel that may never come, with no clue the connect already succeeded.
+  const alreadyConnected = initialChannels.filter(
+    (ch) => ch.type === type && ch.metaConnected,
+  );
+  for (const ch of alreadyConnected) {
+    const label =
+      ch.type === 'whatsapp'
+        ? (ch.whatsappDisplayPhoneNumber ?? ch.id)
+        : ch.type === 'instagram'
+          ? `@${ch.instagramUsername ?? ch.id}`
+          : ch.id;
+    status(
+      `Note: this workspace already has a connected ${type} channel: ${label}. ` +
+        `Waiting for a NEW connection — press Ctrl+C if you meant that one.`,
+    );
+  }
 
   // 2. Route to the per-type OAuth start endpoint via the pure helper.
   const { path, body } = buildConnectStartRequest(type);
@@ -241,10 +263,15 @@ export async function runChannelsConnect(
     console.log(redirectUrl + '\n');
     try { await open(redirectUrl); } catch { /* no browser — URL already printed */ }
   }
-  status('Waiting for channel(s)...');
+  status('Waiting for channel(s)... (Ctrl+C to cancel)');
 
-  // 4. Poll for new/updated channels per D2 acceptance criteria.
-  const newChannels = await pollForNewChannels(workspaceId, snapshot);
+  // 4. Poll for new/updated channels per D2 acceptance criteria. No hard
+  //    timeout (AIT-334) — a periodic hint keeps the wait visibly alive.
+  const newChannels = await pollForNewChannels(workspaceId, snapshot, (elapsedMs) =>
+    status(
+      `Still waiting (${Math.round(elapsedMs / 60_000)} min) — finish the sign-in in your browser, or Ctrl+C to cancel.`,
+    ),
+  );
 
   // 5. Report all new channels by type (D7 coexistence shape). In JSON mode
   //    these go to stderr (via `status`) so stdout stays the single

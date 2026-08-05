@@ -1,10 +1,9 @@
 // src/commands/channels-connect-poll.ts
 import { apiClient } from '../api/client.js';
 import { parseChannelListItem, type Channel } from '../api/channel.js';
-import { CliError } from '../output/error.js';
 
 /**
- * D2 polling acceptance criteria:
+ * D2 polling acceptance criteria (AIT-334 revision — no hard timeout):
  *   1. Caller snapshots existing {channelId -> updatedAt} BEFORE opening OAuth
  *      (race-safe — if the snapshot ran AFTER open(), a fast backend write
  *      could include the new channel in "existing" and never report it).
@@ -17,10 +16,14 @@ import { CliError } from '../output/error.js';
  *            updates the row but creates no new id).
  *      (b) requires the backend to return `updatedAt` on the list DTO.
  *      Older backends omit it; in that case (b) is effectively disabled
- *      and we fall back to id-diff-only (legacy 5min-hang behaviour for
- *      re-auth, which is no worse than before).
- *   4. Exit when: (interesting.length > 0 AND no new interesting in last 4s),
- *      OR 5min hard timeout.
+ *      and we fall back to id-diff-only.
+ *   4. Exit when: interesting.length > 0 AND no new interesting in last 4s.
+ *      There is NO hard timeout — a real Meta OAuth (login + 2FA +
+ *      permission screens) routinely exceeds 5 minutes, and the old
+ *      5-min CONNECT_TIMEOUT reported failure to users whose connect
+ *      then succeeded (Sentry HOOKMYAPP-CLI-15). Ctrl+C is the only
+ *      way out; `onStillWaiting` fires every 30s so the wait is
+ *      visibly alive.
  *   5. Return ALL interesting channels.
  *
  * On Ctrl+C: Node's default behavior terminates the process on unhandled
@@ -33,20 +36,16 @@ import { CliError } from '../output/error.js';
 export async function pollForNewChannels(
   workspaceId: string,
   snapshot: ReadonlyMap<string, string | undefined>,
+  onStillWaiting?: (elapsedMs: number) => void,
 ): Promise<Channel[]> {
   const POLL_INTERVAL_MS = 2000;
   const STABILITY_WINDOW_MS = 4000;
-  const HARD_TIMEOUT_MS = 5 * 60 * 1000;
+  const STILL_WAITING_INTERVAL_MS = 30_000;
   const start = Date.now();
   let lastChangeAt = 0;
+  let lastHintAt = start;
   const seen = new Map<string, Channel>();
   while (true) {
-    if (Date.now() - start > HARD_TIMEOUT_MS) {
-      throw new CliError(
-        'No channels appeared within 5 minutes. Did you complete the OAuth flow in your browser?',
-        'CONNECT_TIMEOUT',
-      );
-    }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     const dtos = (await apiClient('/meta/channels', { workspaceId })) as unknown[];
     for (const dto of dtos) {
@@ -66,6 +65,10 @@ export async function pollForNewChannels(
     }
     if (seen.size > 0 && Date.now() - lastChangeAt >= STABILITY_WINDOW_MS) {
       return Array.from(seen.values());
+    }
+    if (seen.size === 0 && Date.now() - lastHintAt >= STILL_WAITING_INTERVAL_MS) {
+      lastHintAt = Date.now();
+      onStillWaiting?.(Date.now() - start);
     }
   }
 }
