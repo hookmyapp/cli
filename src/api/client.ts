@@ -260,6 +260,11 @@ export async function mapApiError(res: Response): Promise<CliError> {
     );
   }
   if (res.status >= 500) {
+    // AIT-337: coded support errors (503 SUPPORT_NOT_CONFIGURED, the
+    // "result unknown — list your tickets before retrying" ambiguity, …)
+    // carry safe, actionable user messages — surface them verbatim instead
+    // of the generic 5xx line.
+    if (code?.startsWith('SUPPORT_')) return new ApiError(msg, res.status, code);
     return new ApiError('Something went wrong on our end. Try again later.', res.status);
   }
   // Generic 4xx fallback — preserve the server's own code (AIT-151) so scripts

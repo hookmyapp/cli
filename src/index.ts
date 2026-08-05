@@ -14,6 +14,7 @@ import { registerDoctorCommand } from './commands/doctor.js';
 import { registerBillingCommand } from './commands/billing.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerCustomersCommand } from './commands/customers.js';
+import { registerSupportCommand } from './commands/support.js';
 import { registerSandboxCommand } from './commands/sandbox/index.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { registerConfigCommand } from './commands/config.js';
@@ -188,6 +189,7 @@ registerWorkspaceCommand(program);
 
 // Customers (customer workspaces)
 registerCustomersCommand(program);
+registerSupportCommand(program);
 
 // Persistent CLI config (env profile: local | staging | production)
 registerConfigCommand(program);
