@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AuthError } from '../../output/error.js';
+import { AuthError, NetworkError } from '../../output/error.js';
 
 // Token-refresh FAILURE paths (AIT-50). Uses the real file-backed store in a
 // temp HOOKMYAPP_CONFIG_DIR (same pattern as agent-refresh.test.ts) so we can
@@ -54,19 +54,28 @@ function storedCredentials(): string {
 }
 
 describe('apiClient — refresh endpoint returns an error status', () => {
-  test.each([400, 500])(
-    'expired credential + refresh %i → AuthError, stored credentials untouched',
-    async (status) => {
-      stubRefreshResponse(status, { error: 'invalid_grant' });
-      const { apiClient } = await import('../client.js');
+  test('expired credential + refresh 400 (rejected) → AuthError, stored credentials untouched', async () => {
+    stubRefreshResponse(400, { error: 'invalid_grant' });
+    const { apiClient } = await import('../client.js');
 
-      const err = await apiClient('/workspaces').catch((e: unknown) => e);
+    const err = await apiClient('/workspaces').catch((e: unknown) => e);
 
-      expect(err).toBeInstanceOf(AuthError);
-      expect((err as AuthError).message).toMatch(/Session expired/);
-      expect(storedCredentials()).toBe(STORED);
-    },
-  );
+    expect(err).toBeInstanceOf(AuthError);
+    expect((err as AuthError).message).toMatch(/Session expired/);
+    expect(storedCredentials()).toBe(STORED);
+  });
+
+  // AIT-346: a refresh 5xx/429 is a WorkOS-side transient, not an expired
+  // session — long-running commands (support watch) retry it.
+  test('expired credential + refresh 500 (transient) → NetworkError, stored credentials untouched', async () => {
+    stubRefreshResponse(500, { error: 'server_error' });
+    const { apiClient } = await import('../client.js');
+
+    const err = await apiClient('/workspaces').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(NetworkError);
+    expect(storedCredentials()).toBe(STORED);
+  });
 });
 
 describe('apiClient — refresh returns 200 with a malformed body', () => {

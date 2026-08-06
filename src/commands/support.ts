@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
-import { ValidationError } from '../output/error.js';
+import { NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 
 /**
@@ -26,13 +26,58 @@ interface TicketMessage {
   at: string;
 }
 
-interface TicketDetail {
+export interface TicketDetail {
   ticketId: string;
   subject: string;
   status: string;
   messages: TicketMessage[];
   nextCursor: string;
   note?: string;
+}
+
+// ── support watch internals (AIT-346) ──────────────────────────────────────
+
+const DURATION = /^(\d+)(s|m|h)$/;
+const WATCH_CAP_MS = 2 * 60 * 60 * 1000;
+const CYCLE_MS = 25_000;
+const MAX_TRANSIENT_FAILURES = 3;
+
+function parseTimeout(value: string): number {
+  const m = DURATION.exec(value);
+  if (!m) throw new ValidationError('--timeout must look like 90s, 10m, or 2h.');
+  const ms = Number(m[1]) * { s: 1000, m: 60_000, h: 3_600_000 }[m[2] as 's' | 'm' | 'h'];
+  if (ms < 1000 || ms > WATCH_CAP_MS) {
+    throw new ValidationError('--timeout must be between 1s and 2h.');
+  }
+  return ms;
+}
+
+function isTransient(err: unknown): boolean {
+  if (err instanceof NetworkError) return true;
+  const code = (err as { code?: string }).code ?? '';
+  const status = (err as { statusCode?: number }).statusCode ?? 0;
+  // SUPPORT_NOT_CONFIGURED / SUPPORT_MISCONFIGURED are 503s but describe a
+  // static config state — retrying cannot help; keep them terminal.
+  if (code === 'SUPPORT_UPSTREAM_TIMEOUT' || code === 'SUPPORT_UPSTREAM_UNAVAILABLE') return true;
+  return status >= 500 && !code.startsWith('SUPPORT_');
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** ≥25s per cycle (never busy-poll, even when the server answers early), but
+ * never sleeping past the absolute deadline. */
+async function paceSleep(cycleStart: number, deadline: number): Promise<void> {
+  const pace = CYCLE_MS - (Date.now() - cycleStart);
+  const untilDeadline = deadline - Date.now();
+  await sleep(Math.max(0, Math.min(pace, untilDeadline)));
+}
+
+interface WatchResult {
+  reason: 'message' | 'resolved' | 'timeout' | 'error';
+  detail?: TicketDetail;
+  cursor: string | null;
+  resume: string;
+  error?: { code: string; message: string };
 }
 
 function assertTicketId(id: string): void {
@@ -179,6 +224,92 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp support show sup_42
   $ hookmyapp support show sup_42 --wait 20 --after <nextCursor>
+`,
+  );
+
+  const sWatch = support
+    .command('watch')
+    .description('Wait for the next support reply — long-running, exits when support answers')
+    .argument('<id>', 'Ticket id (sup_…)')
+    .option('--timeout <duration>', 'Give up after this long (90s / 10m / 2h, max 2h)', '30m')
+    .option('--after <cursor>', 'Opaque cursor from a previous response (nextCursor)')
+    .option('--json', 'Output a WatchResult JSON envelope')
+    .action(async (id: string, opts: { timeout: string; after?: string; json?: boolean }) => {
+      assertTicketId(id);
+      const timeoutMs = parseTimeout(opts.timeout);
+      const deadline = Date.now() + timeoutMs;
+      let cursor: string | undefined = opts.after;
+      let failures = 0;
+      const useJson = opts.json || program.opts().json;
+
+      const resume = (): string =>
+        cursor
+          ? `hookmyapp support watch ${id} --after ${cursor}`
+          : `hookmyapp support watch ${id}`;
+      const emit = (result: WatchResult): void => {
+        if (useJson) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+        if (result.detail) printDetail(result.detail);
+        if (result.reason === 'resolved') console.log(`Ticket ${id} was resolved.`);
+        if (result.reason === 'timeout') console.log(`no reply within ${opts.timeout}`);
+        console.log(`Resume: ${result.resume}`);
+      };
+
+      while (true) {
+        const cycleStart = Date.now();
+        const remainingMs = deadline - cycleStart;
+        if (remainingMs <= 0) {
+          emit({ reason: 'timeout', cursor: cursor ?? null, resume: resume() });
+          process.exitCode = 1;
+          return;
+        }
+        // The final cycle shortens the server wait so the deadline holds.
+        const wait = Math.min(25, Math.max(1, Math.floor(remainingMs / 1000)));
+        let detail: TicketDetail;
+        try {
+          const qs = new URLSearchParams({ wait: String(wait) });
+          if (cursor) qs.set('afterCursor', cursor);
+          detail = (await apiClient(`/support/tickets/${id}?${qs}`)) as TicketDetail;
+        } catch (err) {
+          if (isTransient(err) && ++failures < MAX_TRANSIENT_FAILURES) {
+            await paceSleep(cycleStart, deadline);
+            continue;
+          }
+          if (useJson) {
+            const e = err as { code?: string; message?: string; exitCode?: number };
+            emit({
+              reason: 'error',
+              cursor: cursor ?? null,
+              resume: resume(),
+              error: { code: e.code ?? 'UNKNOWN', message: e.message ?? 'error' },
+            });
+            process.exitCode = e.exitCode ?? 1;
+            return; // single envelope — the top-level renderer must not add a second
+          }
+          console.error(`Resume: ${resume()}`);
+          throw err; // human mode: top-level renders the error with its exit family
+        }
+        failures = 0;
+        cursor = detail.nextCursor;
+        if (!detail.note) {
+          emit({ reason: 'message', detail, cursor, resume: resume() });
+          return; // exit 0
+        }
+        if (detail.status === 'resolved') {
+          emit({ reason: 'resolved', detail, cursor, resume: resume() });
+          return; // exit 0
+        }
+        await paceSleep(cycleStart, deadline);
+      }
+    });
+  addExamples(
+    sWatch,
+    `
+EXAMPLES:
+  $ hookmyapp support watch sup_42
+  $ hookmyapp support watch sup_42 --timeout 2h --after bWlkOjEyMw
 `,
   );
 

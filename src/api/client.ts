@@ -49,12 +49,25 @@ async function refreshToken(
     refresh_token: refreshTokenValue,
     client_id: getEffectiveWorkosClientId(),
   });
-  const res = await fetch('https://api.workos.com/user_management/authenticate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params,
-  });
+  let res: Response;
+  try {
+    res = await fetch('https://api.workos.com/user_management/authenticate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params,
+    });
+  } catch (err) {
+    // Transport failure — the refresh never reached WorkOS. This is NOT an
+    // expired session; long-running commands (support watch) retry it.
+    throw new NetworkError(
+      `Could not reach the sign-in service: ${describeFetchError(err)}. Check your internet connection.`,
+    );
+  }
 
+  if (res.status === 429 || res.status >= 500) {
+    // WorkOS-side transient — same retryable class as a transport failure.
+    throw new NetworkError(`Sign-in service unavailable (HTTP ${res.status}). Try again shortly.`);
+  }
   if (!res.ok) {
     // Throw a typed AppError so the top-level exit-code mapper + Sentry
     // capture get a severity-tagged event instead of a bare Error. The caller
@@ -90,7 +103,10 @@ async function validAccessToken(
     const refreshed = await refreshToken(creds.refreshToken);
     await saveCredentials(refreshed);
     return refreshed.accessToken;
-  } catch {
+  } catch (err) {
+    // Transport/transient failures keep their retryable identity — only a
+    // refresh WorkOS actually rejected means the session is gone.
+    if (err instanceof NetworkError) throw err;
     throw new AuthError('Session expired. Run: hookmyapp login');
   }
 }

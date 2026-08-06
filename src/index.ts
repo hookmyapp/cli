@@ -280,8 +280,12 @@ async function main(): Promise<void> {
   const startedAt = Date.now();
   try {
     await program.parseAsync();
-    await emitCommandInvoked(0, Date.now() - startedAt, null);
-    await flushAndExit(0);
+    // Honor a command-set exit code (e.g. `support watch` timeout = 1): a
+    // successful parse is not always a zero exit.
+    const rawExit = typeof process.exitCode === 'number' ? process.exitCode : 0;
+    const commandExit = (rawExit >= 0 && rawExit <= 6 ? rawExit : 1) as CliExitCode;
+    await emitCommandInvoked(commandExit, Date.now() - startedAt, null);
+    await flushAndExit(commandExit);
   } catch (err) {
     const human = resolveHuman();
     const debug = program.opts().debug ?? process.argv.includes('--debug');
