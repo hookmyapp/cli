@@ -54,6 +54,10 @@ function parseTimeout(value: string): number {
 
 function isTransient(err: unknown): boolean {
   if (err instanceof NetworkError) return true;
+  // Our own per-cycle abort (stalled transport) — retry next cycle; the
+  // deadline check turns it into the timeout outcome when time is up.
+  const name = (err as Error).name ?? '';
+  if (name === 'AbortError' || name === 'TimeoutError') return true;
   const code = (err as { code?: string }).code ?? '';
   const status = (err as { statusCode?: number }).statusCode ?? 0;
   // SUPPORT_NOT_CONFIGURED / SUPPORT_MISCONFIGURED are 503s but describe a
@@ -252,7 +256,10 @@ EXAMPLES:
           return;
         }
         if (result.detail) printDetail(result.detail);
-        if (result.reason === 'resolved') console.log(`Ticket ${id} was resolved.`);
+        // A reply can arrive together with resolution — always surface it.
+        if (result.reason === 'resolved' || result.detail?.status === 'resolved') {
+          console.log(`Ticket ${id} was resolved.`);
+        }
         if (result.reason === 'timeout') console.log(`no reply within ${opts.timeout}`);
         console.log(`Resume: ${result.resume}`);
       };
@@ -271,7 +278,11 @@ EXAMPLES:
         try {
           const qs = new URLSearchParams({ wait: String(wait) });
           if (cursor) qs.set('afterCursor', cursor);
-          detail = (await apiClient(`/support/tickets/${id}?${qs}`)) as TicketDetail;
+          // Bound each poll: server holds `wait`s; anything much longer is a
+          // stalled transport. Without this, --timeout is not a real deadline.
+          detail = (await apiClient(`/support/tickets/${id}?${qs}`, {
+            signal: AbortSignal.timeout(wait * 1000 + 15_000),
+          })) as TicketDetail;
         } catch (err) {
           if (isTransient(err) && ++failures < MAX_TRANSIENT_FAILURES) {
             await paceSleep(cycleStart, deadline);

@@ -89,7 +89,7 @@ describe('support watch', () => {
   it('message outcome: exits with transcript + resume command, no afterCursor on first cursorless call', async () => {
     mockedApi.mockResolvedValue(detail());
     await drive(run(['support', 'watch', 'sup_1']));
-    expect(mockedApi).toHaveBeenCalledWith('/support/tickets/sup_1?wait=25');
+    expect(mockedApi.mock.calls[0][0]).toBe('/support/tickets/sup_1?wait=25');
     const out = logged();
     expect(out).toContain('[support]');
     expect(out).toContain('Resume: hookmyapp support watch sup_1 --after cur2');
@@ -101,7 +101,7 @@ describe('support watch', () => {
       .mockResolvedValueOnce(detail({ note: NO_REPLY, nextCursor: 'curA' }))
       .mockResolvedValueOnce(detail({ nextCursor: 'curB' }));
     await drive(run(['support', 'watch', 'sup_1']));
-    expect(mockedApi).toHaveBeenNthCalledWith(2, '/support/tickets/sup_1?wait=25&afterCursor=curA');
+    expect(mockedApi.mock.calls[1][0]).toBe('/support/tickets/sup_1?wait=25&afterCursor=curA');
     expect(logged()).toContain('--after curB');
   });
 
@@ -215,7 +215,22 @@ describe('support watch', () => {
   it('--after seeds the first call', async () => {
     mockedApi.mockResolvedValue(detail());
     await drive(run(['support', 'watch', 'sup_1', '--after', 'curX']));
-    expect(mockedApi).toHaveBeenCalledWith('/support/tickets/sup_1?wait=25&afterCursor=curX');
+    expect(mockedApi.mock.calls[0][0]).toBe('/support/tickets/sup_1?wait=25&afterCursor=curX');
+  });
+
+  it('every poll carries a per-cycle abort signal (stalled transport cannot outlive the deadline)', async () => {
+    mockedApi.mockResolvedValue(detail());
+    await drive(run(['support', 'watch', 'sup_1']));
+    const opts = mockedApi.mock.calls[0][1] as { signal?: AbortSignal } | undefined;
+    expect(opts?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('message arriving together with resolution prints the resolved notice, reason stays message', async () => {
+    mockedApi.mockResolvedValue(detail({ status: 'resolved' }));
+    await drive(run(['support', 'watch', 'sup_1']));
+    const out = logged();
+    expect(out).toContain('[support]');
+    expect(out).toContain('was resolved');
   });
 
   it('global --json flag also switches to the envelope', async () => {
