@@ -6,7 +6,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 ### Added
 
-- `hookmyapp notifications` — list and acknowledge notices from HookMyApp (problems, fixes, and product announcements), plus a once-a-day unread nudge after commands (opt out: `HOOKMYAPP_NO_NOTICES=1`) (AIT-358).
+- `hookmyapp notifications` — list and acknowledge notices from HookMyApp (problems, fixes, and product announcements), plus a once-a-day unread nudge printed during CLI invocations (opt out: `HOOKMYAPP_NO_NOTICES=1`) (AIT-358).
 
 - `sandbox env` now emits `VERIFY_TOKEN` (AIT-179) — the session's webhook verify token, distinct from `WEBHOOK_HMAC_SECRET`. `sandbox webhook set` runs the verify-GET handshake against it, so an unmodified starter-kit receiver configured via `sandbox env` now passes verification.
 

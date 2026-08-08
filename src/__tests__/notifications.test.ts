@@ -7,13 +7,12 @@ vi.mock('../api/client.js', () => ({
 
 vi.mock('../notices-nudge.js', () => ({
   recordNoticesSnapshot: vi.fn(),
-  recordNoticeAcked: vi.fn(),
 }));
 
 const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
 import { apiClient } from '../api/client.js';
-import { recordNoticesSnapshot, recordNoticeAcked } from '../notices-nudge.js';
+import { recordNoticesSnapshot } from '../notices-nudge.js';
 import { registerNotificationsCommand } from '../commands/notifications.js';
 
 const mockedApi = vi.mocked(apiClient);
@@ -100,12 +99,34 @@ describe('notifications list', () => {
 });
 
 describe('notifications ack', () => {
-  it('POSTs to /notices/:id/ack and confirms', async () => {
-    mockedApi.mockResolvedValue({ notice: { ...NOTICE, acknowledgedAt: '2026-08-08T02:00:00.000Z' } });
+  it('POSTs to /notices/:id/ack, confirms, and rewrites the cache from a fresh list', async () => {
+    mockedApi
+      .mockResolvedValueOnce({ notice: { ...NOTICE, acknowledgedAt: '2026-08-08T02:00:00.000Z' } })
+      .mockResolvedValueOnce({ notices: [] });
     await run(['notifications', 'ack', 'ntc_A1b2C3d4']);
-    expect(mockedApi).toHaveBeenCalledWith('/notices/ntc_A1b2C3d4/ack', { method: 'POST' });
+    expect(mockedApi).toHaveBeenNthCalledWith(1, '/notices/ntc_A1b2C3d4/ack', { method: 'POST' });
+    expect(mockedApi).toHaveBeenNthCalledWith(2, '/notices');
     expect(logged()).toContain('Acknowledged ntc_A1b2C3d4.');
-    expect(vi.mocked(recordNoticeAcked)).toHaveBeenCalled();
+    expect(vi.mocked(recordNoticesSnapshot)).toHaveBeenCalledWith(0);
+  });
+
+  it('re-acking an already-acked id keeps the cache honest while another notice is unread', async () => {
+    // Regression (PR #49 review): ack is idempotent — a duplicate ack must
+    // not zero the unread cache; the refetch is the source of truth.
+    mockedApi
+      .mockResolvedValueOnce({ notice: { ...NOTICE, acknowledgedAt: '2026-08-08T02:00:00.000Z' } })
+      .mockResolvedValueOnce({ notices: [{ ...NOTICE, id: 'ntc_Zz9Yy8Xx' }] });
+    await run(['notifications', 'ack', 'ntc_A1b2C3d4']);
+    expect(vi.mocked(recordNoticesSnapshot)).toHaveBeenCalledWith(1);
+  });
+
+  it('a failed cache refetch never fails the (already successful) ack', async () => {
+    mockedApi
+      .mockResolvedValueOnce({ notice: { ...NOTICE, acknowledgedAt: '2026-08-08T02:00:00.000Z' } })
+      .mockRejectedValueOnce(new Error('network down'));
+    await run(['notifications', 'ack', 'ntc_A1b2C3d4']);
+    expect(logged()).toContain('Acknowledged ntc_A1b2C3d4.');
+    expect(vi.mocked(recordNoticesSnapshot)).not.toHaveBeenCalled();
   });
 
   it('validates the notice id locally — no HTTP on garbage', async () => {

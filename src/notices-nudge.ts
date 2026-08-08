@@ -17,16 +17,17 @@
 // fingerprint: getConfigDir() is global, so env switches (--env staging) and
 // re-logins must not leak another principal's unread count.
 // `notifications list`/`ack` rewrite the cache from their real responses
-// (recordNoticesSnapshot / recordNoticeAcked) for immediate consistency.
+// (recordNoticesSnapshot) for immediate consistency.
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
+import { getValidAccessToken } from './api/client.js';
 import { readCredentials } from './auth/store.js';
 import type { Secrets } from './storage/secrets.js';
-import { getEffectiveApiUrl } from './config/env-profiles.js';
+import { ENV_PROFILES, getEffectiveApiUrl, isValidEnv } from './config/env-profiles.js';
 import { getConfigDir } from './storage/path.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -45,12 +46,17 @@ export interface NoticesCache {
 export function credentialFingerprint(creds: Secrets): string {
   if (creds.credentialPublicId) return creds.credentialPublicId;
   try {
-    // WorkOS sessions: the JWT `sub` claim is a stable, non-secret user id
-    // (the access token itself rotates on refresh — useless as a cache key).
+    // WorkOS sessions: `sub` (stable user id) + `org_id` (session org scope)
+    // — both non-secret. org_id matters: the same user re-scoped to another
+    // org must not reuse the previous org's unread cache + nudge throttle.
+    // (The access token itself rotates on refresh — useless as a cache key.)
     const payload = JSON.parse(
       Buffer.from(creds.accessToken.split('.')[1] ?? '', 'base64').toString(),
-    ) as { sub?: unknown };
-    if (typeof payload.sub === 'string' && payload.sub) return payload.sub;
+    ) as { sub?: unknown; org_id?: unknown };
+    if (typeof payload.sub === 'string' && payload.sub) {
+      const org = typeof payload.org_id === 'string' ? payload.org_id : '';
+      return `${payload.sub}:${org}`;
+    }
   } catch {
     // Not a JWT — fall through.
   }
@@ -105,6 +111,26 @@ function isNotificationsInvocation(argv: string[]): boolean {
   return argv.slice(2).includes('notifications');
 }
 
+/**
+ * API URL for THIS invocation. maybeNudge runs at boot, BEFORE parseAsync —
+ * Commander's preAction hook (which propagates `--env` into HOOKMYAPP_ENV)
+ * has not fired yet, so getEffectiveApiUrl() alone would resolve the wrong
+ * backend (and the wrong cache namespace) for `--env` invocations. Pre-scan
+ * argv for the flag, mirroring the preAction handler's validation; an invalid
+ * value returns null and the nudge stays out of the way (the command itself
+ * will error on it).
+ */
+function resolveInvocationApiUrl(argv: string[]): string | null {
+  let envName: string | undefined;
+  const i = argv.indexOf('--env');
+  if (i !== -1) envName = argv[i + 1];
+  const eq = argv.find((a) => a.startsWith('--env='));
+  if (eq) envName = eq.slice('--env='.length);
+  if (envName === undefined) return getEffectiveApiUrl(); // HOOKMYAPP_ENV / persisted config / default
+  if (!isValidEnv(envName)) return null;
+  return process.env.HOOKMYAPP_API_URL ?? ENV_PROFILES[envName].apiUrl;
+}
+
 // Runs under `node -e` (CJS): fetch /notices with the stored bearer token and
 // atomically rewrite the cache, preserving unrelated fields (lastNudgedAt).
 // Every failure path is a silent no-op — the next 24h window retries.
@@ -146,7 +172,8 @@ export async function maybeNudge(): Promise<void> {
     if (isNotificationsInvocation(process.argv)) return;
     const creds = await readCredentials();
     if (creds === null) return; // no credentials → no fetch, no cache, no nudge
-    const apiUrl = getEffectiveApiUrl();
+    const apiUrl = resolveInvocationApiUrl(process.argv);
+    if (apiUrl === null) return; // invalid --env — the command will error on it
     const file = cacheFilePath(apiUrl, credentialFingerprint(creds));
     const cache = readCache(file);
     const now = Date.now();
@@ -171,6 +198,12 @@ export async function maybeNudge(): Promise<void> {
     // backend down) must not retry on every single command.
     const current = readCache(file) ?? { hasUnread: false, count: 0 };
     writeCacheAtomic(file, { ...current, lastAttemptedAt: new Date(now).toISOString() });
+    // The stored WorkOS access token may be expired and the child has no
+    // refresh path — obtain a valid token via the client's own refresh flow
+    // first (agent creds pass through unchanged). A refresh failure lands in
+    // the outer catch: no spawn, and lastAttemptedAt (already stamped)
+    // throttles the retry.
+    const token = await getValidAccessToken();
     const child = spawn(process.execPath, ['-e', REFRESH_SCRIPT], {
       detached: true,
       stdio: 'ignore',
@@ -178,7 +211,7 @@ export async function maybeNudge(): Promise<void> {
       env: {
         ...process.env,
         HOOKMYAPP_NOTICES_URL: `${apiUrl}/notices`,
-        HOOKMYAPP_NOTICES_TOKEN: creds.accessToken,
+        HOOKMYAPP_NOTICES_TOKEN: token,
         HOOKMYAPP_NOTICES_CACHE: file,
       },
     });
@@ -199,14 +232,6 @@ export async function recordNoticesSnapshot(unreadCount: number): Promise<void> 
     lastCheckedAt: now,
     lastAttemptedAt: now, // a real list IS a check — postpone the background refresh
   }));
-}
-
-/** `notifications ack` calls this after a successful ack. */
-export async function recordNoticeAcked(): Promise<void> {
-  await rewriteCache((prev) => {
-    const count = Math.max(0, (prev.count ?? 0) - 1);
-    return { ...prev, hasUnread: count > 0, count, lastCheckedAt: new Date().toISOString() };
-  });
 }
 
 async function rewriteCache(update: (prev: NoticesCache) => NoticesCache): Promise<void> {

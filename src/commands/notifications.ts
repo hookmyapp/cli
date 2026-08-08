@@ -3,7 +3,7 @@ import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
-import { recordNoticeAcked, recordNoticesSnapshot } from '../notices-nudge.js';
+import { recordNoticesSnapshot } from '../notices-nudge.js';
 
 /**
  * AIT-358 — `hookmyapp notifications`: the customer-facing notice feed
@@ -111,7 +111,16 @@ EXAMPLES:
       const res = (await apiClient(`/notices/${id}/ack`, { method: 'POST' })) as {
         notice: Notice;
       };
-      await recordNoticeAcked();
+      // Rewrite the nudge cache from a fresh list, not a local decrement —
+      // ack is idempotent, so re-acking an already-acked id (e.g. from
+      // --all output) must not zero the cache while another notice is unread.
+      // Best-effort: the ack itself already succeeded.
+      try {
+        const list = (await apiClient('/notices')) as { notices: Notice[] };
+        await recordNoticesSnapshot(list.notices.filter((n) => !n.acknowledgedAt).length);
+      } catch {
+        // stale cache self-heals on the next background refresh or list
+      }
       if (opts.json || program.opts().json) {
         console.log(JSON.stringify(res, null, 2));
         return;

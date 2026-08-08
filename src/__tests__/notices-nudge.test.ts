@@ -11,7 +11,12 @@ vi.mock('../auth/store.js', () => ({
   readCredentials: vi.fn(),
 }));
 
+vi.mock('../api/client.js', () => ({
+  getValidAccessToken: vi.fn(),
+}));
+
 import { spawn } from 'node:child_process';
+import { getValidAccessToken } from '../api/client.js';
 import { readCredentials } from '../auth/store.js';
 import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import {
@@ -19,7 +24,6 @@ import {
   credentialFingerprint,
   maybeNudge,
   readCache,
-  recordNoticeAcked,
   recordNoticesSnapshot,
   shouldShowNudge,
   writeCacheAtomic,
@@ -29,6 +33,7 @@ import {
 
 const mockedSpawn = vi.mocked(spawn);
 const mockedCreds = vi.mocked(readCredentials);
+const mockedToken = vi.mocked(getValidAccessToken);
 
 /** AIT-358 — unread-notices nudge: cached print + detached refresh. */
 
@@ -72,6 +77,7 @@ beforeEach(() => {
   process.env.HOOKMYAPP_CONFIG_DIR = dir;
   vi.clearAllMocks();
   mockedSpawn.mockReturnValue({ unref: vi.fn() } as never);
+  mockedToken.mockResolvedValue('fresh_valid_token');
 });
 
 afterEach(() => {
@@ -139,6 +145,69 @@ describe('maybeNudge refresh spawn', () => {
     expect(spawnOpts).toMatchObject({ detached: true, stdio: 'ignore' });
   });
 
+  it('passes a REFRESHED token to the child, never the stored (possibly expired) one', async () => {
+    // Regression (PR #49 review): a WorkOS session's stored access token can
+    // be expired; the child has no refresh path, so the parent must obtain a
+    // valid token via the client's refresh flow BEFORE spawning.
+    const expiredJwt = [
+      'x',
+      Buffer.from(JSON.stringify({ sub: 'user_01ABC', exp: 1 })).toString('base64'),
+      'y',
+    ].join('.');
+    mockedCreds.mockResolvedValue({ accessToken: expiredJwt, refreshToken: 'rt', expiresAt: 1 });
+    let tokenPassed: string | undefined;
+    mockedSpawn.mockImplementation(((_cmd: string, _args: string[], opts: { env: Record<string, string> }) => {
+      tokenPassed = opts.env.HOOKMYAPP_NOTICES_TOKEN;
+      return { unref: vi.fn() };
+    }) as never);
+
+    await maybeNudge();
+
+    expect(mockedToken).toHaveBeenCalled();
+    expect(tokenPassed).toBe('fresh_valid_token');
+    expect(tokenPassed).not.toBe(expiredJwt);
+  });
+
+  it('does not spawn when the token refresh itself fails (throttled by lastAttemptedAt)', async () => {
+    mockedCreds.mockResolvedValue(AGENT_CREDS);
+    mockedToken.mockRejectedValue(new Error('Session expired'));
+    await maybeNudge(); // must not throw
+    expect(mockedSpawn).not.toHaveBeenCalled();
+    const file = cacheFilePath(getEffectiveApiUrl(), credentialFingerprint(AGENT_CREDS));
+    expect(readCache(file)?.lastAttemptedAt).toBeDefined(); // still stamped — no per-command retry
+  });
+
+  it('honors --env from argv BEFORE Commander runs (correct origin + namespace)', async () => {
+    // Regression (PR #49 review): maybeNudge runs before parseAsync, so the
+    // preAction hook has not propagated --env into HOOKMYAPP_ENV yet.
+    mockedCreds.mockResolvedValue(AGENT_CREDS);
+    let urlPassed: string | undefined;
+    mockedSpawn.mockImplementation(((_cmd: string, _args: string[], opts: { env: Record<string, string> }) => {
+      urlPassed = opts.env.HOOKMYAPP_NOTICES_URL;
+      return { unref: vi.fn() };
+    }) as never);
+    const argvBackup = process.argv;
+    process.argv = ['node', 'hookmyapp', 'channels', 'list', '--env', 'staging'];
+    try {
+      await maybeNudge();
+    } finally {
+      process.argv = argvBackup;
+    }
+    expect(urlPassed).toBe('https://staging-api.hookmyapp.com/notices');
+  });
+
+  it('bails silently on an invalid --env value (the command itself errors)', async () => {
+    mockedCreds.mockResolvedValue(AGENT_CREDS);
+    const argvBackup = process.argv;
+    process.argv = ['node', 'hookmyapp', 'channels', 'list', '--env', 'bogus'];
+    try {
+      await maybeNudge();
+    } finally {
+      process.argv = argvBackup;
+    }
+    expect(mockedSpawn).not.toHaveBeenCalled();
+  });
+
   it('(d) does NOT spawn when lastAttemptedAt is fresh (<24h)', async () => {
     mockedCreds.mockResolvedValue(AGENT_CREDS);
     const file = cacheFilePath(getEffectiveApiUrl(), credentialFingerprint(AGENT_CREDS));
@@ -198,8 +267,18 @@ describe('cache namespacing', () => {
     expect(credentialFingerprint(AGENT_CREDS)).toBe('agc_12345678');
     const jwt = ['x', Buffer.from(JSON.stringify({ sub: 'user_01ABC' })).toString('base64'), 'y'].join('.');
     const workos = { accessToken: jwt, refreshToken: 'rt_secret', expiresAt: 1 };
-    expect(credentialFingerprint(workos)).toBe('user_01ABC');
+    expect(credentialFingerprint(workos)).toBe('user_01ABC:');
     expect(credentialFingerprint(workos)).not.toContain('secret');
+  });
+
+  it('same user in two orgs gets two fingerprints (org switch must not reuse the cache)', () => {
+    const jwtFor = (orgId: string): string =>
+      ['x', Buffer.from(JSON.stringify({ sub: 'user_01ABC', org_id: orgId })).toString('base64'), 'y'].join('.');
+    const inOrgA = { accessToken: jwtFor('org_A'), refreshToken: 'rt', expiresAt: 1 };
+    const inOrgB = { accessToken: jwtFor('org_B'), refreshToken: 'rt', expiresAt: 1 };
+    expect(credentialFingerprint(inOrgA)).toBe('user_01ABC:org_A');
+    expect(credentialFingerprint(inOrgB)).toBe('user_01ABC:org_B');
+    expect(credentialFingerprint(inOrgA)).not.toBe(credentialFingerprint(inOrgB));
   });
 });
 
@@ -211,10 +290,10 @@ describe('immediate consistency from notifications command', () => {
     expect(readCache(file)).toMatchObject({ hasUnread: true, count: 3 });
   });
 
-  it('recordNoticeAcked decrements; acking the last notice kills the nudge', async () => {
+  it('a zero-unread snapshot (post-ack refetch) kills the nudge', async () => {
     mockedCreds.mockResolvedValue(AGENT_CREDS);
     await recordNoticesSnapshot(1);
-    await recordNoticeAcked();
+    await recordNoticesSnapshot(0);
     const file = cacheFilePath(getEffectiveApiUrl(), credentialFingerprint(AGENT_CREDS));
     expect(readCache(file)).toMatchObject({ hasUnread: false, count: 0 });
   });
