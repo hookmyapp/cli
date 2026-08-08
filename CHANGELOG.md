@@ -4,6 +4,8 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 ## Unreleased
 
+## 0.14.11 — 2026-08-08
+
 ### Added
 
 - `hookmyapp notifications` — list and acknowledge notices from HookMyApp (problems, fixes, and product announcements), plus a once-a-day unread nudge printed during CLI invocations (opt out: `HOOKMYAPP_NO_NOTICES=1`) (AIT-358).
