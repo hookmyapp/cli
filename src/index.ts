@@ -15,6 +15,7 @@ import { registerBillingCommand } from './commands/billing.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerCustomersCommand } from './commands/customers.js';
 import { registerSupportCommand } from './commands/support.js';
+import { registerNotificationsCommand } from './commands/notifications.js';
 import { registerSandboxCommand } from './commands/sandbox/index.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { registerConfigCommand } from './commands/config.js';
@@ -130,6 +131,7 @@ COMMON COMMANDS:
   sandbox send      Send a test message via sandbox-proxy
   workspace list    List workspaces you belong to
   billing           View or change your plan
+  notifications     Notices from HookMyApp — problems, fixes, announcements
 
 Run "hookmyapp channels --help" for the full channel command list.
 
@@ -190,6 +192,7 @@ registerWorkspaceCommand(program);
 // Customers (customer workspaces)
 registerCustomersCommand(program);
 registerSupportCommand(program);
+registerNotificationsCommand(program);
 
 // Persistent CLI config (env profile: local | staging | production)
 registerConfigCommand(program);
@@ -276,6 +279,12 @@ async function main(): Promise<void> {
   // --json / non-TTY / CI; fail-open like everything above.
   const { maybeNotifyUpdate } = await import('./update-check.js');
   await maybeNotifyUpdate(pkg.version);
+
+  // AIT-358 — unread-notices nudge, same boundary + etiquette as the update
+  // banner above: print from the previous run's cache now, refresh via a
+  // detached child for the next run. Fail-open; never throws.
+  const { maybeNudge } = await import('./notices-nudge.js');
+  await maybeNudge();
 
   const startedAt = Date.now();
   try {
