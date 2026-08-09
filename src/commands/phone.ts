@@ -125,7 +125,9 @@ EXAMPLES:
     .option('--json', 'Output machine-readable JSON')
     .action(async (code: string, opts: { json?: boolean }) => {
       if (!/^\d{6}$/.test(code)) {
-        throw new ValidationError(`Invalid code "${code}" — expected 6 digits.`);
+        // Static message: a mistyped-but-real code must never reach Sentry
+        // through the telemetry error path.
+        throw new ValidationError('Invalid code — expected exactly 6 digits.');
       }
       const res = (await apiClient('/auth/phone/verify', {
         method: 'POST',
