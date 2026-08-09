@@ -86,8 +86,10 @@ EXAMPLES:
       ) => {
         const cleaned = number.replace(/[\s\-().]/g, '');
         if (!E164.test(cleaned)) {
+          // Static message: ValidationError reaches Sentry via captureException
+          // when telemetry is on — never interpolate the raw number.
           throw new ValidationError(
-            `Invalid phone "${number}" — use international format, e.g. +14155552671.`,
+            'Invalid phone number — use international format, e.g. +14155552671.',
           );
         }
         if (!['whatsapp', 'sms', 'both'].includes(opts.prefer ?? 'whatsapp')) {
