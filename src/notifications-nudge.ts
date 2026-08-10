@@ -1,4 +1,4 @@
-// Unread-notices nudge (AIT-358) — modeled on src/update-check.ts (AIT-24),
+// Unread-notifications nudge (AIT-358) — modeled on src/update-check.ts (AIT-24),
 // which already solved this exact problem: the CLI hard-exits after
 // parseAsync (flushAndExit / process.exit in sentry.ts), so an unawaited
 // in-process fetch is killed mid-flight. Therefore:
@@ -8,7 +8,7 @@
 //     one stderr line. Same guardrails as the update banner: stderr only,
 //     TTY only, no CI, no --json, env opt-out (HOOKMYAPP_NO_NOTICES).
 //   - REFRESH path runs in a DETACHED spawned child (survives the parent's
-//     hard exit) that calls GET /notices and atomically rewrites the cache
+//     hard exit) that calls GET /notifications and atomically rewrites the cache
 //     for the NEXT run. Throttled to ≤1 attempt per 24h; `lastAttemptedAt`
 //     is stamped BEFORE the spawn so a failing refresh cannot retry on
 //     every command. The child swallows all errors (fail-open).
@@ -17,7 +17,7 @@
 // fingerprint: getConfigDir() is global, so env switches (--env staging) and
 // re-logins must not leak another principal's unread count.
 // `notifications list`/`ack` rewrite the cache from their real responses
-// (recordNoticesSnapshot) for immediate consistency.
+// (recordNotificationsSnapshot) for immediate consistency.
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -32,12 +32,12 @@ import { getConfigDir } from './storage/path.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export interface NoticesCache {
+export interface NotificationsCache {
   hasUnread: boolean;
   count: number;
   /** Last background-refresh attempt (stamped before spawn — throttle key). */
   lastAttemptedAt?: string;
-  /** Last SUCCESSFUL read of /notices (child or notifications command). */
+  /** Last SUCCESSFUL read of /notifications (child or notifications command). */
   lastCheckedAt?: string;
   lastNudgedAt?: string;
 }
@@ -65,19 +65,19 @@ export function credentialFingerprint(creds: Secrets): string {
 
 export function cacheFilePath(apiUrl: string, fingerprint: string): string {
   const key = createHash('sha256').update(`${apiUrl}\0${fingerprint}`).digest('hex').slice(0, 16);
-  return join(getConfigDir(), `notices-nudge-${key}.json`);
+  return join(getConfigDir(), `notifications-nudge-${key}.json`);
 }
 
-export function readCache(file: string): NoticesCache | null {
+export function readCache(file: string): NotificationsCache | null {
   try {
-    return JSON.parse(readFileSync(file, 'utf-8')) as NoticesCache;
+    return JSON.parse(readFileSync(file, 'utf-8')) as NotificationsCache;
   } catch {
     return null; // missing or corrupt — treated as "never checked"
   }
 }
 
 /** tmp + rename — concurrent CLI invocations race on this file otherwise. */
-export function writeCacheAtomic(file: string, cache: NoticesCache): void {
+export function writeCacheAtomic(file: string, cache: NotificationsCache): void {
   const tmp = `${file}.${process.pid}.tmp`;
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(tmp, JSON.stringify(cache));
@@ -89,7 +89,7 @@ export interface NudgeGateEnv {
   argv: string[];
   ci: boolean;
   optOut: boolean;
-  cache: NoticesCache | null;
+  cache: NotificationsCache | null;
   now: number;
 }
 
@@ -131,24 +131,24 @@ function resolveInvocationApiUrl(argv: string[]): string | null {
   return process.env.HOOKMYAPP_API_URL ?? ENV_PROFILES[envName].apiUrl;
 }
 
-// Runs under `node -e` (CJS): fetch /notices with the stored bearer token and
+// Runs under `node -e` (CJS): fetch /notifications with the stored bearer token and
 // atomically rewrite the cache, preserving unrelated fields (lastNudgedAt).
 // Every failure path is a silent no-op — the next 24h window retries.
 const REFRESH_SCRIPT = `
 (async () => {
-  const res = await fetch(process.env.HOOKMYAPP_NOTICES_URL, {
+  const res = await fetch(process.env.HOOKMYAPP_NOTIFICATIONS_URL, {
     headers: { Authorization: 'Bearer ' + process.env.HOOKMYAPP_NOTICES_TOKEN },
   });
   if (!res.ok) return;
   const data = await res.json();
-  const notices = Array.isArray(data && data.notices) ? data.notices : [];
+  const notifications = Array.isArray(data && data.notifications) ? data.notifications : [];
   const fs = require('node:fs');
   const file = process.env.HOOKMYAPP_NOTICES_CACHE;
   let prev = {};
   try { prev = JSON.parse(fs.readFileSync(file, 'utf-8')); } catch {}
   const next = Object.assign({}, prev, {
-    hasUnread: notices.length > 0,
-    count: notices.length,
+    hasUnread: notifications.length > 0,
+    count: notifications.length,
     lastCheckedAt: new Date().toISOString(),
   });
   const tmp = file + '.' + process.pid + '.tmp';
@@ -188,8 +188,8 @@ export async function maybeNudge(): Promise<void> {
         now,
       })
     ) {
-      process.stderr.write('\nUnread notices from HookMyApp — run: hookmyapp notifications\n\n');
-      writeCacheAtomic(file, { ...(cache as NoticesCache), lastNudgedAt: new Date(now).toISOString() });
+      process.stderr.write('\nUnread notifications from HookMyApp — run: hookmyapp notifications\n\n');
+      writeCacheAtomic(file, { ...(cache as NotificationsCache), lastNudgedAt: new Date(now).toISOString() });
     }
 
     const attempted = cache?.lastAttemptedAt ? Date.parse(cache.lastAttemptedAt) : 0;
@@ -210,7 +210,7 @@ export async function maybeNudge(): Promise<void> {
       windowsHide: true,
       env: {
         ...process.env,
-        HOOKMYAPP_NOTICES_URL: `${apiUrl}/notices`,
+        HOOKMYAPP_NOTIFICATIONS_URL: `${apiUrl}/notifications`,
         HOOKMYAPP_NOTICES_TOKEN: token,
         HOOKMYAPP_NOTICES_CACHE: file,
       },
@@ -223,7 +223,7 @@ export async function maybeNudge(): Promise<void> {
 }
 
 /** `notifications list` calls this with the unread count from its real response. */
-export async function recordNoticesSnapshot(unreadCount: number): Promise<void> {
+export async function recordNotificationsSnapshot(unreadCount: number): Promise<void> {
   const now = new Date().toISOString();
   await rewriteCache((prev) => ({
     ...prev,
@@ -234,7 +234,7 @@ export async function recordNoticesSnapshot(unreadCount: number): Promise<void> 
   }));
 }
 
-async function rewriteCache(update: (prev: NoticesCache) => NoticesCache): Promise<void> {
+async function rewriteCache(update: (prev: NotificationsCache) => NotificationsCache): Promise<void> {
   try {
     const creds = await readCredentials();
     if (creds === null) return;
