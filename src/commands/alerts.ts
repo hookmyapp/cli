@@ -68,6 +68,14 @@ export async function alertPhoneSet(
     );
   }
 
+  // A malformed --code can only fail, so check it BEFORE the challenge starts:
+  // otherwise the send goes out, burns delivery quota and supersedes any live
+  // challenge, only for alertPhoneVerify to reject the code locally a moment
+  // later.
+  if (opts.code !== undefined && !/^\d{6}$/.test(opts.code.trim())) {
+    throw new ValidationError('The verification code is 6 digits.', 'ALERT_PHONE_CODE_FORMAT');
+  }
+
   // A prompt needs a TTY. Without one (CI, redirected stdin) and without --json
   // or --code, we would send a code and then block forever on input(). Refuse
   // before the send so no code — and no quota — is spent.

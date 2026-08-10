@@ -59,6 +59,13 @@ describe('alerts phone', () => {
     expect(apiClient).not.toHaveBeenCalled();
   });
 
+  test('When --code is malformed, then no code is sent', async () => {
+    // Act + Assert — Codex: the send used to go out first, burning quota for a
+    // code that could only be rejected locally.
+    await expect(alertPhoneSet('+14155552671', { code: '12ab' })).rejects.toThrow(/6 digits/);
+    expect(apiClient).not.toHaveBeenCalled();
+  });
+
   test('When consent flags are omitted, then only operational consent is sent', async () => {
     // Arrange — marketing consent must never be assumed from a bare command.
     vi.mocked(apiClient).mockResolvedValueOnce({ delivery: 'sent' });
