@@ -223,7 +223,7 @@ hookmyapp channels move ch_xxxxxxxx "Acme Corp"   # target by name or ws_ id
 
 ## Alert phone
 
-Where we reach you if something stops working. The number is yours, not a workspace setting — each person on the team sets their own.
+Where we reach you if something stops working. The number is yours, not a workspace setting. Each person on the team sets their own.
 
 ```bash
 # See your alert phone and what it receives
