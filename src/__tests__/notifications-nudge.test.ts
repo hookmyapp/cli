@@ -24,18 +24,18 @@ import {
   credentialFingerprint,
   maybeNudge,
   readCache,
-  recordNoticesSnapshot,
+  recordNotificationsSnapshot,
   shouldShowNudge,
   writeCacheAtomic,
-  type NoticesCache,
+  type NotificationsCache,
   type NudgeGateEnv,
-} from '../notices-nudge.js';
+} from '../notifications-nudge.js';
 
 const mockedSpawn = vi.mocked(spawn);
 const mockedCreds = vi.mocked(readCredentials);
 const mockedToken = vi.mocked(getValidAccessToken);
 
-/** AIT-358 — unread-notices nudge: cached print + detached refresh. */
+/** AIT-358 — unread-notifications nudge: cached print + detached refresh. */
 
 const AGENT_CREDS = {
   accessToken: 'hmok_secret',
@@ -48,7 +48,7 @@ const AGENT_CREDS = {
 const HOUR = 60 * 60 * 1000;
 const NOW = Date.now();
 
-const unreadCache: NoticesCache = {
+const unreadCache: NotificationsCache = {
   hasUnread: true,
   count: 2,
   lastAttemptedAt: new Date(NOW - HOUR).toISOString(),
@@ -130,11 +130,11 @@ describe('shouldShowNudge (pure gate)', () => {
 describe('maybeNudge refresh spawn', () => {
   it('(d) spawns detached when lastAttemptedAt is stale, stamping BEFORE spawn', async () => {
     mockedCreds.mockResolvedValue(AGENT_CREDS);
-    let stampedAtSpawnTime: NoticesCache | null = null;
+    let stampedAtSpawnTime: NotificationsCache | null = null;
     let spawnOpts: Record<string, unknown> | null = null;
     mockedSpawn.mockImplementation(((_cmd: string, _args: string[], opts: { env: Record<string, string> }) => {
       spawnOpts = opts as Record<string, unknown>;
-      stampedAtSpawnTime = JSON.parse(readFileSync(opts.env.HOOKMYAPP_NOTICES_CACHE, 'utf-8')) as NoticesCache;
+      stampedAtSpawnTime = JSON.parse(readFileSync(opts.env.HOOKMYAPP_NOTICES_CACHE, 'utf-8')) as NotificationsCache;
       return { unref: vi.fn() };
     }) as never);
 
@@ -183,7 +183,7 @@ describe('maybeNudge refresh spawn', () => {
     mockedCreds.mockResolvedValue(AGENT_CREDS);
     let urlPassed: string | undefined;
     mockedSpawn.mockImplementation(((_cmd: string, _args: string[], opts: { env: Record<string, string> }) => {
-      urlPassed = opts.env.HOOKMYAPP_NOTICES_URL;
+      urlPassed = opts.env.HOOKMYAPP_NOTIFICATIONS_URL;
       return { unref: vi.fn() };
     }) as never);
     const argvBackup = process.argv;
@@ -193,7 +193,7 @@ describe('maybeNudge refresh spawn', () => {
     } finally {
       process.argv = argvBackup;
     }
-    expect(urlPassed).toBe('https://staging-api.hookmyapp.com/notices');
+    expect(urlPassed).toBe('https://staging-api.hookmyapp.com/notifications');
   });
 
   it('bails silently on an invalid --env value (the command itself errors)', async () => {
@@ -247,7 +247,7 @@ describe('maybeNudge banner', () => {
       write.mockRestore();
       process.stderr.isTTY = ttyBackup;
     }
-    expect(out).toContain('Unread notices from HookMyApp');
+    expect(out).toContain('Unread notifications from HookMyApp');
     expect(out).toContain('hookmyapp notifications');
     expect(readCache(file)?.lastNudgedAt).toBeDefined();
   });
@@ -283,17 +283,17 @@ describe('cache namespacing', () => {
 });
 
 describe('immediate consistency from notifications command', () => {
-  it('recordNoticesSnapshot rewrites the cache from the real response', async () => {
+  it('recordNotificationsSnapshot rewrites the cache from the real response', async () => {
     mockedCreds.mockResolvedValue(AGENT_CREDS);
-    await recordNoticesSnapshot(3);
+    await recordNotificationsSnapshot(3);
     const file = cacheFilePath(getEffectiveApiUrl(), credentialFingerprint(AGENT_CREDS));
     expect(readCache(file)).toMatchObject({ hasUnread: true, count: 3 });
   });
 
   it('a zero-unread snapshot (post-ack refetch) kills the nudge', async () => {
     mockedCreds.mockResolvedValue(AGENT_CREDS);
-    await recordNoticesSnapshot(1);
-    await recordNoticesSnapshot(0);
+    await recordNotificationsSnapshot(1);
+    await recordNotificationsSnapshot(0);
     const file = cacheFilePath(getEffectiveApiUrl(), credentialFingerprint(AGENT_CREDS));
     expect(readCache(file)).toMatchObject({ hasUnread: false, count: 0 });
   });
