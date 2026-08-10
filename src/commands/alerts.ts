@@ -56,12 +56,27 @@ export async function alertPhoneStatus(opts: { json?: boolean } = {}): Promise<v
  */
 export async function alertPhoneSet(
   phone: string,
-  opts: { json?: boolean; product?: boolean; marketing?: boolean; sms?: boolean; code?: string } = {},
+  opts: { json?: boolean; product?: boolean; marketing?: boolean; sms?: boolean; code?: string; interactive?: boolean } = {},
 ): Promise<void> {
-  if (!phone?.startsWith('+')) {
+  // E.164: '+' then 1-15 digits, first non-zero. Rejects '+', '+abc', and
+  // over-length values that a bare startsWith('+') would wave through into a
+  // registration request.
+  if (!/^\+[1-9]\d{1,14}$/.test(phone ?? '')) {
     throw new ValidationError(
       `Phone must be in international format, e.g. +14155552671 (got "${phone}").`,
       'ALERT_PHONE_FORMAT',
+    );
+  }
+
+  // A prompt needs a TTY. Without one (CI, redirected stdin) and without --json
+  // or --code, we would send a code and then block forever on input(). Refuse
+  // before the send so no code — and no quota — is spent.
+  const interactive = opts.interactive ?? Boolean(process.stdin.isTTY);
+  if (!opts.json && !opts.code && !interactive) {
+    throw new ValidationError(
+      'No interactive terminal. Run with --json to start, then `alerts phone verify <code>`, ' +
+        'or pass --code <code>.',
+      'ALERT_PHONE_NO_TTY',
     );
   }
 

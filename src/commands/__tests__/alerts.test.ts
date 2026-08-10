@@ -45,6 +45,20 @@ describe('alerts phone', () => {
     expect(apiClient).not.toHaveBeenCalled();
   });
 
+  test('When the number is a bare plus or over-length, then it is rejected', async () => {
+    // Act + Assert — CodeRabbit: startsWith('+') let these through.
+    await expect(alertPhoneSet('+')).rejects.toThrow(/international format/);
+    await expect(alertPhoneSet('+abc')).rejects.toThrow(/international format/);
+    await expect(alertPhoneSet('+1234567890123456')).rejects.toThrow(/international format/);
+    expect(apiClient).not.toHaveBeenCalled();
+  });
+
+  test('When there is no TTY and no --json or --code, then it refuses before sending', async () => {
+    // Act + Assert — non-interactive, so no code is sent and no apiClient call.
+    await expect(alertPhoneSet('+14155552671', { interactive: false })).rejects.toThrow(/interactive terminal/);
+    expect(apiClient).not.toHaveBeenCalled();
+  });
+
   test('When consent flags are omitted, then only operational consent is sent', async () => {
     // Arrange — marketing consent must never be assumed from a bare command.
     vi.mocked(apiClient).mockResolvedValueOnce({ delivery: 'sent' });
@@ -58,8 +72,8 @@ describe('alerts phone', () => {
   test('When delivery fails, then it does not ask for a code', async () => {
     // Arrange
     vi.mocked(apiClient).mockResolvedValueOnce({ delivery: 'unavailable' });
-    // Act
-    await alertPhoneSet('+14155552671', { json: false });
+    // Act — interactive so the run reaches the delivery check, not the TTY guard.
+    await alertPhoneSet('+14155552671', { json: false, interactive: true });
     // Assert — one call only: no verify attempt against a code nobody received.
     expect(apiClient).toHaveBeenCalledTimes(1);
     expect(logs.join('\n')).toContain('could not deliver');
