@@ -221,6 +221,31 @@ Move a channel between workspaces or customers in the same organization:
 hookmyapp channels move ch_xxxxxxxx "Acme Corp"   # target by name or ws_ id
 ```
 
+## Alert phone
+
+Where we reach you if something stops working.
+
+```bash
+# See your alert phone and what it receives
+hookmyapp alerts phone status
+
+# Add or change it (international format)
+hookmyapp alerts phone set +14155552671
+
+# Get the code by SMS instead of WhatsApp
+hookmyapp alerts phone set +14155552671 --sms
+
+# Finish verification with the code we sent
+hookmyapp alerts phone verify 123456
+
+# Remove your alert phone
+hookmyapp alerts phone remove
+```
+
+When delivery succeeds, we send a 6-digit code to confirm the number, and `set` asks for it. If delivery fails, `set` says so and exits without asking; try again in a moment. Without a terminal (CI, redirected stdin) there is no prompt, so run `set --json` and finish with `alerts phone verify <code>`. Already have a code from an earlier `set`? `set <phone> --code 123456` verifies it directly.
+
+Alerts are on once the number is verified.
+
 ## JSON output and global flags
 
 Four global flags apply to every command:
