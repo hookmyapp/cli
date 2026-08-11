@@ -254,6 +254,13 @@ describe('maybeNudge banner', () => {
 });
 
 describe('cache namespacing', () => {
+  it('readCache falls back to the pre-rename notices-nudge filename after an upgrade', () => {
+    const file = cacheFilePath(getEffectiveApiUrl(), 'agc_legacy');
+    const legacy = join(dir, file.split('/').pop()!.replace('notifications-nudge-', 'notices-nudge-'));
+    writeCacheAtomic(legacy, unreadCache);
+    expect(readCache(file)?.hasUnread).toBe(true); // unread state survives the rename
+  });
+
   it('(f) cache path differs per API origin and per credential fingerprint', () => {
     expect(cacheFilePath('https://api.hookmyapp.com', 'agc_1')).not.toBe(
       cacheFilePath('https://staging-api.hookmyapp.com', 'agc_1'),

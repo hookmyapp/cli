@@ -22,7 +22,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import process from 'node:process';
 import { getValidAccessToken } from './api/client.js';
 import { readCredentials } from './auth/store.js';
@@ -68,11 +68,22 @@ export function cacheFilePath(apiUrl: string, fingerprint: string): string {
   return join(getConfigDir(), `notifications-nudge-${key}.json`);
 }
 
+/** Pre-rename cache name (CLI <= 0.14.11) — read once, then superseded. */
+function legacyCacheFilePath(file: string): string {
+  return join(dirname(file), basename(file).replace(/^notifications-nudge-/, 'notices-nudge-'));
+}
+
 export function readCache(file: string): NotificationsCache | null {
   try {
     return JSON.parse(readFileSync(file, 'utf-8')) as NotificationsCache;
   } catch {
-    return null; // missing or corrupt — treated as "never checked"
+    // Missing or corrupt. Fall back to the pre-rename filename so an upgrade
+    // keeps its unread state and refresh stamps instead of starting cold.
+    try {
+      return JSON.parse(readFileSync(legacyCacheFilePath(file), 'utf-8')) as NotificationsCache;
+    } catch {
+      return null; // treated as "never checked"
+    }
   }
 }
 
