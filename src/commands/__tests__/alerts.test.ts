@@ -6,7 +6,7 @@ vi.mock('../../api/client.js', () => ({
 }));
 
 import { apiClient } from '../../api/client.js';
-import { alertPhoneSet, alertPhoneStatus, alertPhoneVerify } from '../alerts.js';
+import { alertPhoneRemove, alertPhoneSet, alertPhoneStatus, alertPhoneVerify } from '../alerts.js';
 
 const VERIFIED = {
   phone: '+141•••2671',
@@ -101,5 +101,18 @@ describe('alerts phone', () => {
     // Act + Assert
     await expect(alertPhoneVerify('12ab')).rejects.toThrow(/6 digits/);
     expect(apiClient).not.toHaveBeenCalled();
+  });
+});
+
+describe('alerts phone remove', () => {
+  test('When --json, then it deletes without a prompt and prints the status', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce({
+      phone: null,
+      verified: false,
+      consents: { operational: true, product: false, marketing: false },
+      channelPreference: 'whatsapp',
+    });
+    await alertPhoneRemove({ json: true });
+    expect(apiClient).toHaveBeenCalledWith('/auth/phone', { method: 'DELETE' });
   });
 });

@@ -237,6 +237,9 @@ hookmyapp alerts phone set +14155552671 --sms
 
 # Finish verification with the code we sent
 hookmyapp alerts phone verify 123456
+
+# Remove your alert phone
+hookmyapp alerts phone remove
 ```
 
 We send a 6-digit code to confirm the number, and `set` asks for it. Without a terminal (CI, redirected stdin) there is no prompt, so run `set --json` and finish with `alerts phone verify <code>`, or pass the code straight to `set --code 123456`.
