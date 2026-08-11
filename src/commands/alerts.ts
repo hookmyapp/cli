@@ -49,14 +49,10 @@ export async function alertPhoneStatus(opts: { json?: boolean } = {}): Promise<v
   );
 }
 
-/**
- * Consents default to operational-only, matching the MCP tools: problem alerts
- * are the reason the number exists, while product news and offers are opt-in
- * because consent to marketing is not something a CLI flag should assume.
- */
+/** Verifying the number consents to all alert categories; opt-out lives in the web app. */
 export async function alertPhoneSet(
   phone: string,
-  opts: { json?: boolean; product?: boolean; marketing?: boolean; sms?: boolean; code?: string; interactive?: boolean } = {},
+  opts: { json?: boolean; sms?: boolean; code?: string; interactive?: boolean } = {},
 ): Promise<void> {
   // E.164: '+' then 1-15 digits, first non-zero. Rejects '+', '+abc', and
   // over-length values that a bare startsWith('+') would wave through into a
@@ -93,8 +89,8 @@ export async function alertPhoneSet(
     body: JSON.stringify({
       phone,
       consentOperational: true,
-      consentProduct: opts.product === true,
-      consentMarketing: opts.marketing === true,
+      consentProduct: true,
+      consentMarketing: true,
       channelPreference: opts.sms ? 'sms' : 'whatsapp',
     }),
   })) as { delivery?: string };
@@ -170,8 +166,6 @@ export function registerAlertsCommand(_program: Command): void {
     .command('set <phone>')
     .description('Add or change your alert phone (international format, e.g. +14155552671)')
     .option('--sms', 'Deliver by SMS instead of WhatsApp')
-    .option('--product', 'Also receive product news')
-    .option('--marketing', 'Also receive offers')
     .option('--code <code>', 'Skip the prompt and verify with this code')
     .action(async (phoneArg: string, cmdOpts: { sms?: boolean; product?: boolean; marketing?: boolean; code?: string }) => {
       const { program: rootProgram } = await import('../index.js');
@@ -218,7 +212,7 @@ EXAMPLES:
     `
 EXAMPLES:
   $ hookmyapp alerts phone set +14155552671
-  $ hookmyapp alerts phone set +14155552671 --sms --product
+  $ hookmyapp alerts phone set +14155552671 --sms
 `,
   );
 
