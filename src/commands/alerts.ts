@@ -158,6 +158,27 @@ export async function alertPhoneVerify(code: string, opts: { json?: boolean } = 
   console.log(c.success(`Verified. Alerts go to ${status.phone}.`));
 }
 
+export async function alertPhoneRemove(opts: { json?: boolean; yes?: boolean } = {}): Promise<void> {
+  if (!opts.yes && !opts.json) {
+    const { confirm } = await import('@inquirer/prompts');
+    const ok = await confirm({
+      message:
+        'If you remove your number, we will not be able to text you when something breaks. Remove it?',
+      default: false,
+    });
+    if (!ok) {
+      console.log('Aborted.');
+      return;
+    }
+  }
+  const status = (await apiClient('/auth/phone', { method: 'DELETE' })) as AlertPhoneStatus;
+  if (opts.json) {
+    output(status, { json: true });
+    return;
+  }
+  console.log(c.success('Alert phone removed.'));
+}
+
 export function registerAlertsCommand(_program: Command): void {
   const alerts = _program.command('alerts').description('Where we reach you when something breaks');
   const phone = alerts.command('phone').description('Your alert phone number');
@@ -178,6 +199,15 @@ export function registerAlertsCommand(_program: Command): void {
     .action(async (phoneArg: string, cmdOpts: { sms?: boolean; product?: boolean; marketing?: boolean; code?: string }) => {
       const { program: rootProgram } = await import('../index.js');
       await alertPhoneSet(phoneArg, { ...cmdOpts, json: !!rootProgram.opts().json });
+    });
+
+  const removeCmd = phone
+    .command('remove')
+    .description('Remove your alert phone')
+    .option('-y, --yes', 'Skip the confirmation prompt')
+    .action(async (cmdOpts: { yes?: boolean }) => {
+      const { program: rootProgram } = await import('../index.js');
+      await alertPhoneRemove({ yes: cmdOpts.yes, json: !!rootProgram.opts().json });
     });
 
   const verifyCmd = phone
