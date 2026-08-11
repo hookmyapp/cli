@@ -6,7 +6,7 @@ vi.mock('../../api/client.js', () => ({
 }));
 
 import { apiClient } from '../../api/client.js';
-import { alertPhoneRemove, alertPhoneSet, alertPhoneStatus, alertPhoneVerify } from '../alerts.js';
+import { alertPhoneConsents, alertPhoneRemove, alertPhoneSet, alertPhoneStatus, alertPhoneVerify } from '../alerts.js';
 
 const VERIFIED = {
   phone: '+141•••2671',
@@ -113,5 +113,39 @@ describe('alerts phone remove', () => {
     });
     await alertPhoneRemove({ json: true });
     expect(apiClient).toHaveBeenCalledWith('/auth/phone', { method: 'DELETE' });
+  });
+});
+
+describe('alerts phone consents', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test('When flags are given, then only those fields are PATCHed', async () => {
+    // Arrange
+    vi.mocked(apiClient).mockResolvedValueOnce(VERIFIED);
+    // Act
+    await alertPhoneConsents({ marketing: 'off', prefer: 'sms', json: true });
+    // Assert
+    const [path, init] = vi.mocked(apiClient).mock.calls[0];
+    expect(path).toBe('/auth/phone/consents');
+    expect(JSON.parse((init as { body: string }).body)).toEqual({ marketing: false, channelPreference: 'sms' });
+  });
+
+  test('When no flags are given, then it fails locally without calling the API', async () => {
+    // Act + Assert
+    await expect(alertPhoneConsents({})).rejects.toThrow(/Nothing to update/);
+    expect(apiClient).not.toHaveBeenCalled();
+  });
+
+  test('When a consent value is not on or off, then it is rejected before any call', async () => {
+    // Act + Assert
+    await expect(alertPhoneConsents({ product: 'yes' })).rejects.toThrow(/"on" or "off"/);
+    expect(apiClient).not.toHaveBeenCalled();
   });
 });

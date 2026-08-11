@@ -181,6 +181,60 @@ export async function alertPhoneRemove(opts: { json?: boolean; yes?: boolean } =
   console.log(c.success('Alert phone removed.'));
 }
 
+/** Opt-out / delivery-preference updates without re-verifying (PATCH /auth/phone/consents). */
+export async function alertPhoneConsents(
+  opts: {
+    json?: boolean;
+    operational?: string;
+    product?: string;
+    marketing?: string;
+    prefer?: string;
+  } = {},
+): Promise<void> {
+  const toBool = (v: string | undefined, flag: string): boolean | undefined => {
+    if (v === undefined) return undefined;
+    if (v !== 'on' && v !== 'off') throw new ValidationError(`${flag} must be "on" or "off"`, 'ALERT_PHONE_CONSENT_FLAG');
+    return v === 'on';
+  };
+  const body: Record<string, unknown> = {};
+  const operational = toBool(opts.operational, '--operational');
+  const product = toBool(opts.product, '--product');
+  const marketing = toBool(opts.marketing, '--marketing');
+  if (operational !== undefined) body.operational = operational;
+  if (product !== undefined) body.product = product;
+  if (marketing !== undefined) body.marketing = marketing;
+  if (opts.prefer !== undefined) {
+    if (!['whatsapp', 'sms', 'both'].includes(opts.prefer)) {
+      throw new ValidationError('--prefer must be whatsapp, sms, or both', 'ALERT_PHONE_PREFER_FLAG');
+    }
+    body.channelPreference = opts.prefer;
+  }
+  if (Object.keys(body).length === 0) {
+    throw new ValidationError(
+      'Nothing to update — pass at least one of --operational/--product/--marketing/--prefer',
+      'ALERT_PHONE_CONSENTS_EMPTY',
+    );
+  }
+  const status = (await apiClient('/auth/phone/consents', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })) as AlertPhoneStatus;
+  if (opts.json) {
+    output(status, { json: true });
+    return;
+  }
+  output(
+    {
+      phone: status.phone,
+      delivery: status.channelPreference,
+      'problem alerts': status.consents.operational ? 'on' : 'off',
+      'product news': status.consents.product ? 'on' : 'off',
+      offers: status.consents.marketing ? 'on' : 'off',
+    },
+    { json: false, kind: 'read' },
+  );
+}
+
 export function registerAlertsCommand(_program: Command): void {
   const alerts = _program.command('alerts').description('Where we reach you when something breaks');
   const phone = alerts.command('phone').description('Your alert phone number');
@@ -198,9 +252,21 @@ export function registerAlertsCommand(_program: Command): void {
     .description('Add or change your alert phone (international format, e.g. +14155552671)')
     .option('--sms', 'Deliver by SMS instead of WhatsApp')
     .option('--code <code>', 'Skip the prompt and verify with this code')
-    .action(async (phoneArg: string, cmdOpts: { sms?: boolean; product?: boolean; marketing?: boolean; code?: string }) => {
+    .action(async (phoneArg: string, cmdOpts: { sms?: boolean; code?: string }) => {
       const { program: rootProgram } = await import('../index.js');
       await alertPhoneSet(phoneArg, { ...cmdOpts, json: !!rootProgram.opts().json });
+    });
+
+  const consentsCmd = phone
+    .command('consents')
+    .description('Update what the number receives / delivery preference')
+    .option('--operational <on|off>', 'Problem alerts')
+    .option('--product <on|off>', 'Product news')
+    .option('--marketing <on|off>', 'Offers')
+    .option('--prefer <channel>', 'Delivery channel: whatsapp | sms | both')
+    .action(async (cmdOpts: { operational?: string; product?: string; marketing?: string; prefer?: string }) => {
+      const { program: rootProgram } = await import('../index.js');
+      await alertPhoneConsents({ ...cmdOpts, json: !!rootProgram.opts().json });
     });
 
   const removeCmd = phone
@@ -271,6 +337,15 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp alerts phone verify 123456
   $ hookmyapp alerts phone verify 123456 --json
+`,
+  );
+
+  addExamples(
+    consentsCmd,
+    `
+EXAMPLES:
+  $ hookmyapp alerts phone consents --marketing off
+  $ hookmyapp alerts phone consents --prefer sms
 `,
   );
 }

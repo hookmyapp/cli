@@ -8,7 +8,7 @@ import { getDefaultWorkspaceId, resolveOrgPublicIdForWorkspace } from './_helper
 /**
  * AIT-370 — `hookmyapp org profile`: read/write the organization profile
  * (company info). This is COMPANY data — the `--phone` here is the company
- * phone, NOT anyone's personal alert phone (that is `hookmyapp phone`).
+ * phone, NOT anyone's personal alert phone (that is `hookmyapp alerts phone`).
  * Ask the human for company details; never infer or invent them. Org admins only.
  */
 
@@ -64,7 +64,7 @@ EXAMPLES:
     .command('profile')
     .description(
       'Company profile (email, phone, website, business category/niche, use case). ' +
-        'Company data — for your personal alert number use: hookmyapp phone',
+        'Company data — for your personal alert number use: hookmyapp alerts phone',
     );
   addExamples(
     profile,
