@@ -4,6 +4,10 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 ## Unreleased
 
+### Added
+
+- `hookmyapp alerts phone status|set|verify`: set the phone number HookMyApp texts when something breaks. Per user, not per workspace (AIT-376).
+
 ## 0.14.11 — 2026-08-08
 
 ### Added

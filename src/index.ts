@@ -11,6 +11,7 @@ import { registerWhatsappMedia } from './commands/whatsapp-media.js';
 import { registerWhatsappProfile } from './commands/whatsapp-profile.js';
 import { registerInstagramCommand } from './commands/instagram.js';
 import { registerDoctorCommand } from './commands/doctor.js';
+import { registerAlertsCommand } from './commands/alerts.js';
 import { registerBillingCommand } from './commands/billing.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerCustomersCommand } from './commands/customers.js';
@@ -133,6 +134,7 @@ COMMON COMMANDS:
   sandbox send      Send a test message via sandbox-proxy
   workspace list    List workspaces you belong to
   billing           View or change your plan
+  alerts phone      Where we text you when something breaks
   notifications     Notices from HookMyApp — problems, fixes, announcements
 
 Run "hookmyapp channels --help" for the full channel command list.
@@ -187,6 +189,7 @@ registerDoctorCommand(program);
 
 // Billing
 registerBillingCommand(program);
+registerAlertsCommand(program);
 
 // Workspace management
 registerWorkspaceCommand(program);
