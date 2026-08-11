@@ -135,7 +135,7 @@ COMMON COMMANDS:
   workspace list    List workspaces you belong to
   billing           View or change your plan
   alerts phone      Where we text you when something breaks
-  notifications     Notices from HookMyApp — problems, fixes, announcements
+  notifications     Notifications from HookMyApp — problems, fixes, announcements
 
 Run "hookmyapp channels --help" for the full channel command list.
 
@@ -287,10 +287,10 @@ async function main(): Promise<void> {
   const { maybeNotifyUpdate } = await import('./update-check.js');
   await maybeNotifyUpdate(pkg.version);
 
-  // AIT-358 — unread-notices nudge, same boundary + etiquette as the update
+  // AIT-358 — unread-notifications nudge, same boundary + etiquette as the update
   // banner above: print from the previous run's cache now, refresh via a
   // detached child for the next run. Fail-open; never throws.
-  const { maybeNudge } = await import('./notices-nudge.js');
+  const { maybeNudge } = await import('./notifications-nudge.js');
   await maybeNudge();
 
   const startedAt = Date.now();
