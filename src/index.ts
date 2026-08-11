@@ -11,11 +11,14 @@ import { registerWhatsappMedia } from './commands/whatsapp-media.js';
 import { registerWhatsappProfile } from './commands/whatsapp-profile.js';
 import { registerInstagramCommand } from './commands/instagram.js';
 import { registerDoctorCommand } from './commands/doctor.js';
+import { registerAlertsCommand } from './commands/alerts.js';
 import { registerBillingCommand } from './commands/billing.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerCustomersCommand } from './commands/customers.js';
 import { registerSupportCommand } from './commands/support.js';
 import { registerNotificationsCommand } from './commands/notifications.js';
+import { registerPhoneCommand } from './commands/phone.js';
+import { registerOrgProfileCommand } from './commands/org-profile.js';
 import { registerSandboxCommand } from './commands/sandbox/index.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { registerConfigCommand } from './commands/config.js';
@@ -131,6 +134,7 @@ COMMON COMMANDS:
   sandbox send      Send a test message via sandbox-proxy
   workspace list    List workspaces you belong to
   billing           View or change your plan
+  alerts phone      Where we text you when something breaks
   notifications     Notifications from HookMyApp — problems, fixes, announcements
 
 Run "hookmyapp channels --help" for the full channel command list.
@@ -185,6 +189,7 @@ registerDoctorCommand(program);
 
 // Billing
 registerBillingCommand(program);
+registerAlertsCommand(program);
 
 // Workspace management
 registerWorkspaceCommand(program);
@@ -193,6 +198,8 @@ registerWorkspaceCommand(program);
 registerCustomersCommand(program);
 registerSupportCommand(program);
 registerNotificationsCommand(program);
+registerPhoneCommand(program);
+registerOrgProfileCommand(program);
 
 // Persistent CLI config (env profile: local | staging | production)
 registerConfigCommand(program);
