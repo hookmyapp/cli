@@ -73,7 +73,7 @@ describe('alerts phone', () => {
     await alertPhoneSet('+14155552671', { json: true });
     // Assert
     const body = JSON.parse(String(vi.mocked(apiClient).mock.calls[0][1]?.body));
-    expect(body).toMatchObject({ consentOperational: true, consentProduct: false, consentMarketing: false });
+    expect(body).toMatchObject({ consentOperational: true, consentProduct: true, consentMarketing: true });
   });
 
   test('When delivery fails, then it does not ask for a code', async () => {
