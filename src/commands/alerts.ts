@@ -84,6 +84,14 @@ export async function alertPhoneSet(
     );
   }
 
+  if (!opts.json) {
+    console.log(
+      'By adding your number, you consent to us contacting you when anything\n' +
+        'breaks or fails, as well as with product news and occasional marketing.\n' +
+        'Opt out anytime.',
+    );
+  }
+
   const start = (await apiClient('/auth/phone', {
     method: 'POST',
     body: JSON.stringify({
