@@ -72,11 +72,19 @@ export async function alertPhoneSet(
     throw new ValidationError('The verification code is 6 digits.', 'ALERT_PHONE_CODE_FORMAT');
   }
 
+  // A supplied code belongs to a challenge that was already sent. Starting a
+  // new challenge would supersede that one and invalidate the very code we
+  // were handed — so route straight to verification instead.
+  if (opts.code) {
+    await alertPhoneVerify(opts.code.trim(), { json: opts.json });
+    return;
+  }
+
   // A prompt needs a TTY. Without one (CI, redirected stdin) and without --json
   // or --code, we would send a code and then block forever on input(). Refuse
   // before the send so no code — and no quota — is spent.
   const interactive = opts.interactive ?? Boolean(process.stdin.isTTY);
-  if (!opts.json && !opts.code && !interactive) {
+  if (!opts.json && !interactive) {
     throw new ValidationError(
       'No interactive terminal. Run with --json to start, then `alerts phone verify <code>`, ' +
         'or pass --code <code>.',
@@ -115,13 +123,6 @@ export async function alertPhoneSet(
       c.warn('We could not deliver a code to that number right now.') +
         `\nNothing was sent. Try again in a moment, or check the number.`,
     );
-    return;
-  }
-
-  // Non-interactive path: a caller who already has the code (or a script that
-  // will fetch it) skips the prompt entirely.
-  if (opts.code) {
-    await alertPhoneVerify(opts.code, { json: opts.json });
     return;
   }
 
@@ -171,9 +172,10 @@ export async function alertPhoneRemove(opts: { json?: boolean; yes?: boolean } =
       return;
     }
   }
-  const status = (await apiClient('/auth/phone', { method: 'DELETE' })) as AlertPhoneStatus;
+  const status = (await apiClient('/auth/phone', { method: 'DELETE' })) as AlertPhoneStatus | undefined;
   if (opts.json) {
-    output(status, { json: true });
+    // A 204 leaves status undefined; print valid JSON either way.
+    output(status ?? null, { json: true });
     return;
   }
   console.log(c.success('Alert phone removed.'));
@@ -233,6 +235,15 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp alerts phone status
   $ hookmyapp alerts phone set +14155552671 --sms
+`,
+  );
+
+  addExamples(
+    removeCmd,
+    `
+EXAMPLES:
+  $ hookmyapp alerts phone remove
+  $ hookmyapp alerts phone remove --yes
 `,
   );
 

@@ -242,7 +242,7 @@ hookmyapp alerts phone verify 123456
 hookmyapp alerts phone remove
 ```
 
-We send a 6-digit code to confirm the number, and `set` asks for it. Without a terminal (CI, redirected stdin) there is no prompt, so run `set --json` and finish with `alerts phone verify <code>`, or pass the code straight to `set --code 123456`.
+When delivery succeeds, we send a 6-digit code to confirm the number, and `set` asks for it. If delivery fails, `set` says so and exits without asking; try again in a moment. Without a terminal (CI, redirected stdin) there is no prompt, so run `set --json` and finish with `alerts phone verify <code>`. Already have a code from an earlier `set`? `set <phone> --code 123456` verifies it directly.
 
 Alerts are on once the number is verified.
 

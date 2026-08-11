@@ -86,15 +86,14 @@ describe('alerts phone', () => {
     expect(logs.join('\n')).toContain('could not deliver');
   });
 
-  test('When a code is supplied, then set verifies without prompting', async () => {
+  test('When a code is supplied, then set verifies directly without starting a new challenge', async () => {
     // Arrange
-    vi.mocked(apiClient)
-      .mockResolvedValueOnce({ delivery: 'sent' })
-      .mockResolvedValueOnce(VERIFIED);
+    vi.mocked(apiClient).mockResolvedValueOnce(VERIFIED);
     // Act
     await alertPhoneSet('+14155552671', { code: '123456', json: false });
-    // Assert
-    expect(vi.mocked(apiClient).mock.calls[1][0]).toBe('/auth/phone/verify');
+    // Assert — one call only: a new challenge would supersede the one the code belongs to.
+    expect(apiClient).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(apiClient).mock.calls[0][0]).toBe('/auth/phone/verify');
   });
 
   test('When the code is not six digits, then verify rejects it locally', async () => {
