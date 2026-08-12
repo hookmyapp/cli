@@ -2,11 +2,18 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
-## Unreleased
+## 0.14.12 — 2026-08-12
 
 ### Added
 
-- `hookmyapp alerts phone status|set|verify`: set the phone number HookMyApp texts when something breaks. Per user, not per workspace (AIT-376).
+- `hookmyapp alerts phone status|set|verify|remove|consents`: manage the phone number HookMyApp texts when something breaks. Per user, not per workspace. `set --code <code>` verifies a code already in hand without sending a new one; `remove` asks for confirmation (`--yes` to skip) (AIT-376, AIT-383).
+- `hookmyapp org profile [show]` and `org profile set --website/--business-category/--business-niche/--primary-use-case/--email/--phone` — read and update the organization's company profile. Org admins only (AIT-370).
+
+### Changed
+
+- The feed is now **notifications** end to end: `hookmyapp notifications list|ack`, notification ids are `ntf_…`, and the env override is `HOOKMYAPP_NOTIFICATIONS_URL` (AIT-381).
+- One alert-phone surface: the early top-level `hookmyapp phone` command (never published) is gone; `hookmyapp alerts phone` is the command family (AIT-385).
+- The update-check nudge reads its legacy cache file location as a fallback, so upgrading does not re-nudge on day one.
 
 ## 0.14.11 — 2026-08-08
 
