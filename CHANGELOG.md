@@ -6,7 +6,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 ### Added
 
-- `hookmyapp alerts phone status|set|verify|remove|consents`: manage the phone number HookMyApp texts when something breaks. Per user, not per workspace. `set --code <code>` verifies a code already in hand without sending a new one; `remove` asks for confirmation (`--yes` to skip) (AIT-376, AIT-383).
+- `hookmyapp alerts phone status|set|verify|remove|consents`: manage the phone number HookMyApp texts when something breaks. Per user, not per workspace. `set <phone> --code <code>` verifies a code already in hand without sending a new one; `remove` asks for confirmation (`--yes` to skip) (AIT-376, AIT-383).
 - `hookmyapp org profile [show]` and `org profile set --website/--business-category/--business-niche/--primary-use-case/--email/--phone` — read and update the organization's company profile. Org admins only (AIT-370).
 
 ### Changed
