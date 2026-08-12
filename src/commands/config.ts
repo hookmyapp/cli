@@ -195,7 +195,7 @@ EXAMPLES:
           ? 'config.json'
           : 'default';
 
-      // Phase 123 Plan 10 — telemetry state appears in `config show` so users
+      // telemetry state appears in `config show` so users
       // have a single authoritative surface to see what's reported.
       const persistedTelemetry = getPersistedTelemetry();
       const telemetryActive = isTelemetryEnabled() ? 'on' : 'off';

@@ -1,4 +1,4 @@
-// Phase 123 Plan 10 — Sentry lazy-init tests.
+// Sentry lazy-init tests.
 //
 // Contract:
 //

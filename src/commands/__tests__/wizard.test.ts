@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Phase 126 — wizard sandbox sub-flow, post-bind-code rework.
+// wizard sandbox sub-flow, post-bind-code rework.
 //
 // The wizard (runSandboxFlow in src/auth/login.ts) was wired against the
-// legacy click-path `POST /sandbox/sessions`, which Phase 126 Plan 03 deleted
+// legacy click-path `POST /sandbox/sessions`, which an earlier revision deleted
 // from the backend. The rewrite delegates to the bind-code-driven
 // runSandboxStart for the no-existing-session case and keeps the
 // "listen on the session you already bound" shortcut for repeat logins.
@@ -74,7 +74,7 @@ beforeEach(async () => {
   runSandboxFlow = (mod as any).runSandboxFlow;
 });
 
-describe('wizard sandbox sub-flow — Phase 126 bind-code rework', () => {
+describe('wizard sandbox sub-flow — an earlier revision bind-code rework', () => {
   it('0 sessions → delegates to runSandboxStart with listen:true (no POST to /sandbox/sessions)', async () => {
     apiClientMock.mockResolvedValueOnce([]);
     await runSandboxFlow();
@@ -87,7 +87,7 @@ describe('wizard sandbox sub-flow — Phase 126 bind-code rework', () => {
       const [path, init] = call;
       if (path === '/sandbox/sessions' && init?.method === 'POST') {
         throw new Error(
-          'Regression: wizard POSTed to /sandbox/sessions which was deleted in Phase 126 Plan 03',
+          'Regression: wizard POSTed to /sandbox/sessions which was deleted',
         );
       }
     }

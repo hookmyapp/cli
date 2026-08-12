@@ -1,4 +1,4 @@
-// Phase 123 Plan 10 — CLI error manifest drift test.
+// CLI error manifest drift test.
 //
 // Asserts that every AppError subclass exported from `src/errors/index.ts`
 // matches its corresponding entry in `src/errors/manifest.json` (which is
@@ -33,7 +33,7 @@ const manifest = manifestJson as {
 // CLI-specific AppError subclasses that are intentionally NOT in the monorepo
 // manifest (they exist only in the CLI surface area).
 //
-// `CliError` is the Phase 108 legacy base — a concrete class that extends
+// `CliError` is the legacy base — a concrete class that extends
 // `AppError` but has no severity-tier meaning of its own (default sev3). It
 // stays in the CLI surface for `instanceof CliError` back-compat (sandbox-listen
 // picker/binary, index.ts main()) and is NOT part of the monorepo taxonomy.
@@ -96,7 +96,7 @@ describe('CLI error manifest drift', () => {
 
   it('the 15 canonical manifest classes are all present (sanity check on the mirrored JSON)', () => {
     // This test fails if the monorepo manifest is ever sync-fetched in a
-    // reduced state. Keep it locked to the Phase 123 Plan 02 shape.
+    // reduced state. Keep it locked to this shape.
     const names = Object.keys(manifest.classes).sort();
     expect(names).toEqual(
       [

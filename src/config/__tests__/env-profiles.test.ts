@@ -209,7 +209,7 @@ describe('env-profiles: getEffectiveSandboxProxyUrl', () => {
     });
   });
 
-  // E4 — staging targets dedicated staging sandbox-proxy (Phase 120)
+  // E4 — staging targets dedicated staging sandbox-proxy
   it('env=staging, no env var → returns https://staging-sandbox.hookmyapp.com', () => {
     withTempConfig(() => {
       setPersistedEnv('staging');

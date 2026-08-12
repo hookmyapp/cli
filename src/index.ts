@@ -68,7 +68,7 @@ program.addOption(
   ).hideHelp(),
 );
 
-// Phase 125 — capture the command + subcommand resolved by Commander into
+// capture the command + subcommand resolved by Commander into
 // module-level state so main() can emit `cli_command_invoked` with the
 // correct names without each action handler having to wrap itself. Commander
 // passes `actionCommand` (the leaf) AND we walk parents to reconstruct the
@@ -258,13 +258,13 @@ async function main(): Promise<void> {
     // Same fail-open policy as the config migration.
   }
 
-  // Phase 123 Plan 10 — init Sentry early so top-level throws + unhandled
+  // init Sentry early so top-level throws + unhandled
   // rejections capture before we hit the exit boundary. The function is
   // idempotent + lazy: if telemetry is disabled (HOOKMYAPP_TELEMETRY=off
   // or `config set telemetry off`), Sentry is never loaded.
   await initSentryLazy();
 
-  // Phase 125 Plan 02 — emit cli_first_run on the first-ever invocation per
+  // emit cli_first_run on the first-ever invocation per
   // machine. Idempotent: subsequent invocations short-circuit on the
   // persisted machine-id presence. Skipped silently when telemetry is off.
   // Wrapped: telemetry must NEVER block the CLI. ConfigWriteForbiddenError

@@ -1,4 +1,4 @@
-// Phase 123 Plan 10 — minimal JWT `sub` decoder.
+// minimal JWT `sub` decoder.
 //
 // We can't pull `jose` (or similar) into the CLI just for one field — the
 // token is already trusted (we issued it; the refresh flow validates

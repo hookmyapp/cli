@@ -1,4 +1,4 @@
-// Phase 125 Plan 02 — CLI PostHog wiring.
+// CLI PostHog wiring.
 //
 // Mirrors `sentry.ts` shape verbatim so observability stays one consistent
 // mental model. Key contracts:
@@ -341,7 +341,7 @@ export async function posthogAliasAndIdentify(opts: {
       writePosthogConfig({ lastWorkosSub: sub });
     }
 
-    // Phase 125 follow-up — attach email + name to the PostHog person so the
+    // an earlier revision follow-up — attach email + name to the PostHog person so the
     // Persons UI displays the user identity for CLI events without requiring
     // a frontend visit. Mirrors workspace-context.tsx's identify shape; $set
     // overwrites every login (email/name can drift). No-op when WorkOS didn't

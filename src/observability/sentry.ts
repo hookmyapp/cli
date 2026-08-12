@@ -1,4 +1,4 @@
-// Phase 123 Plan 10 — lazy Sentry init + flush-on-exit + setUser.
+// lazy Sentry init + flush-on-exit + setUser.
 //
 // Design rules (from 123-RESEARCH.md Pattern 7):
 //
@@ -301,7 +301,7 @@ export async function captureError(err: unknown): Promise<void> {
  * Replaces direct `process.exit()` at the top-level main() boundary +
  * unhandledRejection handler.
  *
- * Phase 125 (CONTEXT.md §125-02 must_haves): both vendors are awaited in
+ * an earlier revision (CONTEXT.md §125-02 must_haves): both vendors are awaited in
  * PARALLEL via Promise.allSettled — neither rejection blocks the other,
  * neither vendor's slow drain serializes behind the other. If neither SDK
  * is initialized this is essentially a no-op + immediate exit (zero added

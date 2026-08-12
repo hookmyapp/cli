@@ -1,7 +1,7 @@
 {
   "version": "1",
   "generatedAt": "2026-04-30T00:00:00Z",
-  "description": "CLI-side typed PostHog event registry (scoped subset). Declares only events the CLI binary actually emits — the 8 cli_* events. The cross-repo drift test in /Users/ordvir/COD/hookmyapp/packages/observability/src/analytics/__tests__/manifest-drift.spec.ts asserts every event here also appears in the monorepo's events.manifest.json with the same property set. Baseline properties (site, environment, workspace_id, days_since_signup) are implicit on every event and injected by super-properties.ts — not listed per-event below.",
+  "description": "CLI-side typed analytics event registry (scoped subset). Declares only events the CLI binary actually emits — the 8 cli_* events. A drift test asserts every event here also appears in the upstream registry with the same property set. Baseline properties (site, environment, workspace_id, days_since_signup) are implicit on every event and injected by super-properties.ts — not listed per-event below.",
   "events": [
     {
       "name": "cli_first_run",

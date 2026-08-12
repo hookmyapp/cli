@@ -30,7 +30,7 @@ const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
 const CONFIG_PATH = path.join(TMP_HOME, '.hookmyapp', 'config.json');
 
-// Phase 117: every workspace id fixture is a ws_ publicId.
+// an earlier revision: every workspace id fixture is a ws_ publicId.
 // AIT-182: fixtures simulate an OLDER backend that still sends
 // workosOrganizationId — the CLI must scrub it at the output boundary.
 const fakeWorkspaces = [
