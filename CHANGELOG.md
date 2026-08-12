@@ -13,7 +13,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 - The feed is now **notifications** end to end: `hookmyapp notifications list|ack`, and notification ids are `ntf_…` (AIT-381).
 - One alert-phone surface: the early top-level `hookmyapp phone` command (never published) is gone; `hookmyapp alerts phone` is the command family (AIT-385).
-- The update-check nudge reads its legacy cache file location as a fallback, so upgrading does not re-nudge on day one.
+- The unread-notifications nudge reads its legacy cache file location as a fallback, so upgrading does not re-nudge on day one.
 
 ## 0.14.11 — 2026-08-08
 
