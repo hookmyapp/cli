@@ -1,6 +1,6 @@
 // Non-blocking version-nudge check for `hookmyapp sandbox listen`.
 //
-// Contract locked by 107-CONTEXT.md §CLI Flow Step 2:
+// The version-check contract:
 //   - GET https://registry.npmjs.org/@gethookmyapp/cli/latest
 //   - 2s hard timeout via AbortSignal.timeout(2000)
 //   - If newer, print EXACTLY:
@@ -33,7 +33,7 @@ export async function checkForNewerCli(): Promise<void> {
     if (typeof latest !== 'string' || latest.length === 0) return;
     const current = await readCliVersion();
     if (latest === current) return;
-    // Locked one-liner — Plan 09b smoke test asserts the exact prefix.
+    // Locked one-liner — a smoke test asserts the exact prefix.
     console.log(
       `A newer version of hookmyapp is available (${current} → ${latest}). Run npm update -g @gethookmyapp/cli`,
     );

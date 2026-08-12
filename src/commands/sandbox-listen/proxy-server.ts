@@ -3,7 +3,7 @@
 // Pipeline: cloudflared (token-mode) → CF edge → PUT-configured ingress rule →
 //           http://127.0.0.1:<this-port> → forwards to dev's real localhost:<upstreamPort>.
 //
-// CRITICAL: bind 127.0.0.1 ONLY (not 0.0.0.0). See RESEARCH §Pitfall 9 —
+// CRITICAL: bind 127.0.0.1 ONLY (not 0.0.0.0). —
 // binding to 0.0.0.0 exposes the proxy to the LAN where scanners can race
 // the free-port assignment between `listen()` and the backend's
 // `PUT /configurations` call.

@@ -8,7 +8,7 @@
 //   3. `initPostHogLazy()` is a NO-OP when no token is baked (dev build).
 //   4. `initPostHogLazy()` returns a real PostHog client when both telemetry
 //      is enabled AND a token is present, with `flushAt: 1, flushInterval: 0`
-//      (short-lived-process pattern from RESEARCH §Pattern 1).
+//      (short-lived-process pattern).
 //   5. Subsequent calls reuse the same instance — no re-init.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 

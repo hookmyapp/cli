@@ -1,7 +1,7 @@
 // CLI-side typed event registry — scoped subset of the monorepo's full
 // registry at packages/observability/src/analytics/events.ts.
 //
-// History: from an earlier revision through an earlier revision this file was a byte-for-byte
+// History: from an earlier release through an earlier release this file was a byte-for-byte
 // mirror of the monorepo registry. That coupled CLI to every monorepo event
 // addition (web, web-api, demo, marketing) even though CLI emits only the
 // 7 `cli_*` events. With monorepo's surface growing (frontend + backend +

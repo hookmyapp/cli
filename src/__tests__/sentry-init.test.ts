@@ -18,7 +18,7 @@
 //
 //   5. `shouldCaptureToSentry()` filters backend-response wrappers (any error
 //      with a non-undefined statusCode → false) — implements the
-//      single-capture-per-error rule from CONTEXT.md.
+//      single-capture-per-error rule.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   initSentryLazy,
