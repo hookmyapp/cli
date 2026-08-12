@@ -237,10 +237,16 @@ describe('billing commands', () => {
       vi.unstubAllEnvs();
     });
 
+    const PLANS_CATALOG = [
+      { slug: 'free', name: 'Launch', messages: 2000, priceInCents: 0, annualPriceInCents: 0 },
+      { slug: 'growth', name: 'Scale', messages: 1200, priceInCents: 2400, annualPriceInCents: 24000 },
+    ];
+
     function mockSubAndWorkspaces(sub: any, checkoutUrl?: string) {
       mockedApiClient.mockImplementation(async (path: string) => {
         if (path === SUBSCRIPTION_PATH) return sub;
         if (path === '/workspaces') return WORKSPACES;
+        if (path === '/plans') return PLANS_CATALOG;
         if (path === CHECKOUT_PATH && checkoutUrl) return { url: checkoutUrl };
         throw new Error(`unexpected path: ${path}`);
       });

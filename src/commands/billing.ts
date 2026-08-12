@@ -124,14 +124,31 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
     );
   }
 
+  type CatalogPlan = {
+    slug: string;
+    name: string;
+    messages: number;
+    priceInCents: number;
+    annualPriceInCents: number;
+    popular?: true;
+  };
+  // Live catalog — the CLI keeps no copy of plan names, limits, or prices
+  // (a stale hardcoded list shipped wrong numbers to a paying user, 2026-08-12).
+  // A fetch failure fails the command; there is deliberately no fallback list.
+  const catalog = (await apiClient('/plans')) as CatalogPlan[];
+  const paidPlans = catalog.filter((p) => p.priceInCents > 0);
+  if (paidPlans.length === 0) {
+    throw new ValidationError('No paid plans available. Try again later.', 'PLANS_EMPTY');
+  }
+
   const { select } = await import('@inquirer/prompts');
   const planSlug = await select({
     message: 'Choose a plan',
-    choices: [
-      { name: 'Build: 500 messages', value: 'starter' },
-      { name: 'Scale: 1,200 messages', value: 'growth', description: 'Most popular' },
-      { name: 'Business: 2,500 messages', value: 'pro' },
-    ],
+    choices: paidPlans.map((p) => ({
+      name: `${p.name}: ${p.messages.toLocaleString('en-US')} messages — $${Math.round(p.priceInCents / 100)}/mo (or $${Math.round(p.annualPriceInCents / 100)}/yr)`,
+      value: p.slug,
+      ...(p.popular ? { description: 'Most popular' } : {}),
+    })),
   });
   const billingInterval = await select({
     message: 'Billing interval',
