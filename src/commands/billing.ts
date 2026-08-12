@@ -1,9 +1,9 @@
 import { Command } from 'commander';
 import open from 'open';
-import { apiClient } from '../api/client.js';
+import { apiClient, isNetworkFailure } from '../api/client.js';
 import { output } from '../output/format.js';
 import { c } from '../output/color.js';
-import { ValidationError } from '../output/error.js';
+import { ApiError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import { getEffectiveAppUrl } from '../config/env-profiles.js';
@@ -21,6 +21,47 @@ import { getDefaultWorkspaceId, resolveOrgPublicIdForWorkspace } from './_helper
 
 function orgBillingUrl(orgPublicId: string): string {
   return `${getEffectiveAppUrl()}/org/${orgPublicId}/billing`;
+}
+
+const UPGRADE_POLL_INTERVAL_MS = 5_000;
+const UPGRADE_POLL_HINT_EVERY_MS = 60_000;
+
+/** Mirrors the `channels connect` wait pattern: poll the org subscription
+ *  until the plan leaves `free` with an active status. No hard timeout —
+ *  a periodic hint keeps the wait visibly alive; Ctrl+C cancels. ONLY
+ *  transient failures (network blips, 5xx) are swallowed; permanent errors
+ *  (expired auth, revoked permission, client-outdated) rethrow — polling
+ *  forever on those would tell the user to "finish checkout" while the CLI
+ *  itself is the thing that's broken. */
+async function pollForUpgrade(
+  orgPublicId: string,
+): Promise<{ plan: { slug: string; name: string; messages: number }; status: string }> {
+  const startedAt = Date.now();
+  let lastHintAt = startedAt;
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, UPGRADE_POLL_INTERVAL_MS));
+    let sub: { plan: { slug: string; name: string; messages: number }; status: string } | null;
+    try {
+      sub = (await apiClient(
+        `/organizations/${orgPublicId}/billing/subscription`,
+      )) as { plan: { slug: string; name: string; messages: number }; status: string };
+    } catch (err) {
+      const transient =
+        isNetworkFailure(err) ||
+        (err instanceof ApiError && (err.statusCode ?? 0) >= 500);
+      if (!transient) throw err;
+      sub = null;
+    }
+    if (sub && sub.plan.slug !== 'free' && ['active', 'trialing'].includes(sub.status)) {
+      return sub;
+    }
+    if (Date.now() - lastHintAt >= UPGRADE_POLL_HINT_EVERY_MS) {
+      lastHintAt = Date.now();
+      console.log(
+        `Still waiting (${Math.round((Date.now() - startedAt) / 60_000)} min) — finish checkout in your browser, or Ctrl+C to cancel.`,
+      );
+    }
+  }
 }
 
 export async function billingManage(opts: { json?: boolean } = {}): Promise<void> {
@@ -163,6 +204,12 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
   });
   console.log('Opening Stripe Checkout...');
   await open(data.url);
+
+  console.log('Waiting for payment confirmation... (Ctrl+C to cancel)');
+  const upgraded = await pollForUpgrade(orgPublicId);
+  console.log(
+    `✓ Upgraded to ${upgraded.plan.name} (${upgraded.plan.messages.toLocaleString('en-US')} messages/mo).`,
+  );
 }
 
 export function registerBillingCommand(_program: Command): void {
