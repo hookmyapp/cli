@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // wizard sandbox sub-flow, post-bind-code rework.
 //
 // The wizard (runSandboxFlow in src/auth/login.ts) was wired against the
-// legacy click-path `POST /sandbox/sessions`, which an earlier revision deleted
+// legacy click-path `POST /sandbox/sessions`, which an earlier release deleted
 // from the backend. The rewrite delegates to the bind-code-driven
 // runSandboxStart for the no-existing-session case and keeps the
 // "listen on the session you already bound" shortcut for repeat logins.
@@ -19,7 +19,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 //      `hookmyapp sandbox start` (NO POST to /sandbox/sessions).
 //   6. No test case POSTs to `/sandbox/sessions` — that endpoint is gone.
 //
-// Guardrail (RESEARCH.md anti-pattern): the wizard must NOT spawn any
+// Guardrail: the wizard must NOT spawn any
 // subprocess. runSandboxStart imports are stubbed here so the real command
 // body isn't invoked during the test.
 
@@ -74,7 +74,7 @@ beforeEach(async () => {
   runSandboxFlow = (mod as any).runSandboxFlow;
 });
 
-describe('wizard sandbox sub-flow — an earlier revision bind-code rework', () => {
+describe('wizard sandbox sub-flow — an earlier release bind-code rework', () => {
   it('0 sessions → delegates to runSandboxStart with listen:true (no POST to /sandbox/sessions)', async () => {
     apiClientMock.mockResolvedValueOnce([]);
     await runSandboxFlow();

@@ -1,6 +1,6 @@
 // Session picker for `hookmyapp sandbox listen`.
 //
-// Contract (107-CONTEXT.md §CLI Flow Step 5):
+// The picker contract:
 //   0 sessions → throw NO_ACTIVE_SESSIONS (exit 2)
 //   1 session → return silently (auto-select)
 //   2+ + no flag + human TTY → interactive @inquirer/prompts select

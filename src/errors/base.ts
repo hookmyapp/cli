@@ -10,7 +10,7 @@
 // Severity is a STATIC readonly property on each subclass. The class selection
 // IS the severity decision — no per-throw judgment.
 //
-// an earlier revision's CLI exit-code hierarchy (0–6) is preserved via `exitCodeFor()`
+// an earlier release's CLI exit-code hierarchy (0–6) is preserved via `exitCodeFor()`
 // in `src/output/error.ts`. Class-to-exit-code mapping:
 //   AuthError        → 4
 //   PermissionError  → 3

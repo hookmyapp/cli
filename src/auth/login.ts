@@ -238,7 +238,7 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
  * Sandbox sub-flow. Invoked by the wizard when the user passes
  * `hookmyapp login --next sandbox` (or `--phone <e164>` without `--next`).
  *
- * an earlier revision bind-code model — session creation is phone-initiated (user
+ * The bind-code model — session creation is phone-initiated (user
  * sends a bind code from their WhatsApp into the env's sandbox number —
  * staging IL or prod US, per env-profiles.ts), NOT CLI-flag-initiated.
  * The wizard therefore no longer offers a
@@ -248,7 +248,7 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
  * 0 sessions → runSandboxStart (prints bind code + QR + polls; on poll success,
  *              runSandboxListenFlow starts automatically because `--listen` is true).
  * 1 session  → direct listen (matches the "single active session" fast-path
- *              from before an earlier revision — preserved so repeated logins don't
+ *              from an older CLI — preserved so repeated logins don't
  *              force the user through bind flow again).
  * N sessions → picker (no "+ Create new" — bind flow handles that; the
  *              picker is purely for choosing which ALREADY-bound phone to
@@ -375,7 +375,7 @@ async function runChannelsConnectFlow(): Promise<void> {
 }
 
 /**
- * an earlier revision: bootstrap-code exchange branch. Invoked when the user (or their
+ * Bootstrap-code exchange branch. Invoked when the user (or their
  * AI) runs `hookmyapp login --code hma_boot_<32>`. Bypasses the WorkOS device
  * flow entirely — zero browser interaction, zero polling — then re-enters
  * runWizard so the rest of the CLI (active workspace, --phone/--next hooks,

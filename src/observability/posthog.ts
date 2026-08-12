@@ -7,25 +7,25 @@
 //    BOTH `isTelemetryEnabled()` AND a token is baked. Telemetry-off users
 //    pay zero cold-start cost.
 //
-// 2. SHORT-LIVED PROCESS PATTERN (RESEARCH §Pattern 1). The CLI is short-
+// 2. SHORT-LIVED PROCESS PATTERN. The CLI is short-
 //    lived (most commands exit in <1s), so we configure `flushAt: 1` +
 //    `flushInterval: 0`. Every capture is queued for immediate send; the
 //    2s `shutdown(2000)` drain at exit picks up the trailing in-flight
 //    requests. Without this, posthog-node's default 20-event-or-10s
 //    batching loses every CLI capture.
 //
-// 3. SINGLE KILL-SWITCH (CONTEXT.md §4). `isTelemetryEnabled()` is the same
+// 3. SINGLE KILL-SWITCH . `isTelemetryEnabled()` is the same
 //    function `sentry.ts` already calls — `HOOKMYAPP_TELEMETRY=off` OR
 //    `hookmyapp config set telemetry off` kills BOTH SDKs. No vendor-
 //    specific flag.
 //
-// 4. ALIAS DIRECTION (RESEARCH §Pitfall 1). `posthogAliasAndIdentify()` calls
+// 4. ALIAS DIRECTION. `posthogAliasAndIdentify()` calls
 //    `client.alias({ distinctId: workosSub, alias: machineId })` — distinctId
 //    is the canonical user, alias is the side identifier we want stitched in.
 //    Reversing the args silently merges the user profile into the machine
 //    forever; we have a unit test pinning the direction.
 //
-// 5. ONCE-PER-(MACHINE,USER) ALIAS (CONTEXT.md §3). The `posthogAliasedUsers`
+// 5. ONCE-PER-(MACHINE,USER) ALIAS . The `posthogAliasedUsers`
 //    array in config.json blocks repeated alias calls for the same sub on
 //    the same machine; a different sub on the same machine still aliases
 //    once for that pair (handles shared dev machines + identity switches).
@@ -90,7 +90,7 @@ export async function initPostHogLazy(): Promise<PostHogType | null> {
   try {
     const { PostHog } = await import('posthog-node');
     const host = resolveHost();
-    // Short-lived process pattern (RESEARCH §Pattern 1):
+    // Short-lived process pattern:
     //   flushAt: 1       → queue size of 1 → every capture sends immediately
     //   flushInterval: 0 → disable the periodic batcher
     // Combined with the 2s `shutdown(2000)` drain at exit (see flushAndExit
@@ -259,7 +259,7 @@ export async function emitParseError(opts: {
 }
 
 /**
- * Skip-list filter for `cli_command_invoked` (CONTEXT.md §5). Help / version
+ * Skip-list filter for `cli_command_invoked` . Help / version
  * / pure-meta commands are no-ops on the user's mental model — emitting
  * `cli_command_invoked` for them inflates volume + skews the funnel.
  *
@@ -299,7 +299,7 @@ export async function maybeEmitFirstRun(): Promise<void> {
  * Once-per-(machine, user) alias. Called from auth/login.ts after both the
  * device-flow and `--code` bootstrap paths persist credentials.
  *
- *   Direction (RESEARCH §Pitfall 1):
+ *   Direction:
  *     client.alias({ distinctId: workosSub, alias: machineId })
  *
  *   workosSub is the canonical user identity; machineId is the side
@@ -341,7 +341,7 @@ export async function posthogAliasAndIdentify(opts: {
       writePosthogConfig({ lastWorkosSub: sub });
     }
 
-    // an earlier revision follow-up — attach email + name to the PostHog person so the
+    // an earlier release follow-up — attach email + name to the PostHog person so the
     // Persons UI displays the user identity for CLI events without requiring
     // a frontend visit. Mirrors workspace-context.tsx's identify shape; $set
     // overwrites every login (email/name can drift). No-op when WorkOS didn't

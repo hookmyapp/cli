@@ -190,8 +190,8 @@ export async function rescopeWorkspaceToken(workspaceId: string): Promise<void> 
 // consistent across commands. Keep this in sync with the error-hierarchy
 // contract in output/error.ts (exit codes: 2 / 3 / 4 / 5 / 6).
 //
-// Return type is `CliError` — a an earlier revision alias that is identical at runtime
-// to `AppError` under an earlier revision. Existing callers see no change.
+// Return type is `CliError` — a an earlier release alias that is identical at runtime
+// to `AppError` under an earlier release. Existing callers see no change.
 export async function mapApiError(res: Response): Promise<CliError> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: any = await res.json().catch(() => ({ message: res.statusText }));
@@ -264,7 +264,7 @@ export async function mapApiError(res: Response): Promise<CliError> {
   }
   if (res.status === 429) {
     // use the new RateLimitError class (sev3, httpStatus
-    // 429). Exit code remains 6 so the an earlier revision exit-code contract for 429
+    // 429). Exit code remains 6 so the an earlier release exit-code contract for 429
     // is preserved (historically this flowed through ConflictError → exit 6).
     // The body.code 'RATE_LIMITED' matches the backend's
     // UserIdThrottlerGuard structured 429 body.
