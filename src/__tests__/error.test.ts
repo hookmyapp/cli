@@ -83,7 +83,7 @@ describe('outputError', () => {
   it('in human mode writes Error: <message> to stderr', () => {
     const err = new CliError('Bad request', 'API_ERROR');
     outputError(err, { human: true });
-    expect(mockWrite).toHaveBeenCalledWith('Error: Bad request\n');
+    expect(mockWrite).toHaveBeenCalledWith('Error: Bad request (API_ERROR)\n');
   });
 
   it('in JSON mode writes nested envelope with code, message, and status', () => {
