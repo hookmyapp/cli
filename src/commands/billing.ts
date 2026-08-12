@@ -173,9 +173,9 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
     annualPriceInCents: number;
     popular?: true;
   };
-  // Live catalog — the CLI keeps no copy of plan names, limits, or prices
-  // (a stale hardcoded list shipped wrong numbers to a paying user, 2026-08-12).
-  // A fetch failure fails the command; there is deliberately no fallback list.
+  // Live catalog — the CLI keeps no copy of plan names, limits, or prices;
+  // hardcoded copies drift and have shipped stale numbers before. A fetch
+  // failure fails the command; there is deliberately no fallback list.
   const catalog = (await apiClient('/plans')) as CatalogPlan[];
   const paidPlans = catalog.filter((p) => p.priceInCents > 0);
   if (paidPlans.length === 0) {

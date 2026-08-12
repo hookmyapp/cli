@@ -10,7 +10,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 ### Changed
 
-- Human-mode error messages now include stable error-code suffixes (e.g. `ERROR (INVALID_CREDENTIALS)`) for debugging and consistency with machine-mode output (AIT-391).
+- Human-mode error messages now include stable error-code suffixes (e.g. `Error: <message> (INVALID_CREDENTIALS)`) for debugging and consistency with machine-mode output (AIT-391).
 
 ## 0.14.13
 
