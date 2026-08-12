@@ -185,6 +185,12 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
   afterEach(() => {
     delete process.env.HOOKMYAPP_APP_URL;
     process.stdout.isTTY = origTTY;
+    // Fake timers are per-test opt-in (three tests below poll under
+    // vi.useFakeTimers()) — restore real timers here rather than at the end
+    // of each test body, so a thrown assertion between `await run` and
+    // cleanup can't leak fake timers into later tests (no other afterEach
+    // resets them).
+    vi.useRealTimers();
   });
 
   test('When on free tier, then plan choices come from GET /plans with limits and prices, free excluded', async () => {
@@ -209,7 +215,6 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
     expect(planChoices.map((c) => c.value)).toEqual(['starter', 'growth', 'pro']);
     expect(planChoices[1].name).toBe('Scale: 100,000 messages — $24/mo (or $240/yr)');
     expect(planChoices[1].description).toBe('Most popular');
-    vi.useRealTimers();
   });
 
   test('When GET /plans fails, then upgrade fails with that error and no checkout is minted', async () => {
@@ -241,7 +246,6 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
     await run;
 
     expect(log.mock.calls.flat().join('\n')).toContain('Upgraded to Scale');
-    vi.useRealTimers();
   });
 
   test('When polling hits a permanent error (expired auth), then upgrade aborts instead of waiting forever', async () => {
@@ -258,6 +262,5 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
     const assertion = expect(run).rejects.toBeInstanceOf(AuthError);
     await advanceUntilSettled(run);
     await assertion;
-    vi.useRealTimers();
   });
 });
