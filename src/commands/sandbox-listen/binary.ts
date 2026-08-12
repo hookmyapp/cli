@@ -3,8 +3,8 @@
 // Why we self-own the binary rather than depend on the npm `cloudflared` package:
 //   - Release cadence is ours, not Cloudflare's. Pin in source (CLOUDFLARED_VERSION).
 //   - We verify SHA-256 against a hardcoded manifest (Cloudflare does not publish
-//     per-asset checksums — see 107-RESEARCH.md §Pitfall 5).
-//   - Platform asset formats differ (RESEARCH §Pitfall 4):
+//     per-asset checksums).
+//   - Platform asset formats differ :
 //       macOS   → .tgz archive (extract `cloudflared` member)
 //       Linux   → standalone binary
 //       Windows → standalone .exe

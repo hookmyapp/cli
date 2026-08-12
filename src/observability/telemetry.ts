@@ -1,4 +1,4 @@
-// Phase 123 Plan 10 — CLI telemetry consent.
+// CLI telemetry consent.
 //
 // Default: telemetry ON. Industry norm for product CLIs (npm, Next.js, Vercel,
 // Homebrew). Users already have an authenticated account with the product;

@@ -45,7 +45,7 @@ export function readWorkspaceConfig(): WorkspaceConfig {
   const perEnv = full.activeWorkspaceByEnv?.[resolveEnv()];
   const candidateId = perEnv?.id ?? full.activeWorkspaceId;
   const candidateSlug = perEnv?.id ? perEnv.slug : full.activeWorkspaceSlug;
-  // Phase 117 hard cutover: activeWorkspaceId on disk MUST be a ws_ publicId.
+  // Hard cutover: activeWorkspaceId on disk MUST be a ws_ publicId.
   // A stale UUID from a pre-0.5.0 install is silently dropped so the next
   // caller falls through to the single-workspace auto-pick or the login
   // wizard's picker. No UUID value ever leaks back out to the backend.
@@ -58,7 +58,7 @@ export function readWorkspaceConfig(): WorkspaceConfig {
 }
 
 export function writeWorkspaceConfig(config: WorkspaceConfig): void {
-  // Phase 117 hard cutover: refuse to persist a UUID-shaped activeWorkspaceId.
+  // Hard cutover: refuse to persist a UUID-shaped activeWorkspaceId.
   // Symmetric with the read-side drop in readWorkspaceConfig — invariant is
   // "no UUID ever reaches disk or escapes to the backend."
   if (config.activeWorkspaceId && !isValidPublicId(config.activeWorkspaceId, 'ws')) {
@@ -83,14 +83,14 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
 }
 
 export async function resolveWorkspace(nameOrId: string, kind?: 'team' | 'customer'): Promise<{ id: string; name: string; role: string }> {
-  // Phase 117: raw UUID input is not an accepted shape. A `ws_` publicId or
+  // Raw UUID input is not an accepted shape. A `ws_` publicId or
   // a workspace name are the accepted identifier shapes — matching what the
   // backend surfaces over HTTP (AIT-182 removed the internal WorkOS org id
   // from the wire). If the caller passes a UUID, short-circuit with a typed
   // error instead of silently accepting it (would 400 at the backend).
   if (isLikelyUuid(nameOrId)) {
     throw new ValidationError(
-      `workspace identifier "${nameOrId}" is a raw UUID. Phase 117 CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
+      `workspace identifier "${nameOrId}" is a raw UUID. The CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
     );
   }
 

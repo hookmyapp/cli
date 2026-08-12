@@ -1,12 +1,12 @@
-// Phase 123 Plan 10 — CLI error surface.
+// CLI error surface.
 //
-// This file previously defined a standalone `CliError` hierarchy (Phase 108).
+// This file previously defined a standalone `CliError` hierarchy.
 // It now layers the AppError taxonomy from `src/errors/` UNDER the existing
 // `CliError` base class, preserving two invariants simultaneously:
-//   1. `err instanceof CliError` — Phase 108 code paths (sandbox-listen/picker,
+//   1. `err instanceof CliError` — legacy code paths (sandbox-listen/picker,
 //      sandbox-listen/binary, index.ts main(), api-403-handler.spec.ts) keep
 //      working.
-//   2. `err instanceof AppError` — new Phase 123 code + Sentry `captureError`
+//   2. `err instanceof AppError` — current code + Sentry `captureError`
 //      path see typed AppError subclasses with severity tagging.
 //
 // `CliError` is a concrete subclass of `AppError` (sev3 default — a safe
@@ -27,7 +27,7 @@
 // Instances still carry `.userMessage`, `.code`, `.statusCode`, `.exitCode` so
 // the `outputError()` helper keeps working without caller changes.
 //
-// Phase 108 exit-code contract:
+// The exit-code contract:
 //   AuthError        → 4
 //   PermissionError  → 3
 //   ValidationError  → 2
@@ -45,7 +45,7 @@ export type { Severity, SentryLevel } from '../errors/base.js';
 export { SEVERITY_TO_LEVEL, severityToLevel } from '../errors/base.js';
 
 /**
- * Phase 108 legacy base class. Now a concrete subclass of `AppError` so that:
+ * Legacy base class. Now a concrete subclass of `AppError` so that:
  *
  *   1. `instanceof CliError` guards continue to work (sandbox-listen picker /
  *      binary / index.ts main() all use this).
@@ -278,7 +278,7 @@ export class ClientOutdatedError extends CliError {
 }
 
 /**
- * Map any thrown value to a CLI exit code. Phase 108's exit-code contract is
+ * Map any thrown value to a CLI exit code. The exit-code contract is
  * preserved via a lookup on the subclass identity:
  *   AuthError → 4, PermissionError → 3, ValidationError → 2, ConflictError → 6,
  *   RateLimitError → 6, NetworkError → 5, everything else → 1.
@@ -294,7 +294,7 @@ export function exitCodeFor(err: unknown): number {
   if (err instanceof NetworkError) return 5;
   if (err instanceof CliError) {
     // Prefer the per-instance exitCode override (sandbox-listen picker/binary,
-    // Phase 122 bootstrap-code API errors set this explicitly).
+    // an earlier release bootstrap-code API errors set this explicitly).
     return err.exitCode ?? 1;
   }
   return 1;

@@ -29,7 +29,7 @@ describe('checkForNewerCli', () => {
 
     expect(logSpy).toHaveBeenCalledOnce();
     const msg = logSpy.mock.calls[0][0] as string;
-    // Locked prefix per CONTEXT.md §CLI Flow Step 2
+    // Locked prefix per the version-check contract
     expect(msg.startsWith('A newer version of hookmyapp is available')).toBe(true);
     expect(msg).toContain(pkg.version);
     expect(msg).toContain('99.0.0');

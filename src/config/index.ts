@@ -1,4 +1,4 @@
-// Phase 125 Plan 02 — PostHog-related config slice.
+// PostHog-related config slice.
 //
 // `~/.hookmyapp/config.json` is the shared on-disk store the CLI uses for
 // every persistent setting (workspace state, env profile, telemetry consent,
@@ -12,7 +12,7 @@
 //      index.ts entry, sandbox-listen lifecycle) → `import {…} from
 //      '../config/index.js'` reads cleanly and matches the plan's
 //      <files_modified> list.
-//   3. CONTEXT.md §3 + §16 require these keys to be persistent + shared
+//   3. The telemetry contract requires these keys to be persistent + shared
 //      across multiple call sites — a module dedicated to them prevents
 //      accidental shape drift.
 //
@@ -41,13 +41,13 @@ import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 export interface PosthogConfigSlice {
   /**
    * Stable per-installation UUID generated lazily on the first PostHog need
-   * (CONTEXT.md §3 — anonymous distinct_id for pre-login captures). Persists
+   * . Persists
    * forever once written so multi-day installs stay attributable.
    */
   posthogDistinctId?: string;
   /**
    * WorkOS subs that have been aliased to `posthogDistinctId` on THIS machine
-   * (CONTEXT.md §3 — once-per-(machine,user) alias semantics). Repeated
+   *  alias semantics). Repeated
    * logins for an already-aliased sub skip the alias call; logins for a new
    * sub on the same machine still alias once for that pair.
    */
@@ -60,7 +60,7 @@ export interface PosthogConfigSlice {
   lastWorkosSub?: string;
   /**
    * ISO-8601 UTC date the workspace owner signed up. Used to compute
-   * `days_since_signup` baseline property (CONTEXT.md §16). Optional —
+   * `days_since_signup` baseline property . Optional —
    * `null` baseline value when missing. Future plan can populate this from
    * a backend call; today we leave it unset and accept the null.
    */

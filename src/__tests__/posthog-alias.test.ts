@@ -1,19 +1,19 @@
-// Phase 125 Plan 02 Task 1 — PostHog alias-on-login contract tests.
+// PostHog alias-on-login contract tests.
 //
-// CONTEXT.md §3 + RESEARCH §Pattern 3 + §Pitfall 1:
+// Alias contract:
 //   The CLI captures pre-login events under a machine-id (`distinctId`).
 //   On the FIRST successful login per (machine, user) pair, we call
 //   `posthog.alias({ distinctId: workosSub, alias: machineId })` so PostHog
 //   stitches the anonymous machine-scoped events onto the user profile that
 //   the app + marketing already write.
 //
-// Direction matters (RESEARCH §Pitfall 1): `distinctId` is the canonical user
+// Direction matters: `distinctId` is the canonical user
 // id (workosSub); `alias` is the side identifier we want to merge in
 // (machineId). Reversing the args — `{ distinctId: machineId, alias: sub }` —
 // would silently merge the user profile into the machine, breaking app↔CLI
 // stitching for every event from then on.
 //
-// Per-pair persistence (CONTEXT.md §3): `posthogAliasedUsers: [...]` in
+// Per-pair persistence : `posthogAliasedUsers: [...]` in
 // config.json prevents repeated alias calls on every login; a different
 // workosSub on the same machine still fires alias once for that pair.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

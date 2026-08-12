@@ -1,4 +1,4 @@
-// Phase 123 Plan 10 — single entry point for the CLI's AppError taxonomy.
+// single entry point for the CLI's AppError taxonomy.
 //
 // This barrel re-exports classes from two sources:
 //
@@ -9,9 +9,9 @@
 //
 //   - `../output/error.ts` — the concrete CLI AppError subclasses
 //     (UserBlockingError, ValidationError, AuthError, …). They layer on top of
-//     `CliError` (Phase 108 legacy base) so that `instanceof CliError`
-//     invariants from Phase 108 code paths AND `instanceof AppError`
-//     invariants from Phase 123 code paths hold simultaneously.
+//     `CliError` (an earlier release legacy base) so that `instanceof CliError`
+//     invariants from legacy code paths AND `instanceof AppError`
+//     invariants from legacy code paths hold simultaneously.
 //
 // The drift test (`__tests__/errors-manifest.test.ts`) enumerates the
 // AppError subclasses in `../output/error.ts` and cross-checks each against

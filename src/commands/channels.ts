@@ -113,7 +113,7 @@ function throwNoMatch(needle: string, channels: Channel[]): never {
       `Run: ${cliCommandPrefix()} channels list`,
     'CHANNEL_NOT_FOUND',
   );
-  // Preserve the Phase 108 exit-code contract for resolve-no-match (2).
+  // Preserve the an earlier release exit-code contract for resolve-no-match (2).
   // NotFoundError defaults to 1 but this caller always treated it as
   // ValidationError-class (bad argv pointing at a non-existent channel).
   err.exitCode = 2;

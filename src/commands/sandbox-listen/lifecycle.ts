@@ -1,5 +1,5 @@
 // Cloudflared subprocess + heartbeat + graceful-shutdown machinery for
-// `hookmyapp sandbox listen`. See RESEARCH §Pattern 5 (lines 470-506).
+// `hookmyapp sandbox listen`.
 //
 // CRITICAL pitfalls addressed here:
 //   §Pitfall 1  — NO `--url` flag on spawn. Token-mode tunnels are "remotely
@@ -198,7 +198,7 @@ export interface GracefulShutdownArgs {
 }
 
 /**
- * Shutdown order (CONTEXT.md §CLI Flow Step 11):
+ * Shutdown order :
  *   stopHeartbeat() → proxyClose() → callBackendStop() → child.kill('SIGTERM')
  *   wait up to 5s for child exit, then SIGKILL.
  *

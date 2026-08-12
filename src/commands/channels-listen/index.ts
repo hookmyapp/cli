@@ -1,7 +1,5 @@
 // `hookmyapp channels listen` — real-channel mirror of `sandbox listen`.
 //
-// Spec: docs/superpowers/specs/2026-05-15-cli-channel-listen-design.md
-// Plan: docs/superpowers/plans/2026-05-15-cli-channel-listen-cli.md
 //
 // Shares the binary, proxy-server, summarizer, version-check, and
 // graceful-shutdown machinery with sandbox-listen — what's different is the

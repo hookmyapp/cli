@@ -1,6 +1,6 @@
-// Phase 123 Plan 10 — lazy Sentry init + flush-on-exit + setUser.
+// lazy Sentry init + flush-on-exit + setUser.
 //
-// Design rules (from 123-RESEARCH.md Pattern 7):
+// Design rules:
 //
 // 1. LAZY INIT. Sentry is a ~50–80 KB module. The CLI is a short-lived
 //    command-line tool invoked frequently (every sandbox listen tick, every
@@ -16,7 +16,7 @@
 //    2-second `Sentry.close()` then exits — the drain is best-effort (happy
 //    path: 50 ms; worst case: 2 s).
 //
-// 3. CAPTURE ONLY LOCAL CLI FAILURES. Per CONTEXT.md §single-capture-per-error:
+// 3. CAPTURE ONLY LOCAL CLI FAILURES. Rule:
 //    the CLI captures command crashes, pre-backend network failures (fetch
 //    TypeError / DNS), and unhandled rejections. It does NOT re-capture HTTP
 //    5xx from the backend — the backend already has those events with full
@@ -301,7 +301,7 @@ export async function captureError(err: unknown): Promise<void> {
  * Replaces direct `process.exit()` at the top-level main() boundary +
  * unhandledRejection handler.
  *
- * Phase 125 (CONTEXT.md §125-02 must_haves): both vendors are awaited in
+ * both vendors are awaited in
  * PARALLEL via Promise.allSettled — neither rejection blocks the other,
  * neither vendor's slow drain serializes behind the other. If neither SDK
  * is initialized this is essentially a no-op + immediate exit (zero added

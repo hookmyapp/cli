@@ -190,8 +190,8 @@ export async function rescopeWorkspaceToken(workspaceId: string): Promise<void> 
 // consistent across commands. Keep this in sync with the error-hierarchy
 // contract in output/error.ts (exit codes: 2 / 3 / 4 / 5 / 6).
 //
-// Return type is `CliError` — a Phase 108 alias that is identical at runtime
-// to `AppError` under Phase 123 Plan 10. Existing callers see no change.
+// Return type is `CliError` — a an earlier release alias that is identical at runtime
+// to `AppError` under an earlier release. Existing callers see no change.
 export async function mapApiError(res: Response): Promise<CliError> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: any = await res.json().catch(() => ({ message: res.statusText }));
@@ -227,7 +227,7 @@ export async function mapApiError(res: Response): Promise<CliError> {
     return new PermissionError(cfg.activeWorkspaceSlug ?? '<unknown>');
   }
   if (res.status === 409) return new ConflictError(msg, code ?? 'CONFLICT');
-  // Phase 122 — bootstrap-code exchange error mapping.
+  // bootstrap-code exchange error mapping.
   // 404 and 410 collapse to the same user-facing message (oracle-attack
   // defense — brute-force guessers can't distinguish "unknown code" from
   // "already spent code"). ApiError.exitCode defaults to 1; we override
@@ -263,8 +263,8 @@ export async function mapApiError(res: Response): Promise<CliError> {
     );
   }
   if (res.status === 429) {
-    // Phase 123 Plan 10 — use the new RateLimitError class (sev3, httpStatus
-    // 429). Exit code remains 6 so the Phase 108 exit-code contract for 429
+    // use the new RateLimitError class (sev3, httpStatus
+    // 429). Exit code remains 6 so the an earlier release exit-code contract for 429
     // is preserved (historically this flowed through ConflictError → exit 6).
     // The body.code 'RATE_LIMITED' matches the backend's
     // UserIdThrottlerGuard structured 429 body.
@@ -319,7 +319,7 @@ export async function apiClient(
     throw new AuthError('Not logged in. Run: hookmyapp login');
   }
 
-  // Phase 123 Plan 10 — set Sentry user tag on every authenticated API call.
+  // set Sentry user tag on every authenticated API call.
   // Idempotent + lazy (no-op when telemetry off or Sentry not initialized).
   // Fire-and-forget so the API call's latency isn't gated on dynamic import.
   void (async () => {
@@ -401,7 +401,7 @@ export async function apiClient(
   }
 }
 
-// --- Phase 126 sandbox bind-code contract ---
+// --- sandbox bind-code contract ---
 //
 // Mirrors backend/src/sandbox/bind-code.controller.ts (Plan 03 Wave 2 locked
 // contract: `GET /sandbox/bind-code` returns the caller's available bind code

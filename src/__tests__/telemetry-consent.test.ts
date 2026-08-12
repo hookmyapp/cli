@@ -1,4 +1,4 @@
-// Phase 123 Plan 10 — telemetry consent tests.
+// telemetry consent tests.
 //
 // Exercises the three-layer override chain defined in
 // `src/observability/telemetry.ts`:
@@ -217,8 +217,8 @@ afterEach(() => {
   }
 });
 
-// Phase 125 Plan 02: HOOKMYAPP_TELEMETRY=off is the SINGLE kill-switch that
-// covers both Sentry AND PostHog (CONTEXT.md §4 — "single CLI opt-out").
+// an earlier release: HOOKMYAPP_TELEMETRY=off is the SINGLE kill-switch that
+// covers both Sentry AND PostHog .
 // This block lives here (not in posthog-init.test.ts) so the contract
 // "isTelemetryEnabled is the one shared gate" is documented next to the gate
 // itself.

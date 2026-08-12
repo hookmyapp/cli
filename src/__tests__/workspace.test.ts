@@ -33,7 +33,7 @@ const mockedApiClient = vi.mocked(apiClient);
 const mockedOutput = vi.mocked(output);
 const mockedRescopeWorkspaceToken = vi.mocked(rescopeWorkspaceToken);
 
-// Phase 117 — every id fixture below is a publicId (ws_/ch_/ssn_/mem_/inv_ prefix, 8-char
+// every id fixture below is a publicId (ws_/ch_/ssn_/mem_/inv_ prefix, 8-char
 // alphanumeric body). Raw UUIDs are rejected with a typed ValidationError at every
 // external flag/header/body surface; see workspace.ts resolveWorkspace + _helpers.ts.
 // AIT-182 — the workspaces wire no longer carries workosOrganizationId.
@@ -93,8 +93,8 @@ describe('resolveWorkspace', () => {
     await expect(resolveWorkspace('Nonexistent')).rejects.toThrow('not found');
   });
 
-  // Phase 117 hard cutover — raw UUID input is not an accepted shape.
-  it('throws typed CliError when given a raw UUID (Phase 117 hard cutover)', async () => {
+  // an earlier release hard cutover — raw UUID input is not an accepted shape.
+  it('throws typed CliError when given a raw UUID (an earlier release hard cutover)', async () => {
     mockedApiClient.mockResolvedValue(fakeWorkspaces);
     const { CliError } = await import('../output/error.js');
     await expect(resolveWorkspace('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')).rejects.toThrow(CliError);
@@ -172,7 +172,7 @@ describe('writeWorkspaceConfig config-file merge', () => {
     expect(ws.activeWorkspaceSlug).toBe('Another Workspace');
   });
 
-  // Phase 117 — readWorkspaceConfig silently drops a stale UUID activeWorkspaceId
+  // readWorkspaceConfig silently drops a stale UUID activeWorkspaceId
   // (pre-0.5.0 install artifact). Prevents the UUID from leaking back out to the
   // backend which now 400s on every UUID input.
   it('silently drops stale UUID activeWorkspaceId on read (pre-0.5.0 config)', async () => {
@@ -529,7 +529,7 @@ describe('workspace commands', () => {
       }
     });
 
-    // Phase 117 hard cutover — negative regression.
+    // an earlier release hard cutover — negative regression.
     it('workspace use rejects raw UUID with typed ValidationError', async () => {
       mockedApiClient.mockResolvedValue(fakeWorkspaces);
 
@@ -596,7 +596,7 @@ describe('resolveInviteByIdOrEmail', () => {
     expect(invite).toEqual(fakeMembersResponse.invites[0]);
   });
 
-  it('finds invite by inv_ publicId (Phase 117 — not raw UUID)', async () => {
+  it('finds invite by inv_ publicId (an earlier release — not raw UUID)', async () => {
     const responseWithPublicIdInvite = {
       members: [],
       invites: [

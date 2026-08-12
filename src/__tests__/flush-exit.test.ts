@@ -1,6 +1,6 @@
-// Phase 125 Plan 02 Task 1 — flushAndExit covers BOTH Sentry + PostHog.
+// flushAndExit covers BOTH Sentry + PostHog.
 //
-// CONTEXT.md §125-02 must_haves: process exit awaits `posthog.shutdown(2000)`
+// Contract: process exit awaits `posthog.shutdown(2000)`
 // + `Sentry.flush(2000)` in parallel via Promise.allSettled — neither
 // vendor's failure can block the other.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

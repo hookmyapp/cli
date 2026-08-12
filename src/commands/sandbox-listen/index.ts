@@ -1,8 +1,8 @@
 // `hookmyapp sandbox listen` — Commander subcommand wiring the 11-step flow
-// from 107-CONTEXT.md §CLI Flow. Composes the Plan 09a modules (binary,
-// proxy-server, summarizer, version-check) with Plan 09b's picker + lifecycle.
+// Composes the sandbox-listen modules (binary,
+// proxy-server, summarizer, version-check) with the picker + lifecycle modules.
 //
-// Exit code contract (CONTEXT.md §CLI Flow Exit codes):
+// Exit code contract :
 //   0  clean
 //   1  not authenticated
 //   2  no active sessions / --phone|--session mismatch
@@ -194,7 +194,7 @@ export async function runSandboxListenFlow(
 
   // Step 9 — tunnel heartbeat loop (pings backend /tunnel/heartbeat every 30s
   // so the backend doesn't reap the session; separate from PostHog heartbeat
-  // which is pure analytics every 5 minutes — CONTEXT.md §5 decision).
+  // which is pure analytics every 5 minutes).
   const hb = startHeartbeat({
     sessionId: session.id,
     workspaceId: effectiveWorkspaceId,
@@ -216,7 +216,7 @@ export async function runSandboxListenFlow(
   //
   // This Promise is the ONLY thing keeping the parent process alive after
   // setup — without it, src/index.ts:219 (`await flushAndExit(0)`) would
-  // run immediately and the listen command would exit. RESEARCH §Pitfall 6
+  // run immediately and the listen command would exit.
   // is now subsumed by case (c): the cloudflared-exit handler triggers the
   // same gracefulShutdown that stops the PostHog heartbeat.
   let shuttingDown = false;
@@ -310,7 +310,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
     .action(async (identifier: string | undefined, opts: ListenOpts) => {
       const human = !program.opts().json && !opts.json;
 
-      // Step 0 — validate --session flag shape. Phase 117: must be a
+      // Step 0 — validate --session flag shape. an earlier release: must be a
       // ssn_<8-char> publicId; raw UUIDs are rejected here rather than at
       // the backend so CI scripts see exit 2 with the typed CliError code
       // instead of a 400 round-trip.
