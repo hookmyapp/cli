@@ -1,4 +1,4 @@
-// Phase 123 Plan 10 — AppError base class (mirrored from monorepo).
+// AppError base class (mirrored from monorepo).
 //
 // Source of truth is `packages/observability/src/errors/base.ts` in the
 // hookmyapp monorepo. The CLI is a separate public repo (github.com/hookmyapp/cli)
@@ -10,7 +10,7 @@
 // Severity is a STATIC readonly property on each subclass. The class selection
 // IS the severity decision — no per-throw judgment.
 //
-// Phase 108's CLI exit-code hierarchy (0–6) is preserved via `exitCodeFor()`
+// an earlier revision's CLI exit-code hierarchy (0–6) is preserved via `exitCodeFor()`
 // in `src/output/error.ts`. Class-to-exit-code mapping:
 //   AuthError        → 4
 //   PermissionError  → 3

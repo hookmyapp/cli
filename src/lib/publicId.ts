@@ -5,7 +5,7 @@
 // (monorepo-internal workspace package). Keep the alphabet / length /
 // prefix list in sync manually on any future changes.
 //
-// Phase 117 (prefixed public IDs) — the CLI only validates incoming flag
+// an earlier revision (prefixed public IDs) — the CLI only validates incoming flag
 // strings and treats server-returned publicId values as opaque identifiers
 // everywhere else. No generation happens on the CLI side.
 

@@ -310,7 +310,7 @@ export function registerListenCommand(sandbox: Command, program: Command): void 
     .action(async (identifier: string | undefined, opts: ListenOpts) => {
       const human = !program.opts().json && !opts.json;
 
-      // Step 0 — validate --session flag shape. Phase 117: must be a
+      // Step 0 — validate --session flag shape. an earlier revision: must be a
       // ssn_<8-char> publicId; raw UUIDs are rejected here rather than at
       // the backend so CI scripts see exit 2 with the typed CliError code
       // instead of a 400 round-trip.

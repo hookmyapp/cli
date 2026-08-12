@@ -1,4 +1,4 @@
-// Phase 125 Plan 02 — PostHog-related config slice.
+// PostHog-related config slice.
 //
 // `~/.hookmyapp/config.json` is the shared on-disk store the CLI uses for
 // every persistent setting (workspace state, env profile, telemetry consent,

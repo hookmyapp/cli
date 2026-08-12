@@ -1,4 +1,4 @@
-// Phase 125 Plan 01 Task 2 — CLI-side event-manifest drift test.
+// CLI-side event-manifest drift test.
 //
 // Guards the CLI-LOCAL side of the manifest mirror:
 //   1. The JSON manifest parses with `version: '1'` + 24 unique event names.

@@ -52,12 +52,12 @@ export async function getDefaultWorkspaceId(): Promise<string> {
   const { program } = await import('../index.js');
   const flag = program.opts().workspace as string | undefined;
   if (flag) {
-    // Phase 117: raw UUID shape is never a valid --workspace value. Short-
+    // an earlier revision: raw UUID shape is never a valid --workspace value. Short-
     // circuit with a typed ValidationError before the /workspaces round-trip
     // so scripts see exit 2 with a clear remediation hint.
     if (isLikelyUuid(flag)) {
       throw new ValidationError(
-        `--workspace "${flag}" is a raw UUID. Phase 117 CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
+        `--workspace "${flag}" is a raw UUID. an earlier revision CLI requires a publicId (ws_<8-char>) or workspace name. Re-run: hookmyapp workspace list`,
       );
     }
     const workspaces = await listWorkspacesOrEmpty();
@@ -186,14 +186,14 @@ export async function resolveChannelRefOrDefault(
 }
 
 /**
- * Phase 125 Plan 02 — wrap a command body with `cli_command_invoked` /
+ * wrap a command body with `cli_command_invoked` /
  * `cli_error_shown` instrumentation (CONTEXT.md §5).
  *
  * Contract:
  *   - On success → emits `cli_command_invoked` with `{ command, subcommand,
  *     exit_code: 0, duration_ms, ... }`.
  *   - On thrown CliError → emits `cli_command_invoked` with the mapped
- *     exit_code (Phase 108 table) AND `cli_error_shown` with the error code,
+ *     exit_code (an earlier revision table) AND `cli_error_shown` with the error code,
  *     then re-throws so the outer main() catch in src/index.ts handles
  *     formatting + flushAndExit normally.
  *   - help / --help / -h / --version / -v → no events (CONTEXT.md §5

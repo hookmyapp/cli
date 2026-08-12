@@ -1,4 +1,4 @@
-// Phase 125 Plan 02 Task 1 — CLI command-invocation event tests.
+// CLI command-invocation event tests.
 //
 // CONTEXT.md §5: every real command emits `cli_command_invoked` on exit
 // with `{ command, subcommand, exit_code, duration_ms, cli_version,

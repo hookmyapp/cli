@@ -1,4 +1,4 @@
-// Phase 125 Plan 02 Task 1 — PostHog lazy-init contract tests.
+// PostHog lazy-init contract tests.
 //
 // Mirrors `sentry-init.test.ts` shape verbatim so failures land with the same
 // debug ergonomics. Asserts:

@@ -38,7 +38,7 @@ const OS = process.platform;
  * Stainless-style headers used by the OpenAI and Anthropic SDKs
  * (`x-stainless-package-version` + `x-stainless-lang/runtime/arch/os`).
  *
- * Contract per docs/superpowers/specs/2026-05-06-cli-and-skill-version-enforcement-design.md:
+ * The contract:
  *   - User-Agent: hookmyapp-cli/<version> (node/<runtime>; <arch>; <os>)
  *   - X-HookMyApp-CLI-Version: <semver>                  (always)
  *   - X-HookMyApp-Lang: node                             (always)

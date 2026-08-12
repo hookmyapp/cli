@@ -1,4 +1,4 @@
-// Phase 125 Plan 02 Task 1 — PostHog alias-on-login contract tests.
+// PostHog alias-on-login contract tests.
 //
 // CONTEXT.md §3 + RESEARCH §Pattern 3 + §Pitfall 1:
 //   The CLI captures pre-login events under a machine-id (`distinctId`).

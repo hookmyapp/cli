@@ -165,7 +165,7 @@ describe('post-login wizard', () => {
     logSpy.mockRestore();
   });
 
-  it('--next sandbox --phone matches existing → delegates to listen (Phase 126 bind-code model)', async () => {
+  it('--next sandbox --phone matches existing → delegates to listen', async () => {
     apiClientMock
       // workspaces fetch
       .mockResolvedValueOnce([
@@ -176,7 +176,7 @@ describe('post-login wizard', () => {
         },
       ])
       // sandbox sessions fetch — the session already exists (bound previously
-      // via `hookmyapp sandbox start`). Phase 126 no longer POSTs to
+      // via `hookmyapp sandbox start`). The current flow no longer POSTs to
       // /sandbox/sessions; binding is inbound-message driven.
       .mockResolvedValueOnce([
         {
@@ -209,7 +209,7 @@ describe('post-login wizard', () => {
       const [path, init] = call;
       if (path === '/sandbox/sessions' && init?.method === 'POST') {
         throw new Error(
-          'Regression: wizard POSTed to /sandbox/sessions which was deleted in Phase 126 Plan 03',
+          'Regression: wizard POSTed to /sandbox/sessions which was deleted',
         );
       }
     }

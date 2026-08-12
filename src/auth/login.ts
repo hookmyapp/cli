@@ -16,7 +16,7 @@ import { posthogAliasAndIdentify } from '../observability/posthog.js';
 import { parseSandboxSessions, type WhatsAppSandboxSession } from '../api/sandbox-session.js';
 import { maybeInstallClaudeMcp } from '../commands/mcp.js';
 
-// --- Phase 122 bootstrap-code exchange DTO ---
+// --- bootstrap-code exchange DTO ---
 // Mirrors backend/src/auth/bootstrap/dto/exchange-bootstrap.dto.ts (Wave 1
 // locked contract). The CLI does not import from the backend — the DTO is
 // re-declared here verbatim so drift is caught by integration tests.
@@ -80,7 +80,7 @@ async function pollForTokens(opts: {
         refreshToken: data.refresh_token,
         expiresAt: Math.floor(Date.now() / 1000) + 900,
       });
-      // Phase 125 — alias machineId → workosSub once per (machine, user) and
+      // alias machineId → workosSub once per (machine, user) and
       // emit cli_logged_in. Fail-open: a posthog hiccup must never block the
       // login UX. Pass email + name so the PostHog Person profile shows the
       // human identity for CLI events.
@@ -238,7 +238,7 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
  * Sandbox sub-flow. Invoked by the wizard when the user passes
  * `hookmyapp login --next sandbox` (or `--phone <e164>` without `--next`).
  *
- * Phase 126 bind-code model — session creation is phone-initiated (user
+ * an earlier revision bind-code model — session creation is phone-initiated (user
  * sends a bind code from their WhatsApp into the env's sandbox number —
  * staging IL or prod US, per env-profiles.ts), NOT CLI-flag-initiated.
  * The wizard therefore no longer offers a
@@ -248,7 +248,7 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
  * 0 sessions → runSandboxStart (prints bind code + QR + polls; on poll success,
  *              runSandboxListenFlow starts automatically because `--listen` is true).
  * 1 session  → direct listen (matches the "single active session" fast-path
- *              from before Phase 126 — preserved so repeated logins don't
+ *              from before an earlier revision — preserved so repeated logins don't
  *              force the user through bind flow again).
  * N sessions → picker (no "+ Create new" — bind flow handles that; the
  *              picker is purely for choosing which ALREADY-bound phone to
@@ -286,7 +286,7 @@ export async function runSandboxFlow(
   );
 
   // --phone is authoritative: match against existing active sessions only.
-  // Phase 126 — we do NOT POST /sandbox/sessions here (endpoint deleted);
+  // we do NOT POST /sandbox/sessions here (endpoint deleted);
   // binding is phone-initiated via an inbound WhatsApp message matching
   // the user's bind code, which the dedicated `sandbox start` command
   // drives.
@@ -375,7 +375,7 @@ async function runChannelsConnectFlow(): Promise<void> {
 }
 
 /**
- * Phase 122: bootstrap-code exchange branch. Invoked when the user (or their
+ * an earlier revision: bootstrap-code exchange branch. Invoked when the user (or their
  * AI) runs `hookmyapp login --code hma_boot_<32>`. Bypasses the WorkOS device
  * flow entirely — zero browser interaction, zero polling — then re-enters
  * runWizard so the rest of the CLI (active workspace, --phone/--next hooks,
@@ -448,7 +448,7 @@ export async function runBootstrapCodeExchange(
   });
   maybeInstallClaudeMcp();
 
-  // Phase 125 — alias machineId → workosSub once per (machine, user) and
+  // alias machineId → workosSub once per (machine, user) and
   // emit cli_logged_in. workspace publicId is already on disk above so
   // baseline workspace_id resolves. Fail-open: posthog hiccup ≠ blocked login.
   // Pass email so the PostHog Person profile shows the human identity for CLI
@@ -741,7 +741,7 @@ export function loginCommand(program: Command): void {
           return;
         }
 
-        // Phase 122 — bootstrap-code branch. MUST run BEFORE the wizard
+        // bootstrap-code branch. MUST run BEFORE the wizard
         // fast-path and BEFORE device-flow initiation so --code --wizard is
         // flagged as a programming error (mutually exclusive).
         if (opts.code) {
