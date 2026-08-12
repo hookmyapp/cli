@@ -2,6 +2,10 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.13
+
+- Replace example phone numbers and email fixtures with reserved fictional values.
+
 ## 0.14.12 — 2026-08-12
 
 ### Added
