@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 
 // Mock apiClient
 vi.mock('../api/client.js', () => ({
@@ -93,6 +93,19 @@ function mockSubAndUsage(sub: any, usage: { totalMessages: number; limit: number
     throw new Error(`unexpected path: ${path}`);
   });
 }
+
+// vi.useFakeTimers()'s first-ever call in a worker process lazily loads the
+// underlying timer-faking library; a poll test that enables fake timers for
+// the first time can register pollForUpgrade's setTimeout against the
+// not-yet-patched real timer, then hang on the real 5s test timeout instead
+// of the faked one (only the "prompts free user..." test below uses fake
+// timers in this file). Cycle it once here, outside any timed test, so the
+// library is warm before it matters — same fix as the sibling
+// commands/__tests__/billing.test.ts.
+beforeAll(() => {
+  vi.useFakeTimers();
+  vi.useRealTimers();
+});
 
 describe('billing commands', () => {
   let billingStatus: (opts: { human?: boolean }) => Promise<void>;

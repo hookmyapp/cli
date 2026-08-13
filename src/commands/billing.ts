@@ -3,7 +3,7 @@ import open from 'open';
 import { apiClient, isNetworkFailure } from '../api/client.js';
 import { output } from '../output/format.js';
 import { c } from '../output/color.js';
-import { ApiError, ValidationError } from '../output/error.js';
+import { ApiError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import { getEffectiveAppUrl } from '../config/env-profiles.js';
@@ -18,6 +18,13 @@ import { getDefaultWorkspaceId, resolveOrgPublicIdForWorkspace } from './_helper
 // resolved from the active workspace's row in the /workspaces union via the
 // shared resolveOrgPublicIdForWorkspace helper (AIT-263 — one derivation for
 // customers + billing, never a bare row[0]).
+
+/** Whole-dollar prices render as `$20`; anything with cents renders 2dp
+ *  (`$19.99`) — `Math.round` was dropping cents entirely (1999¢ → "$20"). */
+function formatPrice(cents: number): string {
+  const dollars = cents / 100;
+  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+}
 
 function orgBillingUrl(orgPublicId: string): string {
   return `${getEffectiveAppUrl()}/org/${orgPublicId}/billing`;
@@ -46,7 +53,14 @@ async function pollForUpgrade(
         `/organizations/${orgPublicId}/billing/subscription`,
       )) as { plan: { slug: string; name: string; messages: number }; status: string };
     } catch (err) {
+      // apiClient wraps raw fetch failures in its own NetworkError before
+      // they ever reach here — isNetworkFailure() inspects the *raw* fetch
+      // error shape (TypeError / ECONNREFUSED / etc.) and doesn't recognize
+      // the wrapper, so a plain network blip was falling through to the
+      // rethrow below and aborting the poll. Treat the wrapped NetworkError
+      // as transient too.
       const transient =
+        err instanceof NetworkError ||
         isNetworkFailure(err) ||
         (err instanceof ApiError && (err.statusCode ?? 0) >= 500);
       if (!transient) throw err;
@@ -186,7 +200,7 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
   const planSlug = await select({
     message: 'Choose a plan',
     choices: paidPlans.map((p) => ({
-      name: `${p.name}: ${p.messages.toLocaleString('en-US')} messages — $${Math.round(p.priceInCents / 100)}/mo (or $${Math.round(p.annualPriceInCents / 100)}/yr)`,
+      name: `${p.name}: ${p.messages.toLocaleString('en-US')} messages — ${formatPrice(p.priceInCents)}/mo (or ${formatPrice(p.annualPriceInCents)}/yr)`,
       value: p.slug,
       ...(p.popular ? { description: 'Most popular' } : {}),
     })),

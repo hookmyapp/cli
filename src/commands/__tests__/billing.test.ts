@@ -46,7 +46,7 @@ function capturedSelectCalls(): Array<{ choices: unknown }> {
 
 import open from 'open';
 import { apiClient } from '../../api/client.js';
-import { AuthError } from '../../output/error.js';
+import { AuthError, NetworkError } from '../../output/error.js';
 import { billingManage, billingUpgrade } from '../billing.js';
 
 const workspaces = [
@@ -169,7 +169,9 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
     { slug: 'free', name: 'Launch', messages: 2000, priceInCents: 0, annualPriceInCents: 0 },
     { slug: 'starter', name: 'Build', messages: 30000, priceInCents: 1200, annualPriceInCents: 12000 },
     { slug: 'growth', name: 'Scale', messages: 100000, priceInCents: 2400, annualPriceInCents: 24000, popular: true },
-    { slug: 'pro', name: 'Business', messages: 250000, priceInCents: 3900, annualPriceInCents: 39000 },
+    // Non-whole monthly price (AIT-391): $39.99, not the rounded-to-$40 that
+    // Math.round(priceInCents / 100) used to render.
+    { slug: 'pro', name: 'Business', messages: 250000, priceInCents: 3999, annualPriceInCents: 39000 },
   ];
 
   let origTTY: typeof process.stdout.isTTY;
@@ -215,6 +217,9 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
     expect(planChoices.map((c) => c.value)).toEqual(['starter', 'growth', 'pro']);
     expect(planChoices[1].name).toBe('Scale: 100,000 messages — $24/mo (or $240/yr)');
     expect(planChoices[1].description).toBe('Most popular');
+    // Non-whole price renders 2dp instead of Math.round dropping the cents
+    // (1999¢ used to render as "$20").
+    expect(planChoices[2].name).toBe('Business: 250,000 messages — $39.99/mo (or $390/yr)');
   });
 
   test('When GET /plans fails, then upgrade fails with that error and no checkout is minted', async () => {
@@ -237,6 +242,31 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
       .mockResolvedValueOnce({ url: 'https://checkout.stripe.com/c/pay_123' })
       // poll #1: still free; poll #2: upgraded
       .mockResolvedValueOnce({ plan: { slug: 'free' }, status: 'active' })
+      .mockResolvedValueOnce({ plan: { slug: 'growth', name: 'Scale', messages: 100000 }, status: 'active' });
+    queueSelectAnswers('growth', 'monthly');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const run = billingUpgrade();
+    await advanceUntilSettled(run);
+    await run;
+
+    expect(log.mock.calls.flat().join('\n')).toContain('Upgraded to Scale');
+  });
+
+  test('When a poll tick hits a network blip (apiClient throws NetworkError), then it is swallowed and polling continues to success', async () => {
+    // apiClient wraps a raw fetch failure in its own NetworkError before it
+    // ever reaches pollForUpgrade — isNetworkFailure() (mocked false in this
+    // file) inspects the raw fetch-error shape and doesn't recognize the
+    // wrapper. pollForUpgrade must still treat NetworkError itself as
+    // transient, or a single blip aborts the wait instead of riding it out.
+    vi.useFakeTimers();
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce(workspaces)
+      .mockResolvedValueOnce({ plan: { slug: 'free' }, status: 'active' })
+      .mockResolvedValueOnce(CATALOG)
+      .mockResolvedValueOnce({ url: 'https://checkout.stripe.com/c/pay_123' })
+      // poll #1: transient network blip; poll #2: upgraded
+      .mockRejectedValueOnce(new NetworkError())
       .mockResolvedValueOnce({ plan: { slug: 'growth', name: 'Scale', messages: 100000 }, status: 'active' });
     queueSelectAnswers('growth', 'monthly');
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
