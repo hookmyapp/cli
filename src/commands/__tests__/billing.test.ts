@@ -31,14 +31,21 @@ vi.mock('open', () => ({ default: vi.fn(async () => undefined) }));
 // a hardcoded plan list.
 let selectCalls: Array<{ choices: unknown }> = [];
 let selectAnswers: unknown[] = [];
+// The paid-tier path (AIT-398) confirms the billing effect before applying it;
+// tests queue the y/N answer the same way they queue select answers.
+let confirmAnswers: boolean[] = [];
 vi.mock('@inquirer/prompts', () => ({
   select: vi.fn(async (args: { choices: unknown }) => {
     selectCalls.push(args);
     return selectAnswers.shift();
   }),
+  confirm: vi.fn(async () => confirmAnswers.shift() ?? false),
 }));
 function queueSelectAnswers(...answers: unknown[]): void {
   selectAnswers = answers;
+}
+function queueConfirmAnswers(...answers: boolean[]): void {
+  confirmAnswers = answers;
 }
 function capturedSelectCalls(): Array<{ choices: unknown }> {
   return selectCalls;
@@ -134,46 +141,155 @@ describe('billingManage — opens the app Billing page (portal retired)', () => 
   });
 });
 
-describe('billingUpgrade — active subscription path (portal retired)', () => {
+const CATALOG = [
+  { slug: 'free', name: 'Launch', messages: 2000, priceInCents: 0, annualPriceInCents: 0 },
+  { slug: 'starter', name: 'Build', messages: 30000, priceInCents: 1200, annualPriceInCents: 12000 },
+  { slug: 'growth', name: 'Scale', messages: 100000, priceInCents: 2400, annualPriceInCents: 24000, popular: true },
+  // Non-whole monthly price (AIT-391): $39.99, not the rounded-to-$40 that
+  // Math.round(priceInCents / 100) used to render.
+  { slug: 'pro', name: 'Business', messages: 250000, priceInCents: 3999, annualPriceInCents: 39000 },
+];
+
+describe('billingUpgrade — paid tier changes plan in the terminal (AIT-398)', () => {
+  // An org on Build, billed monthly, period ending Sep 13.
+  const SUB = {
+    status: 'active',
+    plan: { slug: 'starter', name: 'Build', priceInCents: 1200, annualPriceInCents: 12000 },
+    billingInterval: 'monthly',
+    currentPeriodEnd: '2026-09-13T10:45:22.000Z',
+  };
+  const PREVIEW = '/organizations/org_abc12345/billing/usage-tier/preview';
+  const APPLY = '/organizations/org_abc12345/billing/usage-tier';
+
+  /** Routes by path so a test only states the responses it cares about;
+   *  `overrides` supplies the preview/apply results under test. */
+  function mockApi(
+    overrides: Record<string, unknown>,
+    sub: Record<string, unknown> = SUB,
+  ): void {
+    vi.mocked(apiClient).mockImplementation(async (path: string) => {
+      if (path in overrides) return overrides[path];
+      if (path === '/workspaces') return workspaces;
+      if (path === '/organizations/org_abc12345/billing/subscription') return sub;
+      if (path === '/plans') return CATALOG;
+      throw new Error(`unexpected path: ${path}`);
+    });
+  }
+
+  let origTTY: typeof process.stdout.isTTY;
+  let log: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
     vi.mocked(apiClient).mockReset();
     vi.mocked(open).mockClear();
+    selectCalls = [];
+    selectAnswers = [];
+    confirmAnswers = [];
     process.env.HOOKMYAPP_APP_URL = 'https://app.test';
+    origTTY = process.stdout.isTTY;
+    process.stdout.isTTY = true;
+    log = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
   afterEach(() => {
     delete process.env.HOOKMYAPP_APP_URL;
+    process.stdout.isTTY = origTTY;
+    log.mockRestore();
   });
 
-  test('When paid tier with active status, then billingUpgrade reads the org subscription route, opens the app Billing page, and never calls a /stripe/* route', async () => {
-    vi.mocked(apiClient).mockImplementation(async (path: string) => {
-      if (path === '/organizations/org_abc12345/billing/subscription') {
-        return {
-          status: 'active',
-          plan: { slug: 'launch', name: 'Launch+', priceInCents: 1900, annualPriceInCents: 19000 },
-        };
-      }
-      if (path === '/workspaces') return workspaces;
-      throw new Error(`unexpected path: ${path}`);
+  function printed(): string {
+    return log.mock.calls.flat().join('\n');
+  }
+
+  test('When upgrading, then the prorated charge is stated and confirming applies the change without a browser', async () => {
+    mockApi({
+      [PREVIEW]: { scheduled: false, amountDueCents: 1200, currency: 'usd' },
+      [APPLY]: { scheduled: false },
     });
+    queueSelectAnswers('growth');
+    queueConfirmAnswers(true);
 
     await expect(billingUpgrade()).resolves.toBeUndefined();
 
+    expect(printed()).toContain(
+      "You'll switch to Scale right away. We'll charge $12.00 today for the rest of this billing period (through Sep 13, 2026). On Sep 13, 2026 your next bill is the full Scale price.",
+    );
+    expect(printed()).toContain('✓ Switched to Scale (100,000 messages/mo)');
+    expect(vi.mocked(open)).not.toHaveBeenCalled();
+  });
+
+  test('When the plan list is offered, then the current plan is excluded and the interval is not asked', async () => {
+    mockApi({
+      [PREVIEW]: { scheduled: false, amountDueCents: 1200 },
+      [APPLY]: { scheduled: false },
+    });
+    queueSelectAnswers('growth');
+    queueConfirmAnswers(true);
+
+    await billingUpgrade();
+
+    const choices = capturedSelectCalls()[0].choices as Array<{ value: string }>;
+    expect(choices.map((c) => c.value)).toEqual(['growth', 'pro']);
+    expect(capturedSelectCalls()).toHaveLength(1);
+  });
+
+  test('When the change is a downgrade, then it is described as scheduled and charges nothing now', async () => {
+    mockApi({
+      [PREVIEW]: { scheduled: true },
+      [APPLY]: { scheduled: true, effectiveAt: '2026-09-13T10:45:22.000Z' },
+    });
+    queueSelectAnswers('pro');
+    queueConfirmAnswers(true);
+
+    await billingUpgrade();
+
+    expect(printed()).toContain(
+      "You'll keep Build and its usage until Sep 13, 2026. Business starts then, and nothing is charged now.",
+    );
+    expect(printed()).toContain('✓ Business starts on Sep 13, 2026.');
+  });
+
+  test('When the confirmation is declined, then nothing is applied', async () => {
+    mockApi({ [PREVIEW]: { scheduled: false, amountDueCents: 1200 } });
+    queueSelectAnswers('growth');
+    queueConfirmAnswers(false);
+
+    await expect(billingUpgrade()).resolves.toBeUndefined();
+
+    const paths = vi.mocked(apiClient).mock.calls.map((c) => String(c[0]));
+    expect(paths).not.toContain(APPLY);
+    expect(printed()).toContain('No changes made.');
+  });
+
+  test('When a cancel is already pending, then the Billing page opens instead of promising an immediate switch', async () => {
+    mockApi({}, { ...SUB, cancelAtPeriodEnd: true });
+
+    await billingUpgrade();
+
     expect(vi.mocked(open)).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
     const paths = vi.mocked(apiClient).mock.calls.map((c) => String(c[0]));
-    expect(paths.some((p) => p.startsWith('/stripe/'))).toBe(false);
+    expect(paths).not.toContain(PREVIEW);
+  });
+
+  test('When the org is on a Custom plan, then the Billing page opens (not in the tier catalog)', async () => {
+    mockApi({}, { ...SUB, plan: { slug: 'custom', name: 'Custom' } });
+
+    await billingUpgrade();
+
+    expect(vi.mocked(open)).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
+  });
+
+  test('When no TTY, then it fails with UPGRADE_REQUIRES_TTY and applies nothing', async () => {
+    process.stdout.isTTY = false;
+    mockApi({});
+
+    await expect(billingUpgrade()).rejects.toThrow(/interactive terminal/i);
+
+    const paths = vi.mocked(apiClient).mock.calls.map((c) => String(c[0]));
+    expect(paths).not.toContain(APPLY);
+    expect(vi.mocked(open)).not.toHaveBeenCalled();
   });
 });
 
 describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
-  const CATALOG = [
-    { slug: 'free', name: 'Launch', messages: 2000, priceInCents: 0, annualPriceInCents: 0 },
-    { slug: 'starter', name: 'Build', messages: 30000, priceInCents: 1200, annualPriceInCents: 12000 },
-    { slug: 'growth', name: 'Scale', messages: 100000, priceInCents: 2400, annualPriceInCents: 24000, popular: true },
-    // Non-whole monthly price (AIT-391): $39.99, not the rounded-to-$40 that
-    // Math.round(priceInCents / 100) used to render.
-    { slug: 'pro', name: 'Business', messages: 250000, priceInCents: 3999, annualPriceInCents: 39000 },
-  ];
-
   let origTTY: typeof process.stdout.isTTY;
   beforeEach(() => {
     vi.mocked(apiClient).mockReset();

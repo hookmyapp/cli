@@ -2,6 +2,12 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.15 — 2026-08-13
+
+### Changed
+
+- `hookmyapp billing upgrade` now changes the plan of an existing subscription in the terminal: it states what you'll be charged today and when your next bill lands, asks for confirmation, and applies the change. No browser, and no sign-in for a CLI-only user. Custom plans, a pending cancellation, and an already-scheduled plan change still open the Billing page (AIT-398).
+
 ## 0.14.14 — 2026-08-12
 
 ### Added
