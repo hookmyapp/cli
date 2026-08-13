@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock apiClient
 vi.mock('../api/client.js', () => ({
@@ -93,19 +93,6 @@ function mockSubAndUsage(sub: any, usage: { totalMessages: number; limit: number
     throw new Error(`unexpected path: ${path}`);
   });
 }
-
-// vi.useFakeTimers()'s first-ever call in a worker process lazily loads the
-// underlying timer-faking library; a poll test that enables fake timers for
-// the first time can register pollForUpgrade's setTimeout against the
-// not-yet-patched real timer, then hang on the real 5s test timeout instead
-// of the faked one (only the "prompts free user..." test below uses fake
-// timers in this file). Cycle it once here, outside any timed test, so the
-// library is warm before it matters — same fix as the sibling
-// commands/__tests__/billing.test.ts.
-beforeAll(() => {
-  vi.useFakeTimers();
-  vi.useRealTimers();
-});
 
 describe('billing commands', () => {
   let billingStatus: (opts: { human?: boolean }) => Promise<void>;
@@ -363,6 +350,17 @@ describe('billing commands', () => {
         }
         throw new Error(`unexpected path: ${path}`);
       });
+
+      // getDefaultWorkspaceId() lazy-imports '../index.js' (the full CLI
+      // entry module) to read --workspace off the parsed program options.
+      // This suite's beforeEach calls vi.resetModules() every test, so that
+      // import is cold here — a real, disk-bound module-graph load, not a
+      // microtask. Warm it under REAL timers before flipping to fake ones:
+      // triggering that cold import for the first time while fake timers are
+      // already active starves it of the real setImmediate/IO ticks it needs
+      // to resolve, and vi.advanceTimersByTimeAsync() never drives those,
+      // so the whole command hangs until vitest's real 5s test timeout.
+      await import('../index.js');
 
       vi.useFakeTimers();
       try {
