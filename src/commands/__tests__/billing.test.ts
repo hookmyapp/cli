@@ -1,8 +1,12 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 
 vi.mock('../../api/client.js', () => ({
   apiClient: vi.fn(),
   setWorkspaceContext: vi.fn(),
+  // pollForUpgrade's transient-error check calls this on every poll failure;
+  // default to "not a network blip" so permanent errors (AuthError, etc.)
+  // fall through to the `err instanceof ApiError` check and then rethrow.
+  isNetworkFailure: vi.fn(() => false),
 }));
 
 // getDefaultWorkspaceId is read off the user's local profile; stub to a fixed
@@ -21,14 +25,73 @@ vi.mock('../_helpers.js', async (importOriginal) => {
 // without this stub, it would try to launch the user's browser.
 vi.mock('open', () => ({ default: vi.fn(async () => undefined) }));
 
+// billingUpgrade's free-tier path prompts via @inquirer/prompts. Record each
+// call's `choices` argument (capturedSelectCalls) and let tests queue the
+// answers a user would pick (queueSelectAnswers) instead of asserting against
+// a hardcoded plan list.
+let selectCalls: Array<{ choices: unknown }> = [];
+let selectAnswers: unknown[] = [];
+vi.mock('@inquirer/prompts', () => ({
+  select: vi.fn(async (args: { choices: unknown }) => {
+    selectCalls.push(args);
+    return selectAnswers.shift();
+  }),
+}));
+function queueSelectAnswers(...answers: unknown[]): void {
+  selectAnswers = answers;
+}
+function capturedSelectCalls(): Array<{ choices: unknown }> {
+  return selectCalls;
+}
+
 import open from 'open';
 import { apiClient } from '../../api/client.js';
+import { AuthError, NetworkError } from '../../output/error.js';
 import { billingManage, billingUpgrade } from '../billing.js';
 
 const workspaces = [
   { id: 'ws_other', name: 'Other', organizationPublicId: 'org_other111' },
   { id: 'ws_test', name: 'Acme', organizationPublicId: 'org_abc12345' },
 ];
+
+/** Advance fake timers in small steps until `settleOn` resolves/rejects (or a
+ * generous step cap is hit). A single large `advanceTimersByTimeAsync` jump
+ * can race ahead of the pending promise chain before pollForUpgrade's first
+ * `setTimeout` is even registered (dynamic `import('@inquirer/prompts')` +
+ * several mocked/real awaits) — especially under full-suite load, where
+ * scheduling is less predictable than running this file alone. Stepping
+ * small and checking settlement each time avoids guessing a fixed total. */
+async function advanceUntilSettled(
+  settleOn: Promise<unknown>,
+  { stepMs = 100, maxSteps = 500 } = {},
+): Promise<void> {
+  let settled = false;
+  settleOn.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  for (let i = 0; i < maxSteps && !settled; i++) {
+    await vi.advanceTimersByTimeAsync(stepMs);
+  }
+}
+
+// billingUpgrade's free-tier path resolves `@inquirer/prompts` via a dynamic
+// `import()` at call time. Warm that module resolution once here, outside any
+// fake-timer test — the first cold `import()` in this file can take more
+// event-loop turns than a fake-timer poll test can reliably interleave with.
+// Also warm vi.useFakeTimers() itself: its first-ever call in the process
+// lazily loads the underlying timer-faking library, and a poll test that
+// enables fake timers for the first time can otherwise register its
+// setTimeout against the not-yet-patched real timer.
+beforeAll(async () => {
+  await import('@inquirer/prompts');
+  vi.useFakeTimers();
+  vi.useRealTimers();
+});
 
 describe('billingManage — opens the app Billing page (portal retired)', () => {
   beforeEach(() => {
@@ -98,5 +161,136 @@ describe('billingUpgrade — active subscription path (portal retired)', () => {
     expect(vi.mocked(open)).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
     const paths = vi.mocked(apiClient).mock.calls.map((c) => String(c[0]));
     expect(paths.some((p) => p.startsWith('/stripe/'))).toBe(false);
+  });
+});
+
+describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
+  const CATALOG = [
+    { slug: 'free', name: 'Launch', messages: 2000, priceInCents: 0, annualPriceInCents: 0 },
+    { slug: 'starter', name: 'Build', messages: 30000, priceInCents: 1200, annualPriceInCents: 12000 },
+    { slug: 'growth', name: 'Scale', messages: 100000, priceInCents: 2400, annualPriceInCents: 24000, popular: true },
+    // Non-whole monthly price (AIT-391): $39.99, not the rounded-to-$40 that
+    // Math.round(priceInCents / 100) used to render.
+    { slug: 'pro', name: 'Business', messages: 250000, priceInCents: 3999, annualPriceInCents: 39000 },
+  ];
+
+  let origTTY: typeof process.stdout.isTTY;
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(open).mockClear();
+    selectCalls = [];
+    selectAnswers = [];
+    process.env.HOOKMYAPP_APP_URL = 'https://app.test';
+    origTTY = process.stdout.isTTY;
+    process.stdout.isTTY = true;
+  });
+  afterEach(() => {
+    delete process.env.HOOKMYAPP_APP_URL;
+    process.stdout.isTTY = origTTY;
+    // Fake timers are per-test opt-in (three tests below poll under
+    // vi.useFakeTimers()) — restore real timers here rather than at the end
+    // of each test body, so a thrown assertion between `await run` and
+    // cleanup can't leak fake timers into later tests (no other afterEach
+    // resets them).
+    vi.useRealTimers();
+  });
+
+  test('When on free tier, then plan choices come from GET /plans with limits and prices, free excluded', async () => {
+    // apiClient queue: workspaces union → subscription (free) → /plans → checkout → poll (upgraded)
+    // billingUpgrade polls after checkout, so fake timers + a poll response are
+    // needed to let the command resolve instead of waiting on a real 5s timer.
+    vi.useFakeTimers();
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce(workspaces)
+      .mockResolvedValueOnce({ plan: { slug: 'free' }, status: 'active' })
+      .mockResolvedValueOnce(CATALOG)
+      .mockResolvedValueOnce({ url: 'https://checkout.stripe.com/c/pay_123' })
+      .mockResolvedValueOnce({ plan: { slug: 'growth', name: 'Scale', messages: 100000 }, status: 'active' });
+    queueSelectAnswers('growth', 'monthly'); // helper on the @inquirer/prompts mock
+
+    const run = billingUpgrade();
+    await advanceUntilSettled(run);
+    await run;
+
+    expect(vi.mocked(apiClient)).toHaveBeenCalledWith('/plans');
+    const planChoices = capturedSelectCalls()[0].choices as Array<{ value: string; name: string; description?: string }>;
+    expect(planChoices.map((c) => c.value)).toEqual(['starter', 'growth', 'pro']);
+    expect(planChoices[1].name).toBe('Scale: 100,000 messages — $24/mo (or $240/yr)');
+    expect(planChoices[1].description).toBe('Most popular');
+    // Non-whole price renders 2dp instead of Math.round dropping the cents
+    // (1999¢ used to render as "$20").
+    expect(planChoices[2].name).toBe('Business: 250,000 messages — $39.99/mo (or $390/yr)');
+  });
+
+  test('When GET /plans fails, then upgrade fails with that error and no checkout is minted', async () => {
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce(workspaces)
+      .mockResolvedValueOnce({ plan: { slug: 'free' }, status: 'active' })
+      .mockRejectedValueOnce(new Error('service unavailable'));
+
+    await expect(billingUpgrade()).rejects.toThrow();
+    const paths = vi.mocked(apiClient).mock.calls.map((c) => c[0]);
+    expect(paths).not.toContain('/organizations/org_abc12345/billing/checkout');
+  });
+
+  test('When checkout opens, then upgrade polls the subscription and confirms once the plan flips', async () => {
+    vi.useFakeTimers();
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce(workspaces)
+      .mockResolvedValueOnce({ plan: { slug: 'free' }, status: 'active' })
+      .mockResolvedValueOnce(CATALOG)
+      .mockResolvedValueOnce({ url: 'https://checkout.stripe.com/c/pay_123' })
+      // poll #1: still free; poll #2: upgraded
+      .mockResolvedValueOnce({ plan: { slug: 'free' }, status: 'active' })
+      .mockResolvedValueOnce({ plan: { slug: 'growth', name: 'Scale', messages: 100000 }, status: 'active' });
+    queueSelectAnswers('growth', 'monthly');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const run = billingUpgrade();
+    await advanceUntilSettled(run);
+    await run;
+
+    expect(log.mock.calls.flat().join('\n')).toContain('Upgraded to Scale');
+  });
+
+  test('When a poll tick hits a network blip (apiClient throws NetworkError), then it is swallowed and polling continues to success', async () => {
+    // apiClient wraps a raw fetch failure in its own NetworkError before it
+    // ever reaches pollForUpgrade — isNetworkFailure() (mocked false in this
+    // file) inspects the raw fetch-error shape and doesn't recognize the
+    // wrapper. pollForUpgrade must still treat NetworkError itself as
+    // transient, or a single blip aborts the wait instead of riding it out.
+    vi.useFakeTimers();
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce(workspaces)
+      .mockResolvedValueOnce({ plan: { slug: 'free' }, status: 'active' })
+      .mockResolvedValueOnce(CATALOG)
+      .mockResolvedValueOnce({ url: 'https://checkout.stripe.com/c/pay_123' })
+      // poll #1: transient network blip; poll #2: upgraded
+      .mockRejectedValueOnce(new NetworkError())
+      .mockResolvedValueOnce({ plan: { slug: 'growth', name: 'Scale', messages: 100000 }, status: 'active' });
+    queueSelectAnswers('growth', 'monthly');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const run = billingUpgrade();
+    await advanceUntilSettled(run);
+    await run;
+
+    expect(log.mock.calls.flat().join('\n')).toContain('Upgraded to Scale');
+  });
+
+  test('When polling hits a permanent error (expired auth), then upgrade aborts instead of waiting forever', async () => {
+    vi.useFakeTimers();
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce(workspaces)
+      .mockResolvedValueOnce({ plan: { slug: 'free' }, status: 'active' })
+      .mockResolvedValueOnce(CATALOG)
+      .mockResolvedValueOnce({ url: 'https://checkout.stripe.com/c/pay_123' })
+      .mockRejectedValueOnce(new AuthError()); // poll #1: token expired
+    queueSelectAnswers('growth', 'monthly');
+
+    const run = billingUpgrade();
+    const assertion = expect(run).rejects.toBeInstanceOf(AuthError);
+    await advanceUntilSettled(run);
+    await assertion;
   });
 });

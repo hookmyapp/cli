@@ -98,10 +98,10 @@ describe('outputError JSON envelope (D1)', () => {
     expect(parsed.error.hint).toBe('Run: hookmyapp channels list');
   });
 
-  test('When human mode, then plain text is emitted (unchanged behavior)', () => {
+  test('When human mode, then plain text with the code suffix is emitted', () => {
     const err = new ValidationError('Bad input', 'BAD_INPUT');
     outputError(err, { human: true });
-    expect(stderrSpy).toHaveBeenCalledWith('Error: Bad input\n');
+    expect(stderrSpy).toHaveBeenCalledWith('Error: Bad input (BAD_INPUT)\n');
   });
 
   test('When userMessage is a non-string object (bad API body), then outputError does not throw and serializes it (HOOKMYAPP-CLI-J)', () => {

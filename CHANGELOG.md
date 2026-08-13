@@ -2,6 +2,16 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.14 — 2026-08-12
+
+### Added
+
+- `hookmyapp billing upgrade` now fetches live plan catalog from the backend and polls until the upgrade completes with a ✓ confirmation (AIT-391).
+
+### Changed
+
+- Human-mode error messages now include stable error-code suffixes (e.g. `Error: <message> (INVALID_CREDENTIALS)`) for debugging and consistency with machine-mode output (AIT-391).
+
 ## 0.14.13
 
 - Replace example phone numbers and email fixtures with reserved fictional values.

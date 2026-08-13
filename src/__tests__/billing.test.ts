@@ -4,6 +4,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../api/client.js', () => ({
   apiClient: vi.fn(),
   setWorkspaceContext: vi.fn(),
+  // pollForUpgrade's transient-error check calls this on every poll failure;
+  // default to "not a network blip" so it never masks a real error.
+  isNetworkFailure: vi.fn(() => false),
 }));
 
 // Mock open
@@ -56,6 +59,31 @@ const freeSub = {
   status: 'active',
   plan: { slug: 'free', name: 'Free', messages: 50, priceInCents: 0, annualPriceInCents: 0 },
 };
+
+/** Advance fake timers in small steps until `settleOn` resolves/rejects (or a
+ * generous step cap is hit). A single large `advanceTimersByTimeAsync` jump
+ * can race ahead of the pending promise chain before pollForUpgrade's first
+ * `setTimeout` is even registered (this suite's beforeEach calls
+ * vi.resetModules() every test, forcing a cold re-import of
+ * '@inquirer/prompts' each time) — especially under full-suite load, where
+ * scheduling is less predictable than running this file alone. */
+async function advanceUntilSettled(
+  settleOn: Promise<unknown>,
+  { stepMs = 50, maxSteps = 1000 } = {},
+): Promise<void> {
+  let settled = false;
+  settleOn.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  for (let i = 0; i < maxSteps && !settled; i++) {
+    await vi.advanceTimersByTimeAsync(stepMs);
+  }
+}
 
 function mockSubAndUsage(sub: any, usage: { totalMessages: number; limit: number; percentage: number }) {
   mockedApiClient.mockImplementation(async (path: string) => {
@@ -237,10 +265,16 @@ describe('billing commands', () => {
       vi.unstubAllEnvs();
     });
 
+    const PLANS_CATALOG = [
+      { slug: 'free', name: 'Launch', messages: 2000, priceInCents: 0, annualPriceInCents: 0 },
+      { slug: 'growth', name: 'Scale', messages: 1200, priceInCents: 2400, annualPriceInCents: 24000 },
+    ];
+
     function mockSubAndWorkspaces(sub: any, checkoutUrl?: string) {
       mockedApiClient.mockImplementation(async (path: string) => {
         if (path === SUBSCRIPTION_PATH) return sub;
         if (path === '/workspaces') return WORKSPACES;
+        if (path === '/plans') return PLANS_CATALOG;
         if (path === CHECKOUT_PATH && checkoutUrl) return { url: checkoutUrl };
         throw new Error(`unexpected path: ${path}`);
       });
@@ -295,15 +329,47 @@ describe('billing commands', () => {
       vi.mocked(inq.select)
         .mockResolvedValueOnce('growth' as never)
         .mockResolvedValueOnce('annual' as never);
-      mockSubAndWorkspaces(
-        { status: 'active', plan: { slug: 'free', name: 'Free' } },
-        'https://checkout.stripe.com/x',
-      );
 
+      // billingUpgrade polls the subscription after checkout opens until the
+      // plan leaves free — flip the mocked subscription response to upgraded
+      // once the checkout call has minted a URL, so the first poll tick
+      // resolves instead of looping forever on the persistent apiClient
+      // mockImplementation.
+      let checkoutMinted = false;
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === SUBSCRIPTION_PATH) {
+          return checkoutMinted
+            ? { status: 'active', plan: { slug: 'growth', name: 'Scale', messages: 1200 } }
+            : { status: 'active', plan: { slug: 'free', name: 'Free' } };
+        }
+        if (path === '/workspaces') return WORKSPACES;
+        if (path === '/plans') return PLANS_CATALOG;
+        if (path === CHECKOUT_PATH) {
+          checkoutMinted = true;
+          return { url: 'https://checkout.stripe.com/x' };
+        }
+        throw new Error(`unexpected path: ${path}`);
+      });
+
+      // getDefaultWorkspaceId() lazy-imports '../index.js' (the full CLI
+      // entry module) to read --workspace off the parsed program options.
+      // This suite's beforeEach calls vi.resetModules() every test, so that
+      // import is cold here — a real, disk-bound module-graph load, not a
+      // microtask. Warm it under REAL timers before flipping to fake ones:
+      // triggering that cold import for the first time while fake timers are
+      // already active starves it of the real setImmediate/IO ticks it needs
+      // to resolve, and vi.advanceTimersByTimeAsync() never drives those,
+      // so the whole command hangs until vitest's real 5s test timeout.
+      await import('../index.js');
+
+      vi.useFakeTimers();
       try {
-        await billingUpgrade();
+        const run = billingUpgrade();
+        await advanceUntilSettled(run);
+        await run;
       } finally {
         process.stdout.isTTY = origTTY;
+        vi.useRealTimers();
       }
 
       expect(inq.select).toHaveBeenCalledTimes(2);

@@ -375,7 +375,11 @@ export function wrapCommanderError(err: Error & { code?: string }): CliError {
 
 export function outputError(error: CliError, opts: { human?: boolean }): void {
   if (opts.human) {
-    process.stderr.write(`Error: ${error.userMessage}\n`);
+    // Diagnosability without internals: the stable machine code makes a
+    // screenshot of a generic error actionable (which failure class fired),
+    // while the message itself stays the safe userMessage.
+    const codeSuffix = error.code ? ` (${error.code})` : '';
+    process.stderr.write(`Error: ${error.userMessage}${codeSuffix}\n`);
     return;
   }
 

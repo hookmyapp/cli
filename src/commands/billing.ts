@@ -1,9 +1,9 @@
 import { Command } from 'commander';
 import open from 'open';
-import { apiClient } from '../api/client.js';
+import { apiClient, isNetworkFailure } from '../api/client.js';
 import { output } from '../output/format.js';
 import { c } from '../output/color.js';
-import { ValidationError } from '../output/error.js';
+import { ApiError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import { getEffectiveAppUrl } from '../config/env-profiles.js';
@@ -19,8 +19,63 @@ import { getDefaultWorkspaceId, resolveOrgPublicIdForWorkspace } from './_helper
 // shared resolveOrgPublicIdForWorkspace helper (AIT-263 — one derivation for
 // customers + billing, never a bare row[0]).
 
+/** Whole-dollar prices render as `$20`; anything with cents renders 2dp
+ *  (`$19.99`) — `Math.round` was dropping cents entirely (1999¢ → "$20"). */
+function formatPrice(cents: number): string {
+  const dollars = cents / 100;
+  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+}
+
 function orgBillingUrl(orgPublicId: string): string {
   return `${getEffectiveAppUrl()}/org/${orgPublicId}/billing`;
+}
+
+const UPGRADE_POLL_INTERVAL_MS = 5_000;
+const UPGRADE_POLL_HINT_EVERY_MS = 60_000;
+
+/** Mirrors the `channels connect` wait pattern: poll the org subscription
+ *  until the plan leaves `free` with an active status. No hard timeout —
+ *  a periodic hint keeps the wait visibly alive; Ctrl+C cancels. ONLY
+ *  transient failures (network blips, 5xx) are swallowed; permanent errors
+ *  (expired auth, revoked permission, client-outdated) rethrow — polling
+ *  forever on those would tell the user to "finish checkout" while the CLI
+ *  itself is the thing that's broken. */
+async function pollForUpgrade(
+  orgPublicId: string,
+): Promise<{ plan: { slug: string; name: string; messages: number }; status: string }> {
+  const startedAt = Date.now();
+  let lastHintAt = startedAt;
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, UPGRADE_POLL_INTERVAL_MS));
+    let sub: { plan: { slug: string; name: string; messages: number }; status: string } | null;
+    try {
+      sub = (await apiClient(
+        `/organizations/${orgPublicId}/billing/subscription`,
+      )) as { plan: { slug: string; name: string; messages: number }; status: string };
+    } catch (err) {
+      // apiClient wraps raw fetch failures in its own NetworkError before
+      // they ever reach here — isNetworkFailure() inspects the *raw* fetch
+      // error shape (TypeError / ECONNREFUSED / etc.) and doesn't recognize
+      // the wrapper, so a plain network blip was falling through to the
+      // rethrow below and aborting the poll. Treat the wrapped NetworkError
+      // as transient too.
+      const transient =
+        err instanceof NetworkError ||
+        isNetworkFailure(err) ||
+        (err instanceof ApiError && (err.statusCode ?? 0) >= 500);
+      if (!transient) throw err;
+      sub = null;
+    }
+    if (sub && sub.plan.slug !== 'free' && ['active', 'trialing'].includes(sub.status)) {
+      return sub;
+    }
+    if (Date.now() - lastHintAt >= UPGRADE_POLL_HINT_EVERY_MS) {
+      lastHintAt = Date.now();
+      console.log(
+        `Still waiting (${Math.round((Date.now() - startedAt) / 60_000)} min) — finish checkout in your browser, or Ctrl+C to cancel.`,
+      );
+    }
+  }
 }
 
 export async function billingManage(opts: { json?: boolean } = {}): Promise<void> {
@@ -124,14 +179,31 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
     );
   }
 
+  type CatalogPlan = {
+    slug: string;
+    name: string;
+    messages: number;
+    priceInCents: number;
+    annualPriceInCents: number;
+    popular?: true;
+  };
+  // Live catalog — the CLI keeps no copy of plan names, limits, or prices;
+  // hardcoded copies drift and have shipped stale numbers before. A fetch
+  // failure fails the command; there is deliberately no fallback list.
+  const catalog = (await apiClient('/plans')) as CatalogPlan[];
+  const paidPlans = catalog.filter((p) => p.priceInCents > 0);
+  if (paidPlans.length === 0) {
+    throw new ValidationError('No paid plans available. Try again later.', 'PLANS_EMPTY');
+  }
+
   const { select } = await import('@inquirer/prompts');
   const planSlug = await select({
     message: 'Choose a plan',
-    choices: [
-      { name: 'Build: 500 messages', value: 'starter' },
-      { name: 'Scale: 1,200 messages', value: 'growth', description: 'Most popular' },
-      { name: 'Business: 2,500 messages', value: 'pro' },
-    ],
+    choices: paidPlans.map((p) => ({
+      name: `${p.name}: ${p.messages.toLocaleString('en-US')} messages — ${formatPrice(p.priceInCents)}/mo (or ${formatPrice(p.annualPriceInCents)}/yr)`,
+      value: p.slug,
+      ...(p.popular ? { description: 'Most popular' } : {}),
+    })),
   });
   const billingInterval = await select({
     message: 'Billing interval',
@@ -146,6 +218,12 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
   });
   console.log('Opening Stripe Checkout...');
   await open(data.url);
+
+  console.log('Waiting for payment confirmation... (Ctrl+C to cancel)');
+  const upgraded = await pollForUpgrade(orgPublicId);
+  console.log(
+    `✓ Upgraded to ${upgraded.plan.name} (${upgraded.plan.messages.toLocaleString('en-US')} messages/mo).`,
+  );
 }
 
 export function registerBillingCommand(_program: Command): void {
