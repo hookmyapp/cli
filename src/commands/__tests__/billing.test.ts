@@ -327,14 +327,15 @@ describe('billingUpgrade — paid tier changes plan in the terminal (AIT-398)', 
     expect(vi.mocked(open)).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
   });
 
-  test('When no TTY, then it fails with UPGRADE_REQUIRES_TTY and applies nothing', async () => {
+  test('When no TTY, then it fails with UPGRADE_REQUIRES_TTY before touching the API', async () => {
     process.stdout.isTTY = false;
     mockApi({});
 
     await expect(billingUpgrade()).rejects.toThrow(/interactive terminal/i);
 
-    const paths = vi.mocked(apiClient).mock.calls.map((c) => String(c[0]));
-    expect(paths).not.toContain(APPLY);
+    // Guarding before the workspace/subscription lookups means a non-TTY run
+    // reports why it can't proceed instead of whatever those calls hit first.
+    expect(vi.mocked(apiClient)).not.toHaveBeenCalled();
     expect(vi.mocked(open)).not.toHaveBeenCalled();
   });
 

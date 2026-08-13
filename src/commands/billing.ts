@@ -293,19 +293,13 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
     );
   }
 
-  const workspaceId = await getDefaultWorkspaceId();
-  const orgPublicId = await resolveOrgPublicIdForWorkspace(workspaceId);
-  const sub = await apiClient(`/organizations/${orgPublicId}/billing/subscription`);
-  // Phase A drops stripeSubscriptionId. Gate on plan.slug for paid-tier
-  // detection AND preserve the existing status check so cancelled or
-  // incomplete subscriptions still route to the checkout flow.
-  const hasActiveSub = sub.plan.slug !== 'free' && ['active', 'past_due'].includes(sub.status);
-
   // Both paths prompt, so the TTY guard covers both (mirrors the
   // `channels connect` / `login` non-TTY guard); without it the @inquirer
   // prompt aborts into a confusing generic error. stdin matters as much as
   // stdout — a redirected stdin renders the prompt and then can't read the
-  // answer, which is the same dead end with a worse error.
+  // answer, which is the same dead end with a worse error. Checked before any
+  // network call so a non-TTY run fails on the reason it can't proceed rather
+  // than on whatever the workspace or subscription lookup happens to hit.
   if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
     throw new ValidationError(
       `billing upgrade requires an interactive terminal to choose a plan. Re-run from a TTY, ` +
@@ -313,6 +307,14 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
       'UPGRADE_REQUIRES_TTY',
     );
   }
+
+  const workspaceId = await getDefaultWorkspaceId();
+  const orgPublicId = await resolveOrgPublicIdForWorkspace(workspaceId);
+  const sub = await apiClient(`/organizations/${orgPublicId}/billing/subscription`);
+  // Phase A drops stripeSubscriptionId. Gate on plan.slug for paid-tier
+  // detection AND preserve the existing status check so cancelled or
+  // incomplete subscriptions still route to the checkout flow.
+  const hasActiveSub = sub.plan.slug !== 'free' && ['active', 'past_due'].includes(sub.status);
 
   if (hasActiveSub) {
     // States the terminal can't describe honestly stay on the Billing page,
