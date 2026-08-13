@@ -15,7 +15,7 @@ vi.mock('open', () => ({
 }));
 
 // Mock @inquirer/prompts
-vi.mock('@inquirer/prompts', () => ({ select: vi.fn() }));
+vi.mock('@inquirer/prompts', () => ({ select: vi.fn(), confirm: vi.fn() }));
 
 // Mock workspace config
 vi.mock('../commands/workspace.js', () => ({
@@ -42,6 +42,7 @@ const WORKSPACE_ID = 'ws_TEST0070';
 const ORG_PUBLIC_ID = 'org_abc12345';
 const SUBSCRIPTION_PATH = `/organizations/${ORG_PUBLIC_ID}/billing/subscription`;
 const CHECKOUT_PATH = `/organizations/${ORG_PUBLIC_ID}/billing/checkout`;
+const BILLING_BASE = `/organizations/${ORG_PUBLIC_ID}/billing`;
 const WORKSPACES = [{ id: WORKSPACE_ID, name: 'Acme', organizationPublicId: ORG_PUBLIC_ID }];
 
 // Phase A backend DTO cleanup: planSlug + stripeSubscriptionId removed.
@@ -267,6 +268,9 @@ describe('billing commands', () => {
 
     const PLANS_CATALOG = [
       { slug: 'free', name: 'Launch', messages: 2000, priceInCents: 0, annualPriceInCents: 0 },
+      // A second paid plan so the paid-tier path (which drops the plan the org
+      // is already on) still has something to offer.
+      { slug: 'starter', name: 'Build', messages: 600, priceInCents: 1200, annualPriceInCents: 12000 },
       { slug: 'growth', name: 'Scale', messages: 1200, priceInCents: 2400, annualPriceInCents: 24000 },
     ];
 
@@ -280,22 +284,49 @@ describe('billing commands', () => {
       });
     }
 
-    it('opens the app Billing page (not /stripe/portal) when user has active subscription', async () => {
-      mockSubAndWorkspaces({ status: 'active', plan: { slug: 'growth', name: 'Scale' } });
+    /** Paid tiers change plan in the terminal (AIT-398): preview → confirm →
+     *  apply, no browser. Declines the confirmation so the assertion is about
+     *  which path ran, not about applying a change. */
+    async function runPaidPathDeclining(status: string): Promise<void> {
+      const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
+      const inq = await import('@inquirer/prompts');
+      vi.mocked(inq.select).mockResolvedValueOnce('starter' as never);
+      vi.mocked(inq.confirm).mockResolvedValueOnce(false as never);
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === SUBSCRIPTION_PATH) {
+          return { status, plan: { slug: 'growth', name: 'Scale' }, billingInterval: 'monthly' };
+        }
+        if (path === '/workspaces') return WORKSPACES;
+        if (path === '/plans') return PLANS_CATALOG;
+        if (path === `${BILLING_BASE}/usage-tier/preview`) return { scheduled: true };
+        throw new Error(`unexpected path: ${path}`);
+      });
 
-      await billingUpgrade();
+      try {
+        await billingUpgrade();
+      } finally {
+        process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
+      }
+    }
 
-      expect(mockedOpen).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
+    it('changes plan in the terminal when the user has an active subscription (no browser)', async () => {
+      await runPaidPathDeclining('active');
+
+      expect(mockedOpen).not.toHaveBeenCalled();
       const paths = mockedApiClient.mock.calls.map((c) => c[0]);
+      expect(paths).toContain(`${BILLING_BASE}/usage-tier/preview`);
       expect(paths).not.toContain('/stripe/portal');
     });
 
     it('treats past_due on a paid plan as a subscriber', async () => {
-      mockSubAndWorkspaces({ status: 'past_due', plan: { slug: 'growth', name: 'Scale' } });
+      await runPaidPathDeclining('past_due');
 
-      await billingUpgrade();
-
-      expect(mockedOpen).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
+      const paths = mockedApiClient.mock.calls.map((c) => c[0]);
+      expect(paths).toContain(`${BILLING_BASE}/usage-tier/preview`);
     });
 
     it('rejects --json with UPGRADE_NO_JSON (no machine-readable form)', async () => {
@@ -321,10 +352,12 @@ describe('billing commands', () => {
     });
 
     it('prompts free user for plan + interval and opens checkout', async () => {
-      // Free-tier path is interactive: guarded by a TTY check. Stub isTTY so
-      // the prompt branch runs instead of the non-TTY rejection.
+      // Free-tier path is interactive: guarded by a TTY check on both streams.
+      // Stub them so the prompt branch runs instead of the non-TTY rejection.
       const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
       process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
       const inq = await import('@inquirer/prompts');
       vi.mocked(inq.select)
         .mockResolvedValueOnce('growth' as never)
@@ -369,6 +402,7 @@ describe('billing commands', () => {
         await run;
       } finally {
         process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
         vi.useRealTimers();
       }
 

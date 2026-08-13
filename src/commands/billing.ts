@@ -30,6 +30,53 @@ function orgBillingUrl(orgPublicId: string): string {
   return `${getEffectiveAppUrl()}/org/${orgPublicId}/billing`;
 }
 
+/** `Sep 13, 2026`, matching the dashboard's confirm dialog. Fixed to en-US so
+ *  the sentence reads the same everywhere the CLI runs. Null for a missing or
+ *  unparseable date — callers drop the clause rather than print "Invalid Date". */
+function formatDate(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+type TierPreview = { scheduled: boolean; amountDueCents?: number; currency?: string };
+
+/** The terminal wording of the dashboard's tier-switch dialog (AIT-398). Every
+ *  claim comes from the server's preview: an upgrade states the prorated charge
+ *  it returned, a downgrade (`scheduled`) states that nothing is charged now.
+ *  Clauses that need the period end are dropped when the subscription doesn't
+ *  carry one — never guessed. */
+function describeTierChange(args: {
+  targetName: string;
+  currentName: string;
+  preview: TierPreview;
+  currentPeriodEnd?: string;
+}): string {
+  const { targetName, currentName, preview } = args;
+  const on = formatDate(args.currentPeriodEnd);
+
+  if (preview.scheduled) {
+    return (
+      `You'll keep ${currentName} and its usage until ${on ?? 'the end of your billing period'}. ` +
+      `${targetName} starts then, and nothing is charged now.`
+    );
+  }
+
+  const nextBill = on
+    ? `On ${on} your next bill is the full ${targetName} price.`
+    : `Your next bill is the full ${targetName} price.`;
+  const due = preview.amountDueCents ?? 0;
+  if (due > 0) {
+    const through = on ? ` (through ${on})` : '';
+    return (
+      `You'll switch to ${targetName} right away. We'll charge $${(due / 100).toFixed(2)} today ` +
+      `for the rest of this billing period${through}. ${nextBill}`
+    );
+  }
+  return `You'll switch to ${targetName} right away at no extra charge today. ${nextBill}`;
+}
+
 const UPGRADE_POLL_INTERVAL_MS = 5_000;
 const UPGRADE_POLL_HINT_EVERY_MS = 60_000;
 
@@ -139,17 +186,125 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
   }
 }
 
+type CatalogPlan = {
+  slug: string;
+  name: string;
+  messages: number;
+  priceInCents: number;
+  annualPriceInCents: number;
+  popular?: true;
+};
+
+/** Live catalog — the CLI keeps no copy of plan names, limits, or prices;
+ *  hardcoded copies drift and have shipped stale numbers before. A fetch
+ *  failure fails the command; there is deliberately no fallback list.
+ *  `exceptSlug` drops the plan the org is already on. */
+async function fetchPaidPlans(exceptSlug?: string): Promise<CatalogPlan[]> {
+  const catalog = (await apiClient('/plans')) as CatalogPlan[];
+  const paidPlans = catalog.filter((p) => p.priceInCents > 0 && p.slug !== exceptSlug);
+  if (paidPlans.length === 0) {
+    throw new ValidationError('No paid plans available. Try again later.', 'PLANS_EMPTY');
+  }
+  return paidPlans;
+}
+
+function planChoice(p: CatalogPlan): { name: string; value: string; description?: string } {
+  return {
+    name: `${p.name}: ${p.messages.toLocaleString('en-US')} messages — ${formatPrice(p.priceInCents)}/mo (or ${formatPrice(p.annualPriceInCents)}/yr)`,
+    value: p.slug,
+    ...(p.popular ? { description: 'Most popular' } : {}),
+  };
+}
+
+/** Plan change for an org that already pays (AIT-398). Same two endpoints the
+ *  dashboard's confirm dialog uses, so the terminal states the billing effect
+ *  and applies it — no browser, and no login wall for a CLI-only user. */
+async function changePlanInTerminal(
+  orgPublicId: string,
+  sub: {
+    plan: { slug: string; name: string };
+    billingInterval: 'monthly' | 'annual';
+    currentPeriodEnd?: string;
+  },
+): Promise<void> {
+  const plans = await fetchPaidPlans(sub.plan.slug);
+
+  const { select, confirm } = await import('@inquirer/prompts');
+  const planSlug = await select({
+    message: 'Choose a plan',
+    choices: plans.map(planChoice),
+  });
+  const target = plans.find((p) => p.slug === planSlug)!;
+  // Interval is whatever the subscription already bills on — switching monthly
+  // ↔ annual is a separate decision and stays on the Billing page. Never
+  // defaulted: guessing `monthly` for an annual customer would move their
+  // billing cadence behind a prompt that only mentioned the plan.
+  const body = JSON.stringify({ planSlug, billingInterval: sub.billingInterval });
+
+  const preview = (await apiClient(`/organizations/${orgPublicId}/billing/usage-tier/preview`, {
+    method: 'POST',
+    body,
+  })) as TierPreview;
+  console.log(
+    describeTierChange({
+      targetName: target.name,
+      currentName: sub.plan.name,
+      preview,
+      currentPeriodEnd: sub.currentPeriodEnd,
+    }),
+  );
+
+  const ok = await confirm({ message: `Switch to ${target.name}?`, default: false });
+  if (!ok) {
+    console.log('No changes made.');
+    return;
+  }
+
+  const result = (await apiClient(`/organizations/${orgPublicId}/billing/usage-tier`, {
+    method: 'POST',
+    body,
+  })) as { scheduled: boolean; effectiveAt?: string };
+
+  if (result.scheduled) {
+    const on = formatDate(result.effectiveAt ?? sub.currentPeriodEnd);
+    console.log(
+      on
+        ? `✓ ${target.name} starts on ${on}.`
+        : `✓ ${target.name} starts at the end of your billing period.`,
+    );
+    return;
+  }
+  console.log(
+    `✓ Switched to ${target.name} (${target.messages.toLocaleString('en-US')} messages/mo).`,
+  );
+}
+
 export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<void> {
-  // `billing upgrade` is interactive end-to-end: the free path prompts for a
-  // plan + interval, and both paths open a browser. There is no machine-
-  // readable form, so reject --json up front with a clear pointer instead of
-  // rendering an inquirer prompt that aborts into a generic error in non-TTY
-  // / --json contexts.
+  // `billing upgrade` is interactive end-to-end: both paths prompt for a plan
+  // and confirm before anything is charged. There is no machine-readable form,
+  // so reject --json up front with a clear pointer instead of rendering an
+  // inquirer prompt that aborts into a generic error in non-TTY / --json
+  // contexts.
   if (opts.json) {
     throw new ValidationError(
-      `billing upgrade is interactive (plan selection + browser checkout) and has no --json form. ` +
-        `Run it without --json from a terminal, or use \`${cliCommandPrefix()} billing manage\` for an existing subscription.`,
+      `billing upgrade is interactive (plan selection + confirmation) and has no --json form. ` +
+        `Run it without --json from a terminal, or use \`${cliCommandPrefix()} billing manage\` to open the Billing page.`,
       'UPGRADE_NO_JSON',
+    );
+  }
+
+  // Both paths prompt, so the TTY guard covers both (mirrors the
+  // `channels connect` / `login` non-TTY guard); without it the @inquirer
+  // prompt aborts into a confusing generic error. stdin matters as much as
+  // stdout — a redirected stdin renders the prompt and then can't read the
+  // answer, which is the same dead end with a worse error. Checked before any
+  // network call so a non-TTY run fails on the reason it can't proceed rather
+  // than on whatever the workspace or subscription lookup happens to hit.
+  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
+    throw new ValidationError(
+      `billing upgrade requires an interactive terminal to choose a plan. Re-run from a TTY, ` +
+        `or use \`${cliCommandPrefix()} billing manage\` to manage an existing subscription.`,
+      'UPGRADE_REQUIRES_TTY',
     );
   }
 
@@ -162,48 +317,32 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
   const hasActiveSub = sub.plan.slug !== 'free' && ['active', 'past_due'].includes(sub.status);
 
   if (hasActiveSub) {
-    const url = orgBillingUrl(orgPublicId);
-    console.log('Opening your Billing page to update your plan...');
-    await open(url);
+    // States the terminal can't describe honestly stay on the Billing page,
+    // which surfaces them: a Custom plan isn't in the tier catalog at all, and
+    // a pending cancel or scheduled plan change would make "you'll switch right
+    // away" a lie about what the subscription is already doing. A missing
+    // billingInterval (the read model leaves it undefined when Stripe can't be
+    // reached) belongs here too — applying a change needs an interval, and
+    // assuming one could move an annual customer to monthly billing.
+    if (
+      sub.plan.slug === 'custom' ||
+      sub.cancelAtPeriodEnd === true ||
+      sub.pendingPlanChange ||
+      (sub.billingInterval !== 'monthly' && sub.billingInterval !== 'annual')
+    ) {
+      console.log('Opening your Billing page to update your plan...');
+      await open(orgBillingUrl(orgPublicId));
+      return;
+    }
+    await changePlanInTerminal(orgPublicId, sub);
     return;
   }
 
-  // Free tier → interactive plan selection. Requires a TTY (mirrors the
-  // `channels connect` / `login` non-TTY guard); without it the @inquirer
-  // prompt aborts into a confusing generic error.
-  if (process.stdout.isTTY !== true) {
-    throw new ValidationError(
-      `billing upgrade requires an interactive terminal to choose a plan. Re-run from a TTY, ` +
-        `or use \`${cliCommandPrefix()} billing manage\` to manage an existing subscription.`,
-      'UPGRADE_REQUIRES_TTY',
-    );
-  }
-
-  type CatalogPlan = {
-    slug: string;
-    name: string;
-    messages: number;
-    priceInCents: number;
-    annualPriceInCents: number;
-    popular?: true;
-  };
-  // Live catalog — the CLI keeps no copy of plan names, limits, or prices;
-  // hardcoded copies drift and have shipped stale numbers before. A fetch
-  // failure fails the command; there is deliberately no fallback list.
-  const catalog = (await apiClient('/plans')) as CatalogPlan[];
-  const paidPlans = catalog.filter((p) => p.priceInCents > 0);
-  if (paidPlans.length === 0) {
-    throw new ValidationError('No paid plans available. Try again later.', 'PLANS_EMPTY');
-  }
-
+  const paidPlans = await fetchPaidPlans();
   const { select } = await import('@inquirer/prompts');
   const planSlug = await select({
     message: 'Choose a plan',
-    choices: paidPlans.map((p) => ({
-      name: `${p.name}: ${p.messages.toLocaleString('en-US')} messages — ${formatPrice(p.priceInCents)}/mo (or ${formatPrice(p.annualPriceInCents)}/yr)`,
-      value: p.slug,
-      ...(p.popular ? { description: 'Most popular' } : {}),
-    })),
+    choices: paidPlans.map(planChoice),
   });
   const billingInterval = await select({
     message: 'Billing interval',
@@ -252,7 +391,7 @@ export function registerBillingCommand(_program: Command): void {
 
   const billingUpgradeCmd = billing
     .command('upgrade')
-    .description('Upgrade plan (interactive for free users, opens your Billing page for subscribers)')
+    .description('Change your plan (interactive)')
     .action(async () => {
       const { program: rootProgram } = await import('../index.js');
       await billingUpgrade({ json: !!rootProgram.opts().json });
