@@ -331,7 +331,7 @@ describe('billingUpgrade — paid tier changes plan in the terminal (AIT-398)', 
     process.stdout.isTTY = false;
     mockApi({});
 
-    await expect(billingUpgrade()).rejects.toThrow(/interactive terminal/i);
+    await expect(billingUpgrade()).rejects.toMatchObject({ code: 'UPGRADE_REQUIRES_TTY' });
 
     // Guarding before the workspace/subscription lookups means a non-TTY run
     // reports why it can't proceed instead of whatever those calls hit first.
