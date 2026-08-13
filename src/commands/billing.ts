@@ -223,7 +223,7 @@ async function changePlanInTerminal(
   orgPublicId: string,
   sub: {
     plan: { slug: string; name: string };
-    billingInterval?: 'monthly' | 'annual';
+    billingInterval: 'monthly' | 'annual';
     currentPeriodEnd?: string;
   },
 ): Promise<void> {
@@ -236,9 +236,10 @@ async function changePlanInTerminal(
   });
   const target = plans.find((p) => p.slug === planSlug)!;
   // Interval is whatever the subscription already bills on — switching monthly
-  // ↔ annual is a separate decision and stays on the Billing page.
-  const billingInterval = sub.billingInterval ?? 'monthly';
-  const body = JSON.stringify({ planSlug, billingInterval });
+  // ↔ annual is a separate decision and stays on the Billing page. Never
+  // defaulted: guessing `monthly` for an annual customer would move their
+  // billing cadence behind a prompt that only mentioned the plan.
+  const body = JSON.stringify({ planSlug, billingInterval: sub.billingInterval });
 
   const preview = (await apiClient(`/organizations/${orgPublicId}/billing/usage-tier/preview`, {
     method: 'POST',
@@ -315,8 +316,16 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
     // States the terminal can't describe honestly stay on the Billing page,
     // which surfaces them: a Custom plan isn't in the tier catalog at all, and
     // a pending cancel or scheduled plan change would make "you'll switch right
-    // away" a lie about what the subscription is already doing.
-    if (sub.plan.slug === 'custom' || sub.cancelAtPeriodEnd === true || sub.pendingPlanChange) {
+    // away" a lie about what the subscription is already doing. A missing
+    // billingInterval (the read model leaves it undefined when Stripe can't be
+    // reached) belongs here too — applying a change needs an interval, and
+    // assuming one could move an annual customer to monthly billing.
+    if (
+      sub.plan.slug === 'custom' ||
+      sub.cancelAtPeriodEnd === true ||
+      sub.pendingPlanChange ||
+      (sub.billingInterval !== 'monthly' && sub.billingInterval !== 'annual')
+    ) {
       console.log('Opening your Billing page to update your plan...');
       await open(orgBillingUrl(orgPublicId));
       return;

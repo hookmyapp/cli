@@ -294,7 +294,9 @@ describe('billing commands', () => {
       vi.mocked(inq.select).mockResolvedValueOnce('starter' as never);
       vi.mocked(inq.confirm).mockResolvedValueOnce(false as never);
       mockedApiClient.mockImplementation(async (path: string) => {
-        if (path === SUBSCRIPTION_PATH) return { status, plan: { slug: 'growth', name: 'Scale' } };
+        if (path === SUBSCRIPTION_PATH) {
+          return { status, plan: { slug: 'growth', name: 'Scale' }, billingInterval: 'monthly' };
+        }
         if (path === '/workspaces') return WORKSPACES;
         if (path === '/plans') return PLANS_CATALOG;
         if (path === `${BILLING_BASE}/usage-tier/preview`) return { scheduled: true };

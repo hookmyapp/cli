@@ -269,6 +269,31 @@ describe('billingUpgrade — paid tier changes plan in the terminal (AIT-398)', 
     expect(paths).not.toContain(PREVIEW);
   });
 
+  test('When the subscription bills annually, then the change is sent as annual', async () => {
+    mockApi(
+      { [PREVIEW]: { scheduled: false, amountDueCents: 0 }, [APPLY]: { scheduled: false } },
+      { ...SUB, billingInterval: 'annual' },
+    );
+    queueSelectAnswers('growth');
+    queueConfirmAnswers(true);
+
+    await billingUpgrade();
+
+    const applyCall = vi.mocked(apiClient).mock.calls.find((c) => c[0] === APPLY)!;
+    expect(JSON.parse(String((applyCall[1] as { body: string }).body)).billingInterval).toBe('annual');
+  });
+
+  test('When the subscription carries no billing interval, then the Billing page opens rather than assuming monthly', async () => {
+    const { billingInterval: _dropped, ...noInterval } = SUB;
+    mockApi({}, noInterval);
+
+    await billingUpgrade();
+
+    expect(vi.mocked(open)).toHaveBeenCalledWith('https://app.test/org/org_abc12345/billing');
+    const bodies = vi.mocked(apiClient).mock.calls.map((c) => JSON.stringify(c[1] ?? ''));
+    expect(bodies.some((b) => b.includes('monthly'))).toBe(false);
+  });
+
   test('When the org is on a Custom plan, then the Billing page opens (not in the tier catalog)', async () => {
     mockApi({}, { ...SUB, plan: { slug: 'custom', name: 'Custom' } });
 
