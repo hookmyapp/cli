@@ -303,8 +303,10 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
 
   // Both paths prompt, so the TTY guard covers both (mirrors the
   // `channels connect` / `login` non-TTY guard); without it the @inquirer
-  // prompt aborts into a confusing generic error.
-  if (process.stdout.isTTY !== true) {
+  // prompt aborts into a confusing generic error. stdin matters as much as
+  // stdout — a redirected stdin renders the prompt and then can't read the
+  // answer, which is the same dead end with a worse error.
+  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
     throw new ValidationError(
       `billing upgrade requires an interactive terminal to choose a plan. Re-run from a TTY, ` +
         `or use \`${cliCommandPrefix()} billing manage\` to manage an existing subscription.`,

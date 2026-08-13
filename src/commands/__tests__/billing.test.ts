@@ -177,6 +177,7 @@ describe('billingUpgrade — paid tier changes plan in the terminal (AIT-398)', 
   }
 
   let origTTY: typeof process.stdout.isTTY;
+  let origStdinTTY: typeof process.stdin.isTTY;
   let log: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
     vi.mocked(apiClient).mockReset();
@@ -186,12 +187,15 @@ describe('billingUpgrade — paid tier changes plan in the terminal (AIT-398)', 
     confirmAnswers = [];
     process.env.HOOKMYAPP_APP_URL = 'https://app.test';
     origTTY = process.stdout.isTTY;
+    origStdinTTY = process.stdin.isTTY;
     process.stdout.isTTY = true;
+    process.stdin.isTTY = true;
     log = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
   afterEach(() => {
     delete process.env.HOOKMYAPP_APP_URL;
     process.stdout.isTTY = origTTY;
+    process.stdin.isTTY = origStdinTTY;
     log.mockRestore();
   });
 
@@ -214,6 +218,27 @@ describe('billingUpgrade — paid tier changes plan in the terminal (AIT-398)', 
     );
     expect(printed()).toContain('✓ Switched to Scale (100,000 messages/mo)');
     expect(vi.mocked(open)).not.toHaveBeenCalled();
+  });
+
+  test('When applying, then preview and apply POST the same plan and the inherited interval', async () => {
+    mockApi({
+      [PREVIEW]: { scheduled: false, amountDueCents: 1200 },
+      [APPLY]: { scheduled: false },
+    });
+    queueSelectAnswers('growth');
+    queueConfirmAnswers(true);
+
+    await billingUpgrade();
+
+    const sent = vi
+      .mocked(apiClient)
+      .mock.calls.filter((c) => c[0] === PREVIEW || c[0] === APPLY)
+      .map((c) => ({ path: c[0], ...(c[1] as { method: string; body: string }) }));
+    expect(sent.map((s) => s.path)).toEqual([PREVIEW, APPLY]);
+    for (const call of sent) {
+      expect(call.method).toBe('POST');
+      expect(JSON.parse(call.body)).toEqual({ planSlug: 'growth', billingInterval: 'monthly' });
+    }
   });
 
   test('When the plan list is offered, then the current plan is excluded and the interval is not asked', async () => {
@@ -312,10 +337,22 @@ describe('billingUpgrade — paid tier changes plan in the terminal (AIT-398)', 
     expect(paths).not.toContain(APPLY);
     expect(vi.mocked(open)).not.toHaveBeenCalled();
   });
+
+  test('When stdin is redirected, then it refuses rather than prompting into a pipe', async () => {
+    // stdout can be a terminal while stdin is a pipe (`billing upgrade < /dev/null`).
+    // The prompt would render and then have nothing to read the answer from.
+    process.stdin.isTTY = false;
+    mockApi({});
+
+    await expect(billingUpgrade()).rejects.toMatchObject({ code: 'UPGRADE_REQUIRES_TTY' });
+
+    expect(capturedSelectCalls()).toHaveLength(0);
+  });
 });
 
 describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
   let origTTY: typeof process.stdout.isTTY;
+  let origStdinTTY: typeof process.stdin.isTTY;
   beforeEach(() => {
     vi.mocked(apiClient).mockReset();
     vi.mocked(open).mockClear();
@@ -323,11 +360,14 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
     selectAnswers = [];
     process.env.HOOKMYAPP_APP_URL = 'https://app.test';
     origTTY = process.stdout.isTTY;
+    origStdinTTY = process.stdin.isTTY;
     process.stdout.isTTY = true;
+    process.stdin.isTTY = true;
   });
   afterEach(() => {
     delete process.env.HOOKMYAPP_APP_URL;
     process.stdout.isTTY = origTTY;
+    process.stdin.isTTY = origStdinTTY;
     // Fake timers are per-test opt-in (three tests below poll under
     // vi.useFakeTimers()) — restore real timers here rather than at the end
     // of each test body, so a thrown assertion between `await run` and

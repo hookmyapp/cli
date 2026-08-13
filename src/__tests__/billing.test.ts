@@ -289,7 +289,9 @@ describe('billing commands', () => {
      *  which path ran, not about applying a change. */
     async function runPaidPathDeclining(status: string): Promise<void> {
       const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
       process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
       const inq = await import('@inquirer/prompts');
       vi.mocked(inq.select).mockResolvedValueOnce('starter' as never);
       vi.mocked(inq.confirm).mockResolvedValueOnce(false as never);
@@ -307,6 +309,7 @@ describe('billing commands', () => {
         await billingUpgrade();
       } finally {
         process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
       }
     }
 
@@ -349,10 +352,12 @@ describe('billing commands', () => {
     });
 
     it('prompts free user for plan + interval and opens checkout', async () => {
-      // Free-tier path is interactive: guarded by a TTY check. Stub isTTY so
-      // the prompt branch runs instead of the non-TTY rejection.
+      // Free-tier path is interactive: guarded by a TTY check on both streams.
+      // Stub them so the prompt branch runs instead of the non-TTY rejection.
       const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
       process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
       const inq = await import('@inquirer/prompts');
       vi.mocked(inq.select)
         .mockResolvedValueOnce('growth' as never)
@@ -397,6 +402,7 @@ describe('billing commands', () => {
         await run;
       } finally {
         process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
         vi.useRealTimers();
       }
 
