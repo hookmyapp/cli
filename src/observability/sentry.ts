@@ -307,7 +307,7 @@ export async function captureError(err: unknown): Promise<void> {
  * is initialized this is essentially a no-op + immediate exit (zero added
  * latency on the happy path for telemetry-off users).
  */
-export async function flushAndExit(exitCode: number): Promise<never> {
+export async function flushAndExit(exitCode: number): Promise<void> {
   await Promise.allSettled([
     (async (): Promise<void> => {
       if (initialized && sentryModule) {
@@ -320,11 +320,41 @@ export async function flushAndExit(exitCode: number): Promise<never> {
     })(),
     shutdownPostHog(2000),
   ]);
-  process.exit(exitCode);
-  // Unreachable after process.exit; satisfies the `Promise<never>` return type
-  // for TS without a raw `throw new Error` (AppError discipline — see the
-  // monorepo CLAUDE.md rule the CLI mirrors).
-  return undefined as never;
+  await closeHttpAgent();
+
+  // Do NOT `process.exit()` here. On Windows that aborts the process the
+  // moment any libuv handle is mid-close — `Assertion failed:
+  // !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c` with exit
+  // code 9, AFTER the command has already printed its correct output
+  // (AIT-395). Setting `exitCode` lets the loop drain and exit on its own
+  // terms with the same status.
+  process.exitCode = exitCode;
+
+  // Safety net for a handle we failed to close: an unref'd timer cannot keep
+  // the process alive, so this only ever fires when something else is still
+  // holding the loop open — the situation where the old hard exit was the
+  // only way out anyway.
+  const bail = setTimeout(() => process.exit(exitCode), EXIT_DRAIN_MS);
+  bail.unref();
+}
+
+const EXIT_DRAIN_MS = 2000;
+
+/**
+ * Close fetch's keep-alive sockets. Node parks them in a global undici
+ * dispatcher that outlives the request, so without this the loop still holds
+ * live handles at exit — the thing that makes networked commands (and only
+ * networked commands) crash on Windows.
+ */
+async function closeHttpAgent(): Promise<void> {
+  try {
+    const dispatcher = (globalThis as Record<symbol, unknown>)[
+      Symbol.for('undici.globalDispatcher.1')
+    ] as { close?: () => Promise<void> } | undefined;
+    await dispatcher?.close?.();
+  } catch {
+    // Best-effort — a teardown detail must never change the exit status.
+  }
 }
 
 // Test-only helpers — allow the sentry-init + telemetry-consent specs to

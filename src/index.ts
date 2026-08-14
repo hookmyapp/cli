@@ -309,7 +309,13 @@ async function main(): Promise<void> {
         process.stderr.write('\n' + err.stack + '\n');
       }
     } else if (err instanceof CommanderError) {
-      if (err.exitCode === 0) await flushAndExit(0); // --help, --version
+      // --help, --version. `flushAndExit` no longer terminates the process
+      // (AIT-395), so this path must return instead of falling through into
+      // the parse-error handling below.
+      if (err.exitCode === 0) {
+        await flushAndExit(0);
+        return;
+      }
       // Emit cli_parse_error for non-zero parse failures BEFORE the
       // emitCommandInvoked early-return swallows the signal (invokedCommand
       // is null on parse failures because the action handler never ran).

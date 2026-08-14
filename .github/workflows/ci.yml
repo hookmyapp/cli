@@ -28,8 +28,38 @@ jobs:
       - run: npm test
       - run: node bin/hookmyapp.js --version
 
+  # AIT-395: both Windows bugs a customer reported (bare `spawnSync` never
+  # resolving `.cmd` shims, and the libuv abort at teardown) shipped because
+  # every job here was ubuntu-only. Mocked unit tests with an injected platform
+  # cannot catch either — only actually running the CLI on Windows can.
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+      - run: npm ci
+      - run: node build.mjs
+      - run: npm test
+      # Exercises the exit path itself: a clean 0, not the exit-9 abort.
+      - run: node bin/hookmyapp.js --version
+      - name: doctor sees the npm/npx shims and exits cleanly
+        shell: pwsh
+        run: |
+          $out = node bin/hookmyapp.js doctor --json 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $out
+          if ($code -ne 0) { throw "doctor exited $code (9 = the libuv teardown abort)" }
+          $report = $out | ConvertFrom-Json
+          foreach ($id in @('npm', 'npx')) {
+            $check = $report.checks | Where-Object { $_.id -eq $id }
+            if (-not $check.ok) { throw "doctor could not see $id on Windows: $($check.detail)" }
+          }
+
   notify-failure:
-    needs: [test]
+    needs: [test, test-windows]
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
     runs-on: ubuntu-latest
     timeout-minutes: 2

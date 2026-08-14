@@ -190,27 +190,30 @@ describe('shouldCaptureToSentry filter — capture every non-null error', () => 
 });
 
 describe('flushAndExit', () => {
-  it('calls process.exit with the provided code when Sentry is not initialized (fast path)', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-      throw new Error(`__test_exit_${code ?? 0}__`);
-    }) as never);
+  // AIT-395: the contract changed from "hard exit" to "set the status and let
+  // the loop drain" — process.exit() on top of a closing libuv handle aborts
+  // the process on Windows (exit 9) after the command already succeeded.
+  it('sets the provided exit code when Sentry is not initialized (fast path)', async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     try {
-      await expect(flushAndExit(2)).rejects.toThrow('__test_exit_2__');
-      expect(exitSpy).toHaveBeenCalledWith(2);
+      await flushAndExit(2);
+      expect(process.exitCode).toBe(2);
+      expect(exitSpy).not.toHaveBeenCalled();
     } finally {
       exitSpy.mockRestore();
+      process.exitCode = undefined;
     }
   });
 
-  it('exits with 0 when passed 0', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-      throw new Error(`__test_exit_${code ?? 0}__`);
-    }) as never);
+  it('sets 0 when passed 0', async () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     try {
-      await expect(flushAndExit(0)).rejects.toThrow('__test_exit_0__');
-      expect(exitSpy).toHaveBeenCalledWith(0);
+      await flushAndExit(0);
+      expect(process.exitCode).toBe(0);
+      expect(exitSpy).not.toHaveBeenCalled();
     } finally {
       exitSpy.mockRestore();
+      process.exitCode = undefined;
     }
   });
 });
