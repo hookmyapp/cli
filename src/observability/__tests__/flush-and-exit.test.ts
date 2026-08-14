@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushAndExit } from '../sentry.js';
 
 // AIT-395: `flushAndExit` used to call `process.exit()` outright. On Windows
@@ -6,7 +6,14 @@ import { flushAndExit } from '../sentry.js';
 // `src\win\async.c` assertion + exit code 9 a customer hit on EVERY networked
 // command, after the command had already printed the right output.
 describe('flushAndExit teardown', () => {
+  // Fake timers so the unref'd watchdog that flushAndExit schedules cannot
+  // outlive the test, fire against the by-then-restored real process.exit,
+  // and take the vitest worker down with it.
+  beforeEach(() => vi.useFakeTimers());
+
   afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     process.exitCode = undefined;
   });
@@ -27,10 +34,11 @@ describe('flushAndExit teardown', () => {
 
     await flushAndExit(0);
 
-    // The force-exit fallback must be unref'd: a ref'd timer would itself keep
-    // the process alive for the full drain window on every single command.
-    expect(timer).toHaveBeenCalledOnce();
-    expect(unref).toHaveBeenCalledOnce();
+    // EVERY timer this path schedules must be unref'd — the force-exit
+    // watchdog and the agent-close race alike. A single ref'd timer would keep
+    // the process alive for its full window on every command.
+    expect(timer.mock.calls.length).toBeGreaterThan(0);
+    expect(unref).toHaveBeenCalledTimes(timer.mock.calls.length);
     expect(exit).not.toHaveBeenCalled();
   });
 });

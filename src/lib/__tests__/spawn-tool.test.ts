@@ -3,7 +3,7 @@
 //   spawnSync('claude', ['--version'])      → ENOENT (no PATHEXT expansion)
 //   spawnSync('claude.cmd', ['--version'])  → EINVAL (.cmd needs cmd.exe)
 //   shell: true                             → concatenates, mangling JSON args
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 
 vi.mock('node:child_process', () => ({ spawnSync: vi.fn(() => ({ status: 0, stdout: '', stderr: '' })) }));
@@ -13,7 +13,14 @@ import { isCommandNotFound, runTool } from '../spawn-tool.js';
 const OPTIONS = { encoding: 'utf8' as const, timeout: 10_000 };
 
 describe('runTool', () => {
+  const originalComSpec = process.env.ComSpec;
   beforeEach(() => vi.clearAllMocks());
+  // These cases set and delete ComSpec; the rest of the worker must not
+  // inherit whichever one ran last.
+  afterEach(() => {
+    if (originalComSpec === undefined) delete process.env.ComSpec;
+    else process.env.ComSpec = originalComSpec;
+  });
 
   it('spawns the command directly on posix', () => {
     runTool('claude', ['--version'], OPTIONS, 'darwin');
@@ -57,6 +64,17 @@ describe('isCommandNotFound', () => {
       isCommandNotFound({
         status: 1,
         stderr: "'claude' is not recognized as an internal or external command,\r\n",
+      } as never),
+    ).toBe(true);
+  });
+
+  it('detects a missing command on a non-English Windows via status 9009', () => {
+    // cmd.exe translates its diagnostic but not its exit status, so a German
+    // or Japanese Windows must not be told "Claude Code is installed".
+    expect(
+      isCommandNotFound({
+        status: 9009,
+        stderr: '"claude" ist entweder falsch geschrieben oder konnte nicht gefunden werden.\r\n',
       } as never),
     ).toBe(true);
   });

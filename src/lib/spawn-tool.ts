@@ -32,6 +32,10 @@ export function isCommandNotFound(result: SpawnSyncReturns<string>): boolean {
   if ((result.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') return true;
   if (result.error?.message.includes('ENOENT')) return true;
   if (result.status === 0) return false;
+  // 9009 is cmd.exe's own "command not found" status, and unlike its message
+  // it is the same on a German or Japanese Windows. Check it first; the
+  // English text stays as a fallback for shells that don't set the status.
+  if (result.status === 9009) return true;
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   return output.includes('is not recognized as an internal or external command');
 }

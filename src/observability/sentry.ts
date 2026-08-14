@@ -339,6 +339,7 @@ export async function flushAndExit(exitCode: number): Promise<void> {
 }
 
 const EXIT_DRAIN_MS = 2000;
+const CLOSE_AGENT_MS = 1000;
 
 /**
  * Close fetch's keep-alive sockets. Node parks them in a global undici
@@ -350,8 +351,19 @@ async function closeHttpAgent(): Promise<void> {
   try {
     const dispatcher = (globalThis as Record<symbol, unknown>)[
       Symbol.for('undici.globalDispatcher.1')
-    ] as { close?: () => Promise<void> } | undefined;
-    await dispatcher?.close?.();
+    ] as { close?: () => Promise<void>; destroy?: () => Promise<void> } | undefined;
+    if (!dispatcher?.close) return;
+    // `close()` drains gracefully — it waits for in-flight requests and takes
+    // no timeout, so one hung fire-and-forget request would hold the CLI open
+    // forever. Give it a second, then cut the sockets outright.
+    let closed = false;
+    await Promise.race([
+      dispatcher.close().then(() => {
+        closed = true;
+      }),
+      new Promise<void>((r) => setTimeout(r, CLOSE_AGENT_MS).unref()),
+    ]);
+    if (!closed) await dispatcher.destroy?.();
   } catch {
     // Best-effort — a teardown detail must never change the exit status.
   }
