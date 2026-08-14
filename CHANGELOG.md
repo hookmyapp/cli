@@ -2,6 +2,12 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.16 — 2026-08-14
+
+### Fixed
+
+- `hookmyapp doctor` no longer reports `npm` and `npx` as missing on Windows when both are installed and working, and no longer exits 1 on a healthy install. `hookmyapp mcp` had the same problem locating Claude Code on Windows and is fixed with it. npm and npx are now reported for information only: the CLI runs on Node alone and never calls them, so they cannot block setup (AIT-395).
+
 ## 0.14.15 — 2026-08-13
 
 ### Changed
