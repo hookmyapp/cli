@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.node-version'
@@ -28,8 +30,47 @@ jobs:
       - run: npm test
       - run: node bin/hookmyapp.js --version
 
+  # AIT-395: both Windows bugs a customer reported (bare `spawnSync` never
+  # resolving `.cmd` shims, and the libuv abort at teardown) shipped because
+  # every job here was ubuntu-only. Mocked unit tests with an injected platform
+  # cannot catch either — only actually running the CLI on Windows can.
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+      - run: npm ci
+      - run: node build.mjs
+      - run: npm test
+      # Exercises the exit path itself: a clean 0, not the exit-9 abort.
+      - run: node bin/hookmyapp.js --version
+      - name: doctor sees the npm/npx shims and exits cleanly
+        shell: pwsh
+        run: |
+          $out = node bin/hookmyapp.js doctor --json 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $out
+          # Parse first: a teardown abort produces no JSON at all, so this is
+          # what actually distinguishes "crashed" from "ran and reported".
+          try { $report = $out | ConvertFrom-Json }
+          catch { throw "doctor produced no JSON report (exit $code) — likely the libuv teardown abort" }
+          foreach ($id in @('npm', 'npx')) {
+            $check = $report.checks | Where-Object { $_.id -eq $id }
+            if (-not $check.ok) { throw "doctor could not see $id on Windows: $($check.detail)" }
+          }
+          # An unreachable API is a runner network blip, not a regression: only
+          # fail on a non-zero exit that the network check does not explain.
+          $network = $report.checks | Where-Object { $_.id -eq 'network' }
+          if ($code -ne 0 -and $network.ok) { throw "doctor exited $code with every hard check passing (9 = the libuv teardown abort)" }
+          if (-not $network.ok) { Write-Host "note: API unreachable from this runner; exit-code assertion skipped" }
+
   notify-failure:
-    needs: [test]
+    needs: [test, test-windows]
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
     runs-on: ubuntu-latest
     timeout-minutes: 2

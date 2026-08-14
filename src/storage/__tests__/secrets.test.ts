@@ -31,7 +31,10 @@ describe('secrets (file-only storage)', () => {
     expect(await readSecrets()).toEqual(FIXTURE);
   });
 
-  it('writes the file with mode 0o600', async () => {
+  // POSIX-only: Windows has no mode bits, chmod is a no-op there and the file
+  // is protected by the per-user profile ACL instead. Asserting 0o600 on
+  // Windows tests nothing about the OS.
+  it.skipIf(process.platform === 'win32')('writes the file with mode 0o600', async () => {
     await writeSecrets(FIXTURE);
     const mode = statSync(join(dir, 'credentials.json')).mode & 0o777;
     expect(mode).toBe(0o600);

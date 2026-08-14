@@ -50,11 +50,10 @@ describe('flushAndExit awaits PostHog AND Sentry in parallel', () => {
   it('calls posthog.shutdown(2000) when PostHog client is initialised', async () => {
     process.env.HOOKMYAPP_POSTHOG_TOKEN = 'phc_test';
     await initPostHogLazy(); // initialise
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-      throw new Error(`__test_exit_${code ?? 0}__`);
-    }) as never);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     try {
-      await expect(flushAndExit(0)).rejects.toThrow('__test_exit_0__');
+      await flushAndExit(0);
+      expect(process.exitCode).toBe(0);
       expect(fakeShutdown).toHaveBeenCalledTimes(1);
       expect(fakeShutdown).toHaveBeenCalledWith(2000);
     } finally {
@@ -66,12 +65,12 @@ describe('flushAndExit awaits PostHog AND Sentry in parallel', () => {
     process.env.HOOKMYAPP_POSTHOG_TOKEN = 'phc_test';
     fakeShutdown.mockRejectedValueOnce(new Error('posthog drop'));
     await initPostHogLazy();
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-      throw new Error(`__test_exit_${code ?? 0}__`);
-    }) as never);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     try {
-      await expect(flushAndExit(2)).rejects.toThrow('__test_exit_2__');
-      expect(exitSpy).toHaveBeenCalledWith(2);
+      await flushAndExit(2);
+      // AIT-395: status set, process left to drain — never a hard exit.
+      expect(process.exitCode).toBe(2);
+      expect(exitSpy).not.toHaveBeenCalled();
     } finally {
       exitSpy.mockRestore();
     }
@@ -81,11 +80,9 @@ describe('flushAndExit awaits PostHog AND Sentry in parallel', () => {
     process.env.HOOKMYAPP_TELEMETRY = 'off';
     process.env.HOOKMYAPP_POSTHOG_TOKEN = 'phc_test';
     await initPostHogLazy(); // returns null — no client
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-      throw new Error(`__test_exit_${code ?? 0}__`);
-    }) as never);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     try {
-      await expect(flushAndExit(0)).rejects.toThrow('__test_exit_0__');
+      await flushAndExit(0);
       expect(fakeShutdown).not.toHaveBeenCalled();
     } finally {
       exitSpy.mockRestore();

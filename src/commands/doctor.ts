@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { spawnSync } from 'node:child_process';
+import { runTool } from '../lib/spawn-tool.js';
 import { readCredentials } from '../auth/store.js';
 import { apiClient } from '../api/client.js';
 import { AuthError, ForbiddenError, PermissionError } from '../output/error.js';
@@ -18,7 +18,7 @@ function parseMajor(v: string): number { return Number(v.replace(/^v/, '').split
 
 function toolVersion(cmd: string): string | null {
   try {
-    const r = spawnSync(cmd, ['-v'], { encoding: 'utf8' });
+    const r = runTool(cmd, ['-v'], { encoding: 'utf8' });
     return r.status === 0 ? (r.stdout || '').trim() : null;
   } catch { return null; }
 }
@@ -33,11 +33,13 @@ export async function collectDoctorReport(
   checks.push({ id: 'node', label: 'Node.js >= 20', ok: nodeOk, hard: true, detail: nodeOk ? nodeV : `${nodeV} — upgrade at https://nodejs.org` });
 
   // npm/npx presence (best-effort; gated so unit tests stay hermetic).
+  // Reported, never a gate: the CLI never shells out to npm, so a probe that
+  // can't see it says nothing about whether the CLI works (AIT-395).
   if (opts.checkTools !== false) {
     const npm = toolVersion('npm');
-    checks.push({ id: 'npm', label: 'npm', ok: npm !== null, hard: true, detail: npm ?? 'not found on PATH' });
+    checks.push({ id: 'npm', label: 'npm', ok: npm !== null, hard: false, detail: npm ?? 'not found on PATH' });
     const npx = toolVersion('npx');
-    checks.push({ id: 'npx', label: 'npx', ok: npx !== null, hard: true, detail: npx ?? 'not found on PATH' });
+    checks.push({ id: 'npx', label: 'npx', ok: npx !== null, hard: false, detail: npx ?? 'not found on PATH' });
     const mcp = getClaudeMcpStatus();
     checks.push({ id: 'mcp', label: 'HookMyApp MCP (Claude)', ok: mcp.ok, hard: false, detail: mcp.detail });
   }

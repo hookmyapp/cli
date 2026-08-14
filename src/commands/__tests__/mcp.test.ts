@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { runTool } from '../../lib/spawn-tool.js';
 import { Command } from 'commander';
 import { resolve } from 'node:path';
 import { getValidAccessToken } from '../../api/client.js';
 
-vi.mock('node:child_process', () => ({ spawnSync: vi.fn() }));
+// Mock the tool-spawn seam, not node:child_process: `runTool` adds the
+// cmd.exe /c prefix on Windows, so asserting raw runTool argv here is a
+// platform-dependent test, not a contract test (AIT-395).
+vi.mock('../../lib/spawn-tool.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/spawn-tool.js')>()),
+  runTool: vi.fn(),
+}));
 vi.mock('../../api/client.js', () => ({ getValidAccessToken: vi.fn() }));
 vi.mock('../../config/env-profiles.js', () => ({
   getEffectiveApiUrl: () => 'https://api.hookmyapp.com',
@@ -33,11 +39,11 @@ describe('MCP setup', () => {
   });
 
   test('installs a user-scoped Claude headersHelper without storing a token', () => {
-    vi.mocked(spawnSync).mockReturnValue({ status: 0 } as never);
+    vi.mocked(runTool).mockReturnValue({ status: 0 } as never);
 
     installClaudeMcp();
 
-    const [, args] = vi.mocked(spawnSync).mock.calls[0];
+    const [, args] = vi.mocked(runTool).mock.calls[0];
     expect(args).toEqual([
       'mcp',
       'add-json',
@@ -54,14 +60,14 @@ describe('MCP setup', () => {
   });
 
   test('skips automatic setup when Claude Code is absent', () => {
-    vi.mocked(spawnSync).mockReturnValueOnce({
+    vi.mocked(runTool).mockReturnValueOnce({
       status: null,
       error: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }),
     } as never);
 
     maybeInstallClaudeMcp(true);
 
-    expect(spawnSync).toHaveBeenCalledOnce();
+    expect(runTool).toHaveBeenCalledOnce();
   });
 
   test('shell-quotes helper paths without expanding metacharacters', () => {
@@ -72,30 +78,30 @@ describe('MCP setup', () => {
   });
 
   test('replaces an existing Claude entry', () => {
-    vi.mocked(spawnSync)
+    vi.mocked(runTool)
       .mockReturnValueOnce({ status: 1, stderr: 'already exists' } as never)
       .mockReturnValueOnce({ status: 0 } as never)
       .mockReturnValueOnce({ status: 0 } as never);
 
     installClaudeMcp();
 
-    expect(spawnSync).toHaveBeenCalledTimes(3);
-    expect(vi.mocked(spawnSync).mock.calls[1][1]).toEqual(['mcp', 'remove', '--scope', 'user', 'hookmyapp']);
+    expect(runTool).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(runTool).mock.calls[1][1]).toEqual(['mcp', 'remove', '--scope', 'user', 'hookmyapp']);
   });
 
   test('removes only the user-scoped HookMyApp entry', () => {
-    vi.mocked(spawnSync).mockReturnValue({ status: 0 } as never);
+    vi.mocked(runTool).mockReturnValue({ status: 0 } as never);
 
     removeClaudeMcp(true);
 
-    expect(spawnSync).toHaveBeenCalledWith('claude', ['mcp', 'remove', '--scope', 'user', 'hookmyapp'], {
+    expect(runTool).toHaveBeenCalledWith('claude', ['mcp', 'remove', '--scope', 'user', 'hookmyapp'], {
       encoding: 'utf8',
       timeout: 10_000,
     });
   });
 
   test('treats missing Claude as successful cleanup', () => {
-    vi.mocked(spawnSync).mockReturnValue({
+    vi.mocked(runTool).mockReturnValue({
       status: null,
       error: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }),
     } as never);
@@ -104,24 +110,24 @@ describe('MCP setup', () => {
   });
 
   test('treats an absent MCP entry as successful cleanup', () => {
-    vi.mocked(spawnSync).mockReturnValue({ status: 1, stderr: 'MCP server hookmyapp not found' } as never);
+    vi.mocked(runTool).mockReturnValue({ status: 1, stderr: 'MCP server hookmyapp not found' } as never);
 
     expect(removeClaudeMcp(true)).toEqual({ ok: true });
   });
 
   test('reports a bounded Claude status timeout', async () => {
-    vi.mocked(spawnSync).mockReturnValue({
+    vi.mocked(runTool).mockReturnValue({
       status: null,
       error: Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }),
     } as never);
     const { getClaudeMcpStatus } = await import('../mcp.js');
 
     expect(getClaudeMcpStatus()).toEqual({ ok: false, detail: 'Claude MCP check timed out' });
-    expect(vi.mocked(spawnSync).mock.calls[0][2]).toMatchObject({ timeout: 10_000 });
+    expect(vi.mocked(runTool).mock.calls[0][2]).toMatchObject({ timeout: 10_000 });
   });
 
   test('emits JSON for mcp install in global JSON mode', async () => {
-    vi.mocked(spawnSync).mockReturnValue({ status: 0 } as never);
+    vi.mocked(runTool).mockReturnValue({ status: 0 } as never);
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const program = new Command().option('--json');
     registerMcpCommand(program);

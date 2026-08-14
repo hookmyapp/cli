@@ -476,8 +476,9 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
     await assertion;
   });
   // advanceUntilSettled drives up to 500 real event-loop turns per poll test.
-  // On a loaded CI runner that can exceed the 5s default and time out even
-  // though nothing is wrong — it already timed out once on this branch. The
-  // block-level budget keeps these tests honest without making each one
-  // declare its own.
-}, 30_000);
+  // On a loaded CI runner that can exceed the default and time out even
+  // though nothing is wrong. The block-level budget keeps these tests honest
+  // without making each one declare its own — and it OVERRIDES the config's
+  // testTimeout, so raising the budget means raising it here (AIT-395: 30s
+  // still wasn't enough on either runner).
+}, 60_000);
