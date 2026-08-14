@@ -415,9 +415,6 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
     expect(paths).not.toContain('/organizations/org_abc12345/billing/checkout');
   });
 
-  // 60s budget, not the default 30s: each fake-timer step costs real
-  // event-loop turns and the Windows runner is slow enough to blow the
-  // default on this poll loop alone.
   test('When checkout opens, then upgrade polls the subscription and confirms once the plan flips', async () => {
     vi.useFakeTimers();
     vi.mocked(apiClient)
@@ -436,7 +433,7 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
     await run;
 
     expect(log.mock.calls.flat().join('\n')).toContain('Upgraded to Scale');
-  }, 60_000);
+  });
 
   test('When a poll tick hits a network blip (apiClient throws NetworkError), then it is swallowed and polling continues to success', async () => {
     // apiClient wraps a raw fetch failure in its own NetworkError before it
