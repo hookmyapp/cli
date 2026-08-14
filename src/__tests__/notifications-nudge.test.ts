@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
@@ -256,7 +256,7 @@ describe('maybeNudge banner', () => {
 describe('cache namespacing', () => {
   it('readCache falls back to the pre-rename notices-nudge filename after an upgrade', () => {
     const file = cacheFilePath(getEffectiveApiUrl(), 'agc_legacy');
-    const legacy = join(dir, file.split('/').pop()!.replace('notifications-nudge-', 'notices-nudge-'));
+    const legacy = join(dir, basename(file).replace('notifications-nudge-', 'notices-nudge-'));
     writeCacheAtomic(legacy, unreadCache);
     expect(readCache(file)?.hasUnread).toBe(true); // unread state survives the rename
   });

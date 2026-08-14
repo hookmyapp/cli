@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import { setPersistedTelemetry } from '../../observability/telemetry.js';
 import { ConfigWriteForbiddenError } from '../errors.js';
 
-describe('config writers translate EPERM to ConfigWriteForbiddenError', () => {
+// POSIX-only: `chmodSync(dir, 0o500)` does not make a directory read-only on
+// Windows, so the EPERM this suite exists to trigger never happens there.
+describe.skipIf(process.platform === 'win32')('config writers translate EPERM to ConfigWriteForbiddenError', () => {
   let dir: string;
   let originalConfigDir: string | undefined;
 
