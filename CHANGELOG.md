@@ -6,6 +6,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 ### Fixed
 
+- Commands no longer crash on Windows after finishing their work. Every command that made a network call printed the right output and then died with an assertion from Node's event loop and exit code 9, which made successful runs look like failures and made exit codes unusable in scripts and CI (AIT-395).
 - `hookmyapp doctor` no longer reports `npm` and `npx` as missing on Windows when both are installed and working, and no longer exits 1 on a healthy install. `hookmyapp mcp` had the same problem locating Claude Code on Windows and is fixed with it. npm and npx are now reported for information only: the CLI runs on Node alone and never calls them, so they cannot block setup (AIT-395).
 
 ## 0.14.15 — 2026-08-13
