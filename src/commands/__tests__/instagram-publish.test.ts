@@ -85,6 +85,8 @@ describe('instagram publish', () => {
   it('rejects a malformed --tag and misplaced optional flags before any gateway call', async () => {
     await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: ['user:0.5'] }))
       .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' });
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: [' '] }))
+      .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' }); // no-coordinate branch must still require a username
     await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: ['user:0.5,'] }))
       .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' }); // Number('') is 0 — must not pass as y=0
     await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: ['user:-1,20'] }))

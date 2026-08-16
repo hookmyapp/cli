@@ -32,8 +32,14 @@ export interface IgPublishOpts {
 /** Parse a --tag value: `username` or `username:x,y` (image coordinates, 0.0-1.0). */
 export function parseUserTag(value: string): { username: string; x?: number; y?: number } {
   const idx = value.indexOf(':');
-  if (idx === -1) return { username: value };
-  const username = value.slice(0, idx);
+  if (idx === -1) {
+    const username = value.trim();
+    if (!username) {
+      throw new ValidationError(`--tag must be username or username:x,y with x and y between 0.0 and 1.0 (got: ${value}).`, 'PUBLISH_TAG_INVALID');
+    }
+    return { username };
+  }
+  const username = value.slice(0, idx).trim();
   // Number('') is 0, so empty coordinate strings must be rejected explicitly
   // before conversion — `user:0.5,` is malformed, not y=0.
   const parts = value.slice(idx + 1).split(',').map((n) => n.trim());
