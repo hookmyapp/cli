@@ -47,6 +47,51 @@ describe('instagram publish', () => {
     }));
   });
 
+  it('optional flags map to Meta container fields (alt_text, user_tags, location_id)', async () => {
+    vi.mocked(gatewayRequest)
+      .mockResolvedValueOnce({ id: 'cont_1' })
+      .mockResolvedValueOnce({ status_code: 'FINISHED' })
+      .mockResolvedValueOnce({ id: 'media_1' })
+      .mockResolvedValueOnce({ permalink: null });
+    await runInstagramPublish({
+      channel: '@acme', image: 'https://example.com/a.jpg',
+      altText: 'Team photo', location: '123456', tag: ['someuser:0.5,0.8', 'plainuser'],
+    });
+    expect(gatewayRequest).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      method: 'POST', path: '/{ig_id}/media',
+      body: {
+        image_url: 'https://example.com/a.jpg',
+        alt_text: 'Team photo',
+        location_id: '123456',
+        user_tags: [{ username: 'someuser', x: 0.5, y: 0.8 }, { username: 'plainuser' }],
+      },
+    }));
+  });
+
+  it('reel flags map thumb_offset and audio_name', async () => {
+    vi.mocked(gatewayRequest)
+      .mockResolvedValueOnce({ id: 'cont_1' })
+      .mockResolvedValueOnce({ status_code: 'FINISHED' })
+      .mockResolvedValueOnce({ id: 'media_1' })
+      .mockResolvedValueOnce({ permalink: null });
+    await runInstagramPublish({
+      channel: '@acme', video: 'https://example.com/v.mp4', thumbOffset: '1500', audioName: 'My Track',
+    });
+    expect(gatewayRequest).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      body: expect.objectContaining({ media_type: 'REELS', thumb_offset: 1500, audio_name: 'My Track' }),
+    }));
+  });
+
+  it('rejects a malformed --tag and misplaced optional flags before any gateway call', async () => {
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: ['user:0.5'] }))
+      .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' });
+    await expect(runInstagramPublish({ channel: '@acme', video: 'https://x/v.mp4', altText: 'nope' }))
+      .rejects.toMatchObject({ code: 'PUBLISH_ALT_TEXT_IMAGE_ONLY' });
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', thumbOffset: '5' }))
+      .rejects.toMatchObject({ code: 'PUBLISH_VIDEO_ONLY_FLAG' });
+    expect(gatewayRequest).not.toHaveBeenCalled();
+  });
+
   it('image --story sets media_type STORIES', async () => {
     vi.mocked(gatewayRequest)
       .mockResolvedValueOnce({ id: 'cont_1' })

@@ -22,6 +22,24 @@ export interface IgPublishOpts {
   story?: boolean;
   reel?: boolean;
   cover?: string;
+  altText?: string;
+  location?: string;
+  thumbOffset?: string; // commander delivers option values as strings
+  audioName?: string;
+  tag?: string[]; // username or username:x,y
+}
+
+/** Parse a --tag value: `username` or `username:x,y` (image coordinates). */
+export function parseUserTag(value: string): { username: string; x?: number; y?: number } {
+  const idx = value.indexOf(':');
+  if (idx === -1) return { username: value };
+  const username = value.slice(0, idx);
+  const coords = value.slice(idx + 1).split(',').map((n) => Number(n.trim()));
+  const [x, y] = coords;
+  if (!username || coords.length !== 2 || !Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new ValidationError(`--tag must be username or username:x,y (got: ${value}).`, 'PUBLISH_TAG_INVALID');
+  }
+  return { username, x, y };
 }
 
 /** Require a well-formed public HTTPS URL. Runs before ANY gateway call. */
@@ -117,6 +135,28 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
   if (opts.carousel && (opts.story || opts.reel)) {
     throw new ValidationError('--carousel cannot be combined with --story or --reel.', 'PUBLISH_CAROUSEL_FLAGS');
   }
+  if (opts.altText && !opts.image) {
+    // alt_text is image-posts-only on Meta's side; carousels take it per child (not supported here).
+    throw new ValidationError('--alt-text requires --image.', 'PUBLISH_ALT_TEXT_IMAGE_ONLY');
+  }
+  if ((opts.thumbOffset || opts.audioName) && !opts.video) {
+    throw new ValidationError('--thumb-offset and --audio-name require --video.', 'PUBLISH_VIDEO_ONLY_FLAG');
+  }
+  if (opts.story && (opts.altText || opts.location || opts.audioName)) {
+    throw new ValidationError('--alt-text, --location, and --audio-name are not supported with --story.', 'PUBLISH_STORY_FIELDS');
+  }
+  if (opts.carousel && (opts.altText || opts.tag?.length)) {
+    throw new ValidationError('--alt-text and --tag are not supported with --carousel.', 'PUBLISH_CAROUSEL_FIELDS');
+  }
+  if (opts.thumbOffset !== undefined && !/^\d+$/.test(opts.thumbOffset)) {
+    throw new ValidationError('--thumb-offset must be a whole number of milliseconds.', 'PUBLISH_THUMB_OFFSET_INVALID');
+  }
+  const userTags = opts.tag?.length ? opts.tag.map(parseUserTag) : undefined;
+  // Optional container fields shared by the single-media paths below.
+  const optionalFields = {
+    ...(opts.location && { location_id: opts.location }),
+    ...(userTags && { user_tags: userTags }),
+  };
   if (opts.image) requireHttpsUrl(opts.image, '--image');
   if (opts.video) requireHttpsUrl(opts.video, '--video');
   if (opts.cover) requireHttpsUrl(opts.cover, '--cover');
@@ -161,12 +201,17 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
         media_type: opts.story ? 'STORIES' : 'REELS',
         ...(opts.caption && { caption: opts.caption }),
         ...(opts.cover && { cover_url: opts.cover }),
+        ...(opts.thumbOffset !== undefined && { thumb_offset: Number(opts.thumbOffset) }),
+        ...(opts.audioName && { audio_name: opts.audioName }),
+        ...optionalFields,
       });
     } else {
       containerId = await createContainer(channel, {
         image_url: opts.image,
         ...(opts.caption && { caption: opts.caption }),
         ...(opts.story && { media_type: 'STORIES' }),
+        ...(opts.altText && { alt_text: opts.altText }),
+        ...(opts.story ? { ...(userTags && { user_tags: userTags }) } : optionalFields),
       });
     }
     await pollContainerFinished(channel, containerId, deadline);
@@ -214,6 +259,12 @@ export function registerInstagramPublish(instagram: CommandType): void {
     .option('--story', 'Publish as a Story (business accounts only)')
     .option('--reel', 'Publish video as a Reel (explicit; already the default for --video)')
     .option('--cover <url>', 'Cover image URL for a video')
+    .option('--alt-text <text>', 'Alt text for an image post (up to 1000 characters)')
+    .option('--location <page-id>', 'Facebook Page id of a place to tag')
+    .option('--thumb-offset <ms>', 'Video/reel cover frame, in milliseconds (ignored with --cover)')
+    .option('--audio-name <name>', "Name the reel's audio (settable once)")
+    .option('--tag <username[:x,y]>', 'Tag a public account (repeat for more; x,y position the tag on images)',
+      (value: string, prev: string[] = []) => [...prev, value])
     .action(async function (this: CommandType, opts: IgPublishOpts) {
       await runInstagramPublish(opts, this);
     });
@@ -226,6 +277,7 @@ EXAMPLES:
   $ hookmyapp instagram publish --channel @acme --video https://example.com/v.mp4 --reel --cover https://example.com/c.jpg
   $ hookmyapp instagram publish --channel @acme --image https://example.com/a.jpg --story
   $ hookmyapp instagram publish --channel @acme --carousel https://x/a.jpg,video:https://x/b.mp4 --caption "set"
+  $ hookmyapp instagram publish --channel @acme --image https://x/a.jpg --alt-text "Team photo" --tag someuser:0.5,0.8
 `,
   );
 }
