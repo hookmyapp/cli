@@ -29,15 +29,19 @@ export interface IgPublishOpts {
   tag?: string[]; // username or username:x,y
 }
 
-/** Parse a --tag value: `username` or `username:x,y` (image coordinates). */
+/** Parse a --tag value: `username` or `username:x,y` (image coordinates, 0.0-1.0). */
 export function parseUserTag(value: string): { username: string; x?: number; y?: number } {
   const idx = value.indexOf(':');
   if (idx === -1) return { username: value };
   const username = value.slice(0, idx);
-  const coords = value.slice(idx + 1).split(',').map((n) => Number(n.trim()));
+  // Number('') is 0, so empty coordinate strings must be rejected explicitly
+  // before conversion — `user:0.5,` is malformed, not y=0.
+  const parts = value.slice(idx + 1).split(',').map((n) => n.trim());
+  const coords = parts.map((n) => (n === '' ? NaN : Number(n)));
   const [x, y] = coords;
-  if (!username || coords.length !== 2 || !Number.isFinite(x) || !Number.isFinite(y)) {
-    throw new ValidationError(`--tag must be username or username:x,y (got: ${value}).`, 'PUBLISH_TAG_INVALID');
+  const inRange = (n: number) => Number.isFinite(n) && n >= 0 && n <= 1;
+  if (!username || coords.length !== 2 || !inRange(x) || !inRange(y)) {
+    throw new ValidationError(`--tag must be username or username:x,y with x and y between 0.0 and 1.0 (got: ${value}).`, 'PUBLISH_TAG_INVALID');
   }
   return { username, x, y };
 }
@@ -142,11 +146,13 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
   if ((opts.thumbOffset || opts.audioName) && !opts.video) {
     throw new ValidationError('--thumb-offset and --audio-name require --video.', 'PUBLISH_VIDEO_ONLY_FLAG');
   }
-  if (opts.story && (opts.altText || opts.location || opts.audioName)) {
-    throw new ValidationError('--alt-text, --location, and --audio-name are not supported with --story.', 'PUBLISH_STORY_FIELDS');
+  if (opts.story && (opts.altText || opts.location || opts.audioName || opts.thumbOffset !== undefined)) {
+    throw new ValidationError('--alt-text, --location, --thumb-offset, and --audio-name are not supported with --story.', 'PUBLISH_STORY_FIELDS');
   }
-  if (opts.carousel && (opts.altText || opts.tag?.length)) {
-    throw new ValidationError('--alt-text and --tag are not supported with --carousel.', 'PUBLISH_CAROUSEL_FIELDS');
+  if (opts.carousel && (opts.altText || opts.tag?.length || opts.location)) {
+    // Meta accepts none of these on the CAROUSEL parent container — rejecting
+    // beats silently dropping a requested field.
+    throw new ValidationError('--alt-text, --tag, and --location are not supported with --carousel.', 'PUBLISH_CAROUSEL_FIELDS');
   }
   if (opts.thumbOffset !== undefined && !/^\d+$/.test(opts.thumbOffset)) {
     throw new ValidationError('--thumb-offset must be a whole number of milliseconds.', 'PUBLISH_THUMB_OFFSET_INVALID');
@@ -201,7 +207,9 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
         media_type: opts.story ? 'STORIES' : 'REELS',
         ...(opts.caption && { caption: opts.caption }),
         ...(opts.cover && { cover_url: opts.cover }),
-        ...(opts.thumbOffset !== undefined && { thumb_offset: Number(opts.thumbOffset) }),
+        // Meta ignores thumb_offset when cover_url is set — omit it so the
+        // request matches the documented precedence instead of sending both.
+        ...(opts.thumbOffset !== undefined && !opts.cover && { thumb_offset: Number(opts.thumbOffset) }),
         ...(opts.audioName && { audio_name: opts.audioName }),
         ...optionalFields,
       });

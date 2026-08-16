@@ -85,11 +85,33 @@ describe('instagram publish', () => {
   it('rejects a malformed --tag and misplaced optional flags before any gateway call', async () => {
     await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: ['user:0.5'] }))
       .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' });
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: ['user:0.5,'] }))
+      .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' }); // Number('') is 0 — must not pass as y=0
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: ['user:-1,20'] }))
+      .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' }); // coordinates are 0.0-1.0
     await expect(runInstagramPublish({ channel: '@acme', video: 'https://x/v.mp4', altText: 'nope' }))
       .rejects.toMatchObject({ code: 'PUBLISH_ALT_TEXT_IMAGE_ONLY' });
     await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', thumbOffset: '5' }))
       .rejects.toMatchObject({ code: 'PUBLISH_VIDEO_ONLY_FLAG' });
+    await expect(runInstagramPublish({ channel: '@acme', video: 'https://x/v.mp4', story: true, thumbOffset: '5' }))
+      .rejects.toMatchObject({ code: 'PUBLISH_STORY_FIELDS' });
+    await expect(runInstagramPublish({ channel: '@acme', carousel: 'https://x/a.jpg,https://x/b.jpg', location: '123' }))
+      .rejects.toMatchObject({ code: 'PUBLISH_CAROUSEL_FIELDS' });
     expect(gatewayRequest).not.toHaveBeenCalled();
+  });
+
+  it('omits thumb_offset when --cover is set (cover_url takes precedence)', async () => {
+    vi.mocked(gatewayRequest)
+      .mockResolvedValueOnce({ id: 'cont_1' })
+      .mockResolvedValueOnce({ status_code: 'FINISHED' })
+      .mockResolvedValueOnce({ id: 'media_1' })
+      .mockResolvedValueOnce({ permalink: null });
+    await runInstagramPublish({
+      channel: '@acme', video: 'https://example.com/v.mp4', cover: 'https://example.com/c.jpg', thumbOffset: '1500',
+    });
+    const body = vi.mocked(gatewayRequest).mock.calls[0][0].body as Record<string, unknown>;
+    expect(body.cover_url).toBe('https://example.com/c.jpg');
+    expect(body).not.toHaveProperty('thumb_offset');
   });
 
   it('image --story sets media_type STORIES', async () => {
