@@ -91,6 +91,9 @@ describe('instagram publish', () => {
       .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' }); // coordinates are 0.0-1.0
     await expect(runInstagramPublish({ channel: '@acme', video: 'https://x/v.mp4', altText: 'nope' }))
       .rejects.toMatchObject({ code: 'PUBLISH_ALT_TEXT_IMAGE_ONLY' });
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', altText: 'x'.repeat(1001) }))
+      .rejects.toMatchObject({ code: 'PUBLISH_ALT_TEXT_TOO_LONG' }); // advertised limit enforced locally
+
     await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', thumbOffset: '5' }))
       .rejects.toMatchObject({ code: 'PUBLISH_VIDEO_ONLY_FLAG' });
     await expect(runInstagramPublish({ channel: '@acme', video: 'https://x/v.mp4', story: true, thumbOffset: '5' }))

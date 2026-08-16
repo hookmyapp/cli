@@ -143,6 +143,10 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
     // alt_text is image-posts-only on Meta's side; carousels take it per child (not supported here).
     throw new ValidationError('--alt-text requires --image.', 'PUBLISH_ALT_TEXT_IMAGE_ONLY');
   }
+  if (opts.altText && opts.altText.length > 1000) {
+    // Matches the advertised limit in the flag help — fail locally, not at Meta.
+    throw new ValidationError('--alt-text must be 1000 characters or fewer.', 'PUBLISH_ALT_TEXT_TOO_LONG');
+  }
   if ((opts.thumbOffset || opts.audioName) && !opts.video) {
     throw new ValidationError('--thumb-offset and --audio-name require --video.', 'PUBLISH_VIDEO_ONLY_FLAG');
   }
