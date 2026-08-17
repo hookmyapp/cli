@@ -70,7 +70,12 @@ const workspaces = [
  * small and checking settlement each time avoids guessing a fixed total. */
 async function advanceUntilSettled(
   settleOn: Promise<unknown>,
-  { stepMs = 100, maxSteps = 500 } = {},
+  // stepMs stays BELOW UPGRADE_POLL_INTERVAL_MS (5s) so an advance can never
+  // jump past a poll timer that hasn't registered yet — that was the reason
+  // for stepping at all. 1s steps (was 100ms) cut the awaited event-loop
+  // turns per poll cycle 10x; the 100ms version starved out on loaded CI
+  // runners even after the budget was raised to 60s (AIT-395 history).
+  { stepMs = 1_000, maxSteps = 500 } = {},
 ): Promise<void> {
   let settled = false;
   settleOn.then(

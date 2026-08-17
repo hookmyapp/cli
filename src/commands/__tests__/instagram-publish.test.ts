@@ -47,6 +47,78 @@ describe('instagram publish', () => {
     }));
   });
 
+  it('optional flags map to Meta container fields (alt_text, user_tags, location_id)', async () => {
+    vi.mocked(gatewayRequest)
+      .mockResolvedValueOnce({ id: 'cont_1' })
+      .mockResolvedValueOnce({ status_code: 'FINISHED' })
+      .mockResolvedValueOnce({ id: 'media_1' })
+      .mockResolvedValueOnce({ permalink: null });
+    await runInstagramPublish({
+      channel: '@acme', image: 'https://example.com/a.jpg',
+      altText: 'Team photo', location: '123456', tag: ['someuser:0.5,0.8', 'plainuser'],
+    });
+    expect(gatewayRequest).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      method: 'POST', path: '/{ig_id}/media',
+      body: {
+        image_url: 'https://example.com/a.jpg',
+        alt_text: 'Team photo',
+        location_id: '123456',
+        user_tags: [{ username: 'someuser', x: 0.5, y: 0.8 }, { username: 'plainuser' }],
+      },
+    }));
+  });
+
+  it('reel flags map thumb_offset and audio_name', async () => {
+    vi.mocked(gatewayRequest)
+      .mockResolvedValueOnce({ id: 'cont_1' })
+      .mockResolvedValueOnce({ status_code: 'FINISHED' })
+      .mockResolvedValueOnce({ id: 'media_1' })
+      .mockResolvedValueOnce({ permalink: null });
+    await runInstagramPublish({
+      channel: '@acme', video: 'https://example.com/v.mp4', thumbOffset: '1500', audioName: 'My Track',
+    });
+    expect(gatewayRequest).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      body: expect.objectContaining({ media_type: 'REELS', thumb_offset: 1500, audio_name: 'My Track' }),
+    }));
+  });
+
+  it('rejects a malformed --tag and misplaced optional flags before any gateway call', async () => {
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: ['user:0.5'] }))
+      .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' });
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: [' '] }))
+      .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' }); // no-coordinate branch must still require a username
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: ['user:0.5,'] }))
+      .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' }); // Number('') is 0 — must not pass as y=0
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', tag: ['user:-1,20'] }))
+      .rejects.toMatchObject({ code: 'PUBLISH_TAG_INVALID' }); // coordinates are 0.0-1.0
+    await expect(runInstagramPublish({ channel: '@acme', video: 'https://x/v.mp4', altText: 'nope' }))
+      .rejects.toMatchObject({ code: 'PUBLISH_ALT_TEXT_IMAGE_ONLY' });
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', altText: 'x'.repeat(1001) }))
+      .rejects.toMatchObject({ code: 'PUBLISH_ALT_TEXT_TOO_LONG' }); // advertised limit enforced locally
+
+    await expect(runInstagramPublish({ channel: '@acme', image: 'https://x/a.jpg', thumbOffset: '5' }))
+      .rejects.toMatchObject({ code: 'PUBLISH_VIDEO_ONLY_FLAG' });
+    await expect(runInstagramPublish({ channel: '@acme', video: 'https://x/v.mp4', story: true, thumbOffset: '5' }))
+      .rejects.toMatchObject({ code: 'PUBLISH_STORY_FIELDS' });
+    await expect(runInstagramPublish({ channel: '@acme', carousel: 'https://x/a.jpg,https://x/b.jpg', location: '123' }))
+      .rejects.toMatchObject({ code: 'PUBLISH_CAROUSEL_FIELDS' });
+    expect(gatewayRequest).not.toHaveBeenCalled();
+  });
+
+  it('omits thumb_offset when --cover is set (cover_url takes precedence)', async () => {
+    vi.mocked(gatewayRequest)
+      .mockResolvedValueOnce({ id: 'cont_1' })
+      .mockResolvedValueOnce({ status_code: 'FINISHED' })
+      .mockResolvedValueOnce({ id: 'media_1' })
+      .mockResolvedValueOnce({ permalink: null });
+    await runInstagramPublish({
+      channel: '@acme', video: 'https://example.com/v.mp4', cover: 'https://example.com/c.jpg', thumbOffset: '1500',
+    });
+    const body = vi.mocked(gatewayRequest).mock.calls[0][0].body as Record<string, unknown>;
+    expect(body.cover_url).toBe('https://example.com/c.jpg');
+    expect(body).not.toHaveProperty('thumb_offset');
+  });
+
   it('image --story sets media_type STORIES', async () => {
     vi.mocked(gatewayRequest)
       .mockResolvedValueOnce({ id: 'cont_1' })
