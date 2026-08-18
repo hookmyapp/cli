@@ -87,18 +87,16 @@ const UPGRADE_POLL_HINT_EVERY_MS = 60_000;
  *  (expired auth, revoked permission, client-outdated) rethrow — polling
  *  forever on those would tell the user to "finish checkout" while the CLI
  *  itself is the thing that's broken. */
-async function pollForUpgrade(
-  orgPublicId: string,
-): Promise<{ plan: { slug: string; name: string; messages: number }; status: string }> {
+async function pollForUpgrade(orgPublicId: string): Promise<BillingSubscription> {
   const startedAt = Date.now();
   let lastHintAt = startedAt;
   for (;;) {
     await new Promise((resolve) => setTimeout(resolve, UPGRADE_POLL_INTERVAL_MS));
-    let sub: { plan: { slug: string; name: string; messages: number }; status: string } | null;
+    let sub: BillingSubscription | null;
     try {
       sub = (await apiClient(
         `/organizations/${orgPublicId}/billing/subscription`,
-      )) as { plan: { slug: string; name: string; messages: number }; status: string };
+      )) as BillingSubscription;
     } catch (err) {
       // apiClient wraps raw fetch failures in its own NetworkError before
       // they ever reach here — isNetworkFailure() inspects the *raw* fetch
@@ -365,6 +363,52 @@ async function changePlanInTerminal(
   );
 }
 
+/** Money-model-v2 orgs report usage in actions, not messages — the post-
+ *  checkout confirmation line branches on `usageUnit` instead of assuming
+ *  `plan.messages` is meaningful (it isn't, for an actions-priced plan). */
+function describeUpgradedPlan(sub: BillingSubscription): string {
+  if (sub.usageUnit === 'actions') {
+    const quota = sub.actionsQuota;
+    const quotaLabel = quota === null || quota === undefined ? 'unlimited' : quota.toLocaleString('en-US');
+    return `✓ Upgraded to ${sub.plan.name} (${quotaLabel} actions/mo).`;
+  }
+  return `✓ Upgraded to ${sub.plan.name} (${sub.plan.messages.toLocaleString('en-US')} messages/mo).`;
+}
+
+/** Trial/expired money-model-v2 orgs (Plan 05 Task 3): eligibility, not the
+ *  user, decides which single plan they may check out into — no "Choose a
+ *  plan" prompt. Interval is still a real choice (Build/Scale both bill
+ *  monthly or annual). */
+async function checkoutEligiblePlan(orgPublicId: string): Promise<void> {
+  const eligibility = await getBillingEligibility(orgPublicId);
+  if (!eligibility) {
+    throw new ValidationError(
+      'Could not determine your eligible plan. Try again, or run ' +
+        `\`${cliCommandPrefix()} billing manage\` to open your Billing page.`,
+      'ELIGIBILITY_UNAVAILABLE',
+    );
+  }
+
+  const { select } = await import('@inquirer/prompts');
+  const billingInterval = await select({
+    message: 'Billing interval',
+    choices: [
+      { name: 'Annual (save ~17%)', value: 'annual' },
+      { name: 'Monthly', value: 'monthly' },
+    ],
+  });
+  const data = await apiClient(`/organizations/${orgPublicId}/billing/checkout`, {
+    method: 'POST',
+    body: JSON.stringify({ planSlug: eligibility.eligiblePlan, billingInterval }),
+  });
+  console.log('Opening Stripe Checkout...');
+  await open(data.url);
+
+  console.log('Waiting for payment confirmation... (Ctrl+C to cancel)');
+  const upgraded = await pollForUpgrade(orgPublicId);
+  console.log(describeUpgradedPlan(upgraded));
+}
+
 export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<void> {
   // `billing upgrade` is interactive end-to-end: both paths prompt for a plan
   // and confirm before anything is charged. There is no machine-readable form,
@@ -396,7 +440,20 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
 
   const workspaceId = await getDefaultWorkspaceId();
   const orgPublicId = await resolveOrgPublicIdForWorkspace(workspaceId);
-  const sub = await apiClient(`/organizations/${orgPublicId}/billing/subscription`);
+  const sub = (await apiClient(
+    `/organizations/${orgPublicId}/billing/subscription`,
+  )) as BillingSubscription;
+
+  // Money-model-v2 orgs still inside the trial lifecycle (not started,
+  // active, or expired) never see the plan picker — eligibility is the only
+  // source of truth for which plan they may check out into (Task 3). Once
+  // trial resolves into a real paid subscription, `sub.trial` goes away and
+  // the org falls through to the normal active/free paths below.
+  if (sub.usageUnit !== undefined && sub.trial) {
+    await checkoutEligiblePlan(orgPublicId);
+    return;
+  }
+
   // Phase A drops stripeSubscriptionId. Gate on plan.slug for paid-tier
   // detection AND preserve the existing status check so cancelled or
   // incomplete subscriptions still route to the checkout flow.
@@ -420,7 +477,9 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
       await open(orgBillingUrl(orgPublicId));
       return;
     }
-    await changePlanInTerminal(orgPublicId, sub);
+    // The guard above already ruled out an undefined billingInterval;
+    // changePlanInTerminal takes the narrower literal-required shape.
+    await changePlanInTerminal(orgPublicId, sub as typeof sub & { billingInterval: 'monthly' | 'annual' });
     return;
   }
 
@@ -446,9 +505,7 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
 
   console.log('Waiting for payment confirmation... (Ctrl+C to cancel)');
   const upgraded = await pollForUpgrade(orgPublicId);
-  console.log(
-    `✓ Upgraded to ${upgraded.plan.name} (${upgraded.plan.messages.toLocaleString('en-US')} messages/mo).`,
-  );
+  console.log(describeUpgradedPlan(upgraded));
 }
 
 export function registerBillingCommand(_program: Command): void {

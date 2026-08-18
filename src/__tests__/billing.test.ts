@@ -594,6 +594,80 @@ describe('billing commands', () => {
       }));
       expect(mockedOpen).toHaveBeenCalledWith('https://checkout.stripe.com/x');
     });
+
+    it('expired trial org: suppresses the plan picker and checks out only the eligible plan', async () => {
+      const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
+      const inq = await import('@inquirer/prompts');
+      // Only ONE select call expected: billing interval. No "Choose a plan"
+      // prompt — the eligible plan is not user-selectable.
+      vi.mocked(inq.select).mockResolvedValueOnce('monthly' as never);
+      mockedGetBillingEligibility.mockResolvedValueOnce({
+        eligiblePlan: 'build',
+        trialActions: 12,
+        trialStatus: 'expired',
+      });
+
+      let checkoutMinted = false;
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === SUBSCRIPTION_PATH) {
+          return checkoutMinted
+            ? {
+                status: 'active',
+                usageUnit: 'actions',
+                actionsUsed: 0,
+                actionsQuota: 200,
+                plan: { slug: 'build', name: 'Build', messages: 0 },
+              }
+            : {
+                status: 'trialing',
+                usageUnit: 'actions',
+                actionsUsed: 12,
+                actionsQuota: null,
+                plan: { slug: 'build', name: 'Build', messages: 0 },
+                trial: { status: 'expired', endsAt: '2026-08-10T00:00:00.000Z', daysLeft: 0 },
+              };
+        }
+        if (path === '/workspaces') return WORKSPACES;
+        // The plan catalog must never be fetched on this path — the picker
+        // is suppressed entirely, so nothing should ask for it.
+        if (path === '/plans') throw new Error('unexpected /plans fetch on eligibility-locked path');
+        if (path === CHECKOUT_PATH) {
+          checkoutMinted = true;
+          return { url: 'https://checkout.stripe.com/x' };
+        }
+        throw new Error(`unexpected path: ${path}`);
+      });
+
+      await import('../index.js');
+
+      vi.useFakeTimers();
+      try {
+        const run = billingUpgrade();
+        await advanceUntilSettled(run);
+        await run;
+      } finally {
+        process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
+        vi.useRealTimers();
+      }
+
+      expect(inq.select).toHaveBeenCalledTimes(1);
+      expect(mockedGetBillingEligibility).toHaveBeenCalledWith(ORG_PUBLIC_ID);
+      expect(mockedApiClient).toHaveBeenCalledWith(CHECKOUT_PATH, expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ planSlug: 'build', billingInterval: 'monthly' }),
+      }));
+      expect(mockedOpen).toHaveBeenCalledWith('https://checkout.stripe.com/x');
+    });
+
+    it('legacy active org still gets the plan picker (unchanged)', async () => {
+      await runPaidPathDeclining('active');
+
+      expect(mockedGetBillingEligibility).not.toHaveBeenCalled();
+    });
   });
 });
 
