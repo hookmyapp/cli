@@ -228,7 +228,7 @@ describe('billing commands', () => {
 
     const BILLING_URL = `https://app.test/org/${ORG_PUBLIC_ID}/billing`;
 
-    it('trial not started: exact copy, no channel yet', async () => {
+    it('trial not started: exact copy, no false channel-connect claim', async () => {
       mockSubAndUsage(
         {
           status: 'trialing',
@@ -245,19 +245,19 @@ describe('billing commands', () => {
       await billingStatus({ human: true });
 
       const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
-      expect(logged).toBe('Plan: Free trial — starts when you connect your first channel');
+      expect(logged).toBe('Plan: Free trial, not started yet.');
       expect(mockedGetBillingEligibility).not.toHaveBeenCalled();
     });
 
-    it('trial active: days left, actions so far, add-card hint', async () => {
+    it('trial active: days left, actions of quota from the API, add-card hint', async () => {
       mockSubAndUsage(
         {
           status: 'trialing',
-          plan: { slug: 'build', name: 'Build', messages: 0 },
+          plan: { slug: 'business', name: 'Business', messages: 0 },
           usageUnit: 'actions',
           actionsUsed: 37,
-          actionsQuota: null,
-          unlimited: true,
+          actionsQuota: 100000,
+          unlimited: false,
           trial: { status: 'active', endsAt: '2026-08-22T00:00:00.000Z', daysLeft: 4 },
         },
         { totalMessages: 0, limit: 0, percentage: 0 },
@@ -266,7 +266,7 @@ describe('billing commands', () => {
       await billingStatus({ human: true });
 
       const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
-      expect(logged).toContain('Plan: Free trial — 4 days left · 37 actions so far (unlimited during trial)');
+      expect(logged).toContain('Free trial: 4 days left · 37 of 100,000 actions');
       expect(logged).toContain(`Add a card so nothing stops when the trial ends: ${BILLING_URL}`);
     });
 
@@ -274,10 +274,10 @@ describe('billing commands', () => {
       mockSubAndUsage(
         {
           status: 'trialing',
-          plan: { slug: 'build', name: 'Build', messages: 0 },
+          plan: { slug: 'business', name: 'Business', messages: 0 },
           usageUnit: 'actions',
           actionsUsed: 12,
-          actionsQuota: null,
+          actionsQuota: 100000,
           unlimited: false,
           trial: { status: 'expired', endsAt: '2026-08-10T00:00:00.000Z', daysLeft: 0 },
         },
@@ -292,8 +292,8 @@ describe('billing commands', () => {
       await billingStatus({ human: true });
 
       const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
-      expect(logged).toContain('Your trial ended — channels are paused.');
-      expect(logged).toContain(`Resume on Build ($1/month): ${BILLING_URL}`);
+      expect(logged).toContain('Your trial ended. Channels are paused.');
+      expect(logged).toContain(`Add a card to resume on Build ($1/month): ${BILLING_URL}`);
       expect(mockedGetBillingEligibility).toHaveBeenCalledWith(ORG_PUBLIC_ID);
     });
 

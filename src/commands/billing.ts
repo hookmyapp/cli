@@ -159,16 +159,20 @@ async function printMoneyModelStatus(orgPublicId: string, sub: BillingSubscripti
 
   if (sub.trial) {
     if (sub.trial.status === 'not_started') {
-      console.log('Plan: Free trial — starts when you connect your first channel');
+      // Dead in practice (AIT-420 Task 3 provisions the Business trial at
+      // signup, before any CLI call can observe this org), kept only
+      // because the API contract still types the state defensively.
+      console.log('Plan: Free trial, not started yet.');
       return;
     }
     if (sub.trial.status === 'active') {
       const daysLeft = sub.trial.daysLeft ?? 0;
-      const actionsUsed = sub.actionsUsed ?? 0;
-      console.log(
-        `Plan: Free trial — ${daysLeft} day${daysLeft === 1 ? '' : 's'} left · ` +
-          `${actionsUsed.toLocaleString('en-US')} actions so far (unlimited during trial)`,
-      );
+      const used = (sub.actionsUsed ?? 0).toLocaleString('en-US');
+      // Quota always comes from the API, never hardcoded — the trial is
+      // 100,000 actions on Business today, but this line must not assume it.
+      const quota = sub.actionsQuota;
+      const quotaLabel = quota === null || quota === undefined ? 'unlimited' : quota.toLocaleString('en-US');
+      console.log(`Free trial: ${daysLeft} days left · ${used} of ${quotaLabel} actions`);
       console.log(`Add a card so nothing stops when the trial ends: ${billingUrl}`);
       return;
     }
@@ -178,11 +182,11 @@ async function printMoneyModelStatus(orgPublicId: string, sub: BillingSubscripti
       // which plan the org is allowed to resume onto.
       const eligibility = await getBillingEligibility(orgPublicId);
       const display = eligibility ? ELIGIBLE_PLAN_DISPLAY[eligibility.eligiblePlan] : undefined;
-      console.log('Your trial ended — channels are paused.');
+      console.log('Your trial ended. Channels are paused.');
       console.log(
         display
-          ? `Resume on ${display.name} (${display.priceLabel}): ${billingUrl}`
-          : `Resume your plan: ${billingUrl}`,
+          ? `Add a card to resume on ${display.name} (${display.priceLabel}): ${billingUrl}`
+          : `Add a card to resume: ${billingUrl}`,
       );
       return;
     }
