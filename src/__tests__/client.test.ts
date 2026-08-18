@@ -231,3 +231,75 @@ describe('apiClient', () => {
     }
   });
 });
+
+describe('getBillingEligibility', () => {
+  let getBillingEligibility: typeof import('../api/client.js').getBillingEligibility;
+  let AuthError: typeof import('../output/error.js').AuthError;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mockFetch.mockReset();
+    mockedReadCredentials.mockReset();
+    mockedSaveCredentials.mockReset();
+
+    const futureExp = Math.floor(Date.now() / 1000) + 3600;
+    const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
+    mockedReadCredentials.mockResolvedValue({
+      accessToken: `header.${payload}.sig`,
+      refreshToken: 'rt',
+      expiresAt: futureExp,
+    });
+
+    const mod = await import('../api/client.js');
+    const errMod = await import('../output/error.js');
+    getBillingEligibility = mod.getBillingEligibility;
+    AuthError = errMod.AuthError;
+  });
+
+  afterEach(() => {
+    delete process.env.HOOKMYAPP_API_URL;
+  });
+
+  it('GETs /organizations/:orgId/billing/eligibility with the auth header and parses the response', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ eligiblePlan: 'build', trialActions: 37, trialStatus: 'active' }),
+    });
+
+    const result = await getBillingEligibility('org_abc12345');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.hookmyapp.com/organizations/org_abc12345/billing/eligibility',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: expect.stringContaining('Bearer '),
+        }),
+      }),
+    );
+    expect(result).toEqual({ eligiblePlan: 'build', trialActions: 37, trialStatus: 'active' });
+  });
+
+  it('returns null (legacy world) when the backend 400s with PLAN_NOT_AVAILABLE', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ message: 'Money model v2 not enabled', code: 'PLAN_NOT_AVAILABLE' }),
+      statusText: 'Bad Request',
+    });
+
+    const result = await getBillingEligibility('org_abc12345');
+
+    expect(result).toBeNull();
+  });
+
+  it('rethrows other errors (e.g. 401) unchanged', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: async () => ({ message: 'Unauthorized' }),
+      statusText: 'Unauthorized',
+    });
+
+    await expect(getBillingEligibility('org_abc12345')).rejects.toBeInstanceOf(AuthError);
+  });
+});
