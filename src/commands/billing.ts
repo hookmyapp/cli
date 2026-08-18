@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import open from 'open';
-import { apiClient, isNetworkFailure } from '../api/client.js';
+import { apiClient, isNetworkFailure, getBillingEligibility, type BillingSubscription } from '../api/client.js';
 import { output } from '../output/format.js';
 import { c } from '../output/color.js';
 import { ApiError, NetworkError, ValidationError } from '../output/error.js';
@@ -140,20 +140,106 @@ export async function billingManage(opts: { json?: boolean } = {}): Promise<void
   await open(url);
 }
 
+// Money-model-v2 static plan copy (Plan 05 Task 2). Mirrors the existing
+// convention in this file (80%/exceeded nudge text, etc.) of hardcoding
+// user-facing copy rather than threading it through the catalog — the
+// snapshot list this implements is verbatim and binding.
+const SCALE_UPSELL_HINT = 'Running hot? Scale gives you 15,000 actions for $24/month.';
+const ELIGIBLE_PLAN_DISPLAY: Record<'build' | 'scale', { name: string; priceLabel: string }> = {
+  build: { name: 'Build', priceLabel: '$1/month' },
+  scale: { name: 'Scale', priceLabel: '$24/month' },
+};
+
+/** Money-model-v2 org (`sub.usageUnit === 'actions'`) status rendering —
+ *  trial states, then paid Build/Scale usage. Never called for legacy orgs. */
+async function printMoneyModelStatus(orgPublicId: string, sub: BillingSubscription): Promise<void> {
+  const billingUrl = orgBillingUrl(orgPublicId);
+
+  if (sub.trial) {
+    if (sub.trial.status === 'not_started') {
+      console.log('Plan: Free trial — starts when you connect your first channel');
+      return;
+    }
+    if (sub.trial.status === 'active') {
+      const daysLeft = sub.trial.daysLeft ?? 0;
+      const actionsUsed = sub.actionsUsed ?? 0;
+      console.log(
+        `Plan: Free trial — ${daysLeft} day${daysLeft === 1 ? '' : 's'} left · ` +
+          `${actionsUsed.toLocaleString('en-US')} actions so far (unlimited during trial)`,
+      );
+      console.log(`Add a card so nothing stops when the trial ends: ${billingUrl}`);
+      return;
+    }
+    if (sub.trial.status === 'expired') {
+      // Plan name/price for the resume line comes from eligibility, not the
+      // (paused) subscription's own plan — that's the source of truth for
+      // which plan the org is allowed to resume onto.
+      const eligibility = await getBillingEligibility(orgPublicId);
+      const display = eligibility ? ELIGIBLE_PLAN_DISPLAY[eligibility.eligiblePlan] : undefined;
+      console.log('Your trial ended — channels are paused.');
+      console.log(
+        display
+          ? `Resume on ${display.name} (${display.priceLabel}): ${billingUrl}`
+          : `Resume your plan: ${billingUrl}`,
+      );
+      return;
+    }
+  }
+
+  // Paid Build/Scale org (no active trial). NULL-GUARD: actionsQuota is null
+  // for unlimited — never call .toLocaleString on it directly.
+  const used = (sub.actionsUsed ?? 0).toLocaleString('en-US');
+  const quota = sub.actionsQuota;
+  const quotaLabel = quota === null || quota === undefined ? 'unlimited' : quota.toLocaleString('en-US');
+  console.log(`Plan: ${sub.plan.name} — ${used}/${quotaLabel} actions this period`);
+
+  if (typeof quota === 'number' && quota > 0 && sub.plan.slug !== 'scale') {
+    const usedRatio = (sub.actionsUsed ?? 0) / quota;
+    if (usedRatio >= 0.75) {
+      console.log(SCALE_UPSELL_HINT);
+    }
+  }
+}
+
 export async function billingStatus(opts: { json?: boolean; human?: boolean } = {}): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
   const orgPublicId = await resolveOrgPublicIdForWorkspace(workspaceId);
-  const [sub, usage] = await Promise.all([
+  const [sub, usage] = (await Promise.all([
     apiClient(`/organizations/${orgPublicId}/billing/subscription`),
     apiClient('/webhook/usage', { workspaceId }),
-  ]);
+  ])) as [BillingSubscription, { totalMessages: number; limit: number; percentage: number }];
 
   // Accept either `json: true` or `human: false` (back-compat with callers
   // and tests that predate the phase-108 opts shape).
   const isJson = opts.json === true || opts.human === false;
 
+  // Branch on usageUnit — never re-derive generation from plan slug. Legacy
+  // orgs (usageUnit undefined) get byte-identical output to before this
+  // feature existed; money-model-v2 orgs (usageUnit 'actions'/'messages')
+  // get the new trial/action-plan rendering.
+  const isMoneyModelV2 = sub.usageUnit !== undefined;
+
   if (isJson) {
+    if (isMoneyModelV2) {
+      output(
+        {
+          subscription: sub,
+          usage,
+          plan: sub.plan.name,
+          actionsUsed: sub.actionsUsed ?? null,
+          actionsQuota: sub.actionsQuota ?? null,
+          trial: sub.trial ? { daysLeft: sub.trial.daysLeft, endsAt: sub.trial.endsAt } : null,
+        },
+        { json: true },
+      );
+      return;
+    }
     output({ subscription: sub, usage }, { json: true });
+    return;
+  }
+
+  if (isMoneyModelV2) {
+    await printMoneyModelStatus(orgPublicId, sub);
     return;
   }
 

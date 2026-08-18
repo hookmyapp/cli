@@ -7,6 +7,7 @@ vi.mock('../api/client.js', () => ({
   // pollForUpgrade's transient-error check calls this on every poll failure;
   // default to "not a network blip" so it never masks a real error.
   isNetworkFailure: vi.fn(() => false),
+  getBillingEligibility: vi.fn(),
 }));
 
 // Mock open
@@ -32,11 +33,12 @@ const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
 const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-import { apiClient } from '../api/client.js';
+import { apiClient, getBillingEligibility } from '../api/client.js';
 import openDefault from 'open';
 
 const mockedApiClient = vi.mocked(apiClient);
 const mockedOpen = vi.mocked(openDefault);
+const mockedGetBillingEligibility = vi.mocked(getBillingEligibility);
 
 const WORKSPACE_ID = 'ws_TEST0070';
 const ORG_PUBLIC_ID = 'org_abc12345';
@@ -104,6 +106,7 @@ describe('billing commands', () => {
     vi.resetModules();
     mockedApiClient.mockReset();
     mockedOpen.mockReset();
+    mockedGetBillingEligibility.mockReset();
     mockExit.mockClear();
     mockConsoleError.mockClear();
     mockConsoleLog.mockClear();
@@ -212,6 +215,184 @@ describe('billing commands', () => {
       const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
       expect(logged).toContain('exceeded');
       expect(logged).toContain('105%');
+    });
+  });
+
+  describe('billingStatus — money model v2 (trial + action plans)', () => {
+    beforeEach(() => {
+      vi.stubEnv('HOOKMYAPP_APP_URL', 'https://app.test');
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    const BILLING_URL = `https://app.test/org/${ORG_PUBLIC_ID}/billing`;
+
+    it('trial not started: exact copy, no channel yet', async () => {
+      mockSubAndUsage(
+        {
+          status: 'trialing',
+          plan: { slug: 'build', name: 'Build', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 0,
+          actionsQuota: null,
+          unlimited: true,
+          trial: { status: 'not_started', endsAt: null, daysLeft: null },
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toBe('Plan: Free trial — starts when you connect your first channel');
+      expect(mockedGetBillingEligibility).not.toHaveBeenCalled();
+    });
+
+    it('trial active: days left, actions so far, add-card hint', async () => {
+      mockSubAndUsage(
+        {
+          status: 'trialing',
+          plan: { slug: 'build', name: 'Build', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 37,
+          actionsQuota: null,
+          unlimited: true,
+          trial: { status: 'active', endsAt: '2026-08-22T00:00:00.000Z', daysLeft: 4 },
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('Plan: Free trial — 4 days left · 37 actions so far (unlimited during trial)');
+      expect(logged).toContain(`Add a card so nothing stops when the trial ends: ${BILLING_URL}`);
+    });
+
+    it('trial expired: paused copy + resume line from eligibility plan/price', async () => {
+      mockSubAndUsage(
+        {
+          status: 'trialing',
+          plan: { slug: 'build', name: 'Build', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 12,
+          actionsQuota: null,
+          unlimited: false,
+          trial: { status: 'expired', endsAt: '2026-08-10T00:00:00.000Z', daysLeft: 0 },
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+      mockedGetBillingEligibility.mockResolvedValueOnce({
+        eligiblePlan: 'build',
+        trialActions: 12,
+        trialStatus: 'expired',
+      });
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('Your trial ended — channels are paused.');
+      expect(logged).toContain(`Resume on Build ($1/month): ${BILLING_URL}`);
+      expect(mockedGetBillingEligibility).toHaveBeenCalledWith(ORG_PUBLIC_ID);
+    });
+
+    it('build org under 75% usage: plan line only, no upsell', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'build', name: 'Build', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 137,
+          actionsQuota: 200,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toBe('Plan: Build — 137/200 actions this period');
+    });
+
+    it('build org at/above 75% usage: shows Scale upsell hint', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'build', name: 'Build', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 180,
+          actionsQuota: 200,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('Plan: Build — 180/200 actions this period');
+      expect(logged).toContain('Running hot? Scale gives you 15,000 actions for $24/month.');
+    });
+
+    it('scale org: plan line with comma-formatted quota, no upsell', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 12406,
+          actionsQuota: 15000,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toBe('Plan: Scale — 12,406/15,000 actions this period');
+    });
+
+    it('legacy org (no usageUnit) is untouched: no eligibility call, existing output shape', async () => {
+      mockSubAndUsage(activeSub, { totalMessages: 600, limit: 1200, percentage: 50 });
+
+      await billingStatus({ human: true });
+
+      expect(mockedGetBillingEligibility).not.toHaveBeenCalled();
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('plan: Scale');
+      expect(logged).not.toContain('actions this period');
+    });
+
+    it('--json is additive: adds plan/actionsUsed/actionsQuota/trial for a money-model-v2 org', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'build', name: 'Build', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 137,
+          actionsQuota: 200,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: false });
+
+      const calls = mockConsoleLog.mock.calls.map((c) => c[0]);
+      const jsonCall = calls.find((c) => typeof c === 'string' && c.includes('"subscription"'));
+      expect(jsonCall).toBeDefined();
+      const parsed = JSON.parse(jsonCall as string);
+      expect(parsed.plan).toBe('Build');
+      expect(parsed.actionsUsed).toBe(137);
+      expect(parsed.actionsQuota).toBe(200);
+      expect(parsed.trial).toBeNull();
     });
   });
 
