@@ -171,8 +171,14 @@ async function printMoneyModelStatus(orgPublicId: string, sub: BillingSubscripti
       // Quota always comes from the API, never hardcoded — the trial is
       // 100,000 actions on Business today, but this line must not assume it.
       const quota = sub.actionsQuota;
-      const quotaLabel = quota === null || quota === undefined ? 'unlimited' : quota.toLocaleString('en-US');
-      console.log(`Free trial: ${daysLeft} days left · ${used} of ${quotaLabel} actions`);
+      // A missing quota drops the "of X" clause rather than claiming
+      // unlimited: the trial is finite, so guessing the wrong way is worse
+      // than saying less.
+      console.log(
+        quota === null || quota === undefined
+          ? `Free trial: ${daysLeft} days left · ${used} actions used`
+          : `Free trial: ${daysLeft} days left · ${used} of ${quota.toLocaleString('en-US')} actions`,
+      );
       console.log(`Add a card so nothing stops when the trial ends: ${billingUrl}`);
       return;
     }
