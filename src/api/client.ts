@@ -410,7 +410,7 @@ export async function apiClient(
 // scoped so the CLI can call it before deciding whether to show a picker at
 // all (Task 3).
 export interface BillingEligibility {
-  eligiblePlan: 'build' | 'scale';
+  eligiblePlan: 'build' | 'scale' | 'business';
   trialActions: number;
   trialStatus: 'not_started' | 'active' | 'expired';
 }

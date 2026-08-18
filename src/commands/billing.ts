@@ -142,10 +142,14 @@ export async function billingManage(opts: { json?: boolean } = {}): Promise<void
 // convention in this file (80%/exceeded nudge text, etc.) of hardcoding
 // user-facing copy rather than threading it through the catalog — the
 // snapshot list this implements is verbatim and binding.
-const SCALE_UPSELL_HINT = 'Running hot? Scale gives you 15,000 actions for $24/month.';
-const ELIGIBLE_PLAN_DISPLAY: Record<'build' | 'scale', { name: string; priceLabel: string }> = {
+const UPSELL_HINTS: Record<string, string> = {
+  build: 'Running hot? Scale gives you 15,000 actions for $24/month.',
+  scale: 'Running hot? Business gives you 100,000 actions for $97/month.',
+};
+const ELIGIBLE_PLAN_DISPLAY: Record<'build' | 'scale' | 'business', { name: string; priceLabel: string }> = {
   build: { name: 'Build', priceLabel: '$1/month' },
   scale: { name: 'Scale', priceLabel: '$24/month' },
+  business: { name: 'Business', priceLabel: '$97/month' },
 };
 
 /** Money-model-v2 org (`sub.usageUnit === 'actions'`) status rendering —
@@ -191,10 +195,11 @@ async function printMoneyModelStatus(orgPublicId: string, sub: BillingSubscripti
   const quotaLabel = quota === null || quota === undefined ? 'unlimited' : quota.toLocaleString('en-US');
   console.log(`Plan: ${sub.plan.name} — ${used}/${quotaLabel} actions this period`);
 
-  if (typeof quota === 'number' && quota > 0 && sub.plan.slug !== 'scale') {
+  const upsellHint = UPSELL_HINTS[sub.plan.slug];
+  if (typeof quota === 'number' && quota > 0 && upsellHint) {
     const usedRatio = (sub.actionsUsed ?? 0) / quota;
     if (usedRatio >= 0.75) {
-      console.log(SCALE_UPSELL_HINT);
+      console.log(upsellHint);
     }
   }
 }

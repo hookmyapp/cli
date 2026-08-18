@@ -338,7 +338,27 @@ describe('billing commands', () => {
       expect(logged).toContain('Running hot? Scale gives you 15,000 actions for $24/month.');
     });
 
-    it('scale org: plan line with comma-formatted quota, no upsell', async () => {
+    it('business org: plan line with comma-formatted quota, no upsell (top tier)', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'business', name: 'Business', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 90123,
+          actionsQuota: 100000,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toBe('Plan: Business — 90,123/100,000 actions this period');
+    });
+
+    it('scale org running hot: upsell hint points at Business', async () => {
       mockSubAndUsage(
         {
           status: 'active',
@@ -355,7 +375,8 @@ describe('billing commands', () => {
       await billingStatus({ human: true });
 
       const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
-      expect(logged).toBe('Plan: Scale — 12,406/15,000 actions this period');
+      expect(logged).toContain('Plan: Scale — 12,406/15,000 actions this period');
+      expect(logged).toContain('Running hot? Business gives you 100,000 actions for $97/month.');
     });
 
     it('legacy org (no usageUnit) is untouched: no eligibility call, existing output shape', async () => {
