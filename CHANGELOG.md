@@ -2,6 +2,14 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.18 — 2026-08-18
+
+### Changed
+
+- `hookmyapp billing` shows the new plans. Trial organizations see days left and actions used so far (unlimited during the trial), with a reminder to add a card. Build and Scale organizations see their action count against the plan quota, with a Scale hint when usage runs hot. Organizations on existing plans see the same output as before (AIT-420).
+- `hookmyapp billing upgrade` for a trial that ended offers the plan your usage qualifies you for, with no plan picker. Existing plans keep the current picker (AIT-420).
+- `--json` output adds `plan`, `actionsUsed`, `actionsQuota` (null means unlimited), and `trial` fields. All existing fields are unchanged (AIT-420).
+
 ## 0.14.16 — 2026-08-14
 
 ### Fixed
