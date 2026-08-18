@@ -179,7 +179,7 @@ async function printMoneyModelStatus(orgPublicId: string, sub: BillingSubscripti
           ? `Free trial: ${daysLeft} days left · ${used} actions used`
           : `Free trial: ${daysLeft} days left · ${used} of ${quota.toLocaleString('en-US')} actions`,
       );
-      console.log(`Add a card so nothing stops when the trial ends: ${billingUrl}`);
+      console.log(`Add a credit card so nothing stops when the trial ends: ${billingUrl}`);
       return;
     }
     if (sub.trial.status === 'expired') {
@@ -191,8 +191,8 @@ async function printMoneyModelStatus(orgPublicId: string, sub: BillingSubscripti
       console.log('Your trial ended. Channels are paused.');
       console.log(
         display
-          ? `Add a card to resume on ${display.name} (${display.priceLabel}): ${billingUrl}`
-          : `Add a card to resume: ${billingUrl}`,
+          ? `Add a credit card to resume on ${display.name} (${display.priceLabel}): ${billingUrl}`
+          : `Add a credit card to resume: ${billingUrl}`,
       );
       return;
     }

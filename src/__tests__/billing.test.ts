@@ -267,7 +267,7 @@ describe('billing commands', () => {
 
       const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
       expect(logged).toContain('Free trial: 4 days left · 37 of 100,000 actions');
-      expect(logged).toContain(`Add a card so nothing stops when the trial ends: ${BILLING_URL}`);
+      expect(logged).toContain(`Add a credit card so nothing stops when the trial ends: ${BILLING_URL}`);
     });
 
     it('trial expired: paused copy + resume line from eligibility plan/price', async () => {
@@ -293,7 +293,7 @@ describe('billing commands', () => {
 
       const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
       expect(logged).toContain('Your trial ended. Channels are paused.');
-      expect(logged).toContain(`Add a card to resume on Build ($1/month): ${BILLING_URL}`);
+      expect(logged).toContain(`Add a credit card to resume on Build ($1/month): ${BILLING_URL}`);
       expect(mockedGetBillingEligibility).toHaveBeenCalledWith(ORG_PUBLIC_ID);
     });
 
