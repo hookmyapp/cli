@@ -293,6 +293,29 @@ describe('billing commands', () => {
       expect(logged).not.toContain('actions this period');
     });
 
+    // Codex, PR #61: the action renderer returned before the shared warning, so
+    // a scheduled cancellation was silently hidden from these organizations.
+    it('action org with a scheduled cancellation still says so', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 900,
+          actionsQuota: 15000,
+          unlimited: false,
+          trial: null,
+          cancelAtPeriodEnd: true,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('cancel at period end');
+    });
+
     it('trial expired: paused copy + resume line from eligibility plan/price', async () => {
       mockSubAndUsage(
         {
@@ -786,6 +809,43 @@ describe('billing commands', () => {
             unlimited: false,
             trial: null,
             plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          };
+        }
+        if (path === '/workspaces') return WORKSPACES;
+        if (path === '/plans') throw new Error('unexpected /plans fetch for an action-metered org');
+        throw new Error(`unexpected path: ${path}`);
+      });
+
+      try {
+        await billingUpgrade();
+      } finally {
+        process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
+      }
+
+      expect(mockedOpen).toHaveBeenCalledWith(expect.stringContaining('billing'));
+      expect(inq.select).not.toHaveBeenCalled();
+    });
+
+    // Codex, PR #61 round 2: the first fix guarded only the ACTIVE case, so a
+    // canceled/incomplete/unpaid action org still reached the legacy picker.
+    it('CANCELED action-metered org: still opens Billing, never the legacy picker', async () => {
+      const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
+      const inq = await import('@inquirer/prompts');
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === SUBSCRIPTION_PATH) {
+          return {
+            status: 'canceled',
+            billingInterval: 'monthly',
+            usageUnit: 'actions',
+            actionsUsed: 40,
+            actionsQuota: 200,
+            unlimited: false,
+            trial: null,
+            plan: { slug: 'build', name: 'Build', messages: 0 },
           };
         }
         if (path === '/workspaces') return WORKSPACES;

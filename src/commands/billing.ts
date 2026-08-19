@@ -278,6 +278,12 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
 
   if (isMoneyModelV2) {
     await printMoneyModelStatus(orgPublicId, sub);
+    // The action renderer returns early, so the shared warning below never ran
+    // for these organizations: `billing status` showed usage and silently hid
+    // that service is scheduled to end (Codex, PR #61).
+    if (sub.cancelAtPeriodEnd === true) {
+      console.log('\n' + c.warn('Subscription will cancel at period end.'));
+    }
     return;
   }
 
@@ -494,6 +500,19 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
     return;
   }
 
+  // Any remaining action-metered subscription goes to the Billing page, and it
+  // is checked BEFORE `hasActiveSub` deliberately: `GET /plans` serves the
+  // LEGACY catalog, so a canceled, incomplete, or unpaid action org would
+  // otherwise fall through to the terminal picker and be offered
+  // starter/growth/pro at legacy prices, then a cross-generation checkout
+  // (Codex, PR #61 -- the first fix guarded only the active case). The trial
+  // branch above has already claimed every org that still has a trial.
+  if (sub.usageUnit === 'actions') {
+    console.log('Opening your Billing page to update your plan...');
+    await open(orgBillingUrl(orgPublicId));
+    return;
+  }
+
   // Phase A drops stripeSubscriptionId. Gate on plan.slug for paid-tier
   // detection AND preserve the existing status check so cancelled or
   // incomplete subscriptions still route to the checkout flow.
@@ -509,12 +528,6 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
     // assuming one could move an annual customer to monthly billing.
     if (
       sub.plan.slug === 'custom' ||
-      // A PAID action-metered org (trial resolved, so the branch above did not
-      // catch it). `GET /plans` serves the LEGACY catalog only, so the terminal
-      // picker would offer this customer starter/growth/pro at legacy prices and
-      // then attempt a cross-generation plan change — not merely a "0 messages"
-      // mislabel (Codex, PR #61). The Billing page carries the real v2 picker.
-      sub.usageUnit === 'actions' ||
       sub.cancelAtPeriodEnd === true ||
       sub.pendingPlanChange ||
       (sub.billingInterval !== 'monthly' && sub.billingInterval !== 'annual')
