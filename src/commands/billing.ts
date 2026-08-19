@@ -222,7 +222,10 @@ async function printMoneyModelStatus(orgPublicId: string, sub: BillingSubscripti
   // for unlimited — never call .toLocaleString on it directly.
   const used = (sub.actionsUsed ?? 0).toLocaleString('en-US');
   const quota = sub.actionsQuota;
-  const quotaLabel = quota === null || quota === undefined ? 'unlimited' : quota.toLocaleString('en-US');
+  // Only a real `null` means unlimited. An ABSENT quota is unknown, and
+  // printing "unlimited" for it falsely promises an uncapped plan
+  // (Codex, PR #61) -- the same distinction the --json branch makes.
+  const quotaLabel = quota === null ? 'unlimited' : quota === undefined ? 'unknown' : quota.toLocaleString('en-US');
   console.log(`Plan: ${sub.plan.name} — ${used}/${quotaLabel} actions this period`);
 
   // Every action-metered subscription reaches this renderer, including
@@ -427,7 +430,8 @@ async function changePlanInTerminal(
 function describeUpgradedPlan(sub: BillingSubscription): string {
   if (sub.usageUnit === 'actions') {
     const quota = sub.actionsQuota;
-    const quotaLabel = quota === null || quota === undefined ? 'unlimited' : quota.toLocaleString('en-US');
+    // Same distinction as the status renderer: absent is unknown, null is unlimited.
+    const quotaLabel = quota === null ? 'unlimited' : quota === undefined ? 'unknown' : quota.toLocaleString('en-US');
     return `✓ Upgraded to ${sub.plan.name} (${quotaLabel} actions/mo).`;
   }
   return `✓ Upgraded to ${sub.plan.name} (${sub.plan.messages.toLocaleString('en-US')} messages/mo).`;

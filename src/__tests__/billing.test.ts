@@ -98,7 +98,7 @@ function mockSubAndUsage(sub: any, usage: { totalMessages: number; limit: number
 }
 
 describe('billing commands', () => {
-  let billingStatus: (opts: { human?: boolean }) => Promise<void>;
+  let billingStatus: (opts: { json?: boolean; human?: boolean }) => Promise<void>;
   let billingUpgrade: (opts?: { json?: boolean }) => Promise<void>;
   let billingManage: () => Promise<void>;
 
@@ -357,6 +357,28 @@ describe('billing commands', () => {
 
       const payload = JSON.parse(mockConsoleLog.mock.calls.map((c) => String(c[0])).join(''));
       expect(payload).not.toHaveProperty('actionsQuota');
+    });
+
+    // Codex, PR #61: only a real null means unlimited. An absent quota printed
+    // as "unlimited" falsely promised an uncapped plan.
+    it('human output says unknown, not unlimited, when the API sent no quota', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 900,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('unknown');
+      expect(logged).not.toContain('unlimited');
     });
 
     it('trial expired: paused copy + resume line from eligibility plan/price', async () => {
@@ -916,7 +938,7 @@ describe('billing commands', () => {
 });
 
 describe('billing commands — npx prefix roll-out (cliCommandPrefix)', () => {
-  let billingStatus: (opts: { human?: boolean }) => Promise<void>;
+  let billingStatus: (opts: { json?: boolean; human?: boolean }) => Promise<void>;
 
   beforeEach(async () => {
     vi.resetModules();
