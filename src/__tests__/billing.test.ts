@@ -316,6 +316,49 @@ describe('billing commands', () => {
       expect(logged).toContain('cancel at period end');
     });
 
+    // Codex, PR #61: every action-metered subscription reaches this renderer,
+    // so a canceled or past_due plan was printing exactly like a live one.
+    it('past_due action org: says the subscription is not running', async () => {
+      mockSubAndUsage(
+        {
+          status: 'past_due',
+          plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 900,
+          actionsQuota: 15000,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('past_due');
+    });
+
+    // `null` means unlimited in the published JSON contract, so an ABSENT quota
+    // must not be coerced to null (Codex, PR #61).
+    it('--json omits actionsQuota entirely when the API did not send one', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 900,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ json: true });
+
+      const payload = JSON.parse(mockConsoleLog.mock.calls.map((c) => String(c[0])).join(''));
+      expect(payload).not.toHaveProperty('actionsQuota');
+    });
+
     it('trial expired: paused copy + resume line from eligibility plan/price', async () => {
       mockSubAndUsage(
         {

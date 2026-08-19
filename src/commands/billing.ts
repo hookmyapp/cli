@@ -225,6 +225,14 @@ async function printMoneyModelStatus(orgPublicId: string, sub: BillingSubscripti
   const quotaLabel = quota === null || quota === undefined ? 'unlimited' : quota.toLocaleString('en-US');
   console.log(`Plan: ${sub.plan.name} — ${used}/${quotaLabel} actions this period`);
 
+  // Every action-metered subscription reaches this renderer, including
+  // past_due / canceled / incomplete / unpaid. Printing only plan and usage
+  // made a suspended or canceled plan look live (Codex, PR #61), so any state
+  // that is not plainly running says so.
+  if (sub.status !== 'active' && sub.status !== 'trialing') {
+    console.log(c.warn(`Subscription status: ${sub.status}.`));
+  }
+
   const upsellHint = UPSELL_HINTS[sub.plan.slug];
   if (typeof quota === 'number' && quota > 0 && upsellHint) {
     const usedRatio = (sub.actionsUsed ?? 0) / quota;
@@ -265,7 +273,11 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
           usage,
           plan: sub.plan.name,
           actionsUsed: sub.actionsUsed ?? null,
-          actionsQuota: sub.actionsQuota ?? null,
+          // `null` is the published contract for UNLIMITED, so an ABSENT quota
+          // must not be coerced into it: that would tell a machine consumer the
+          // org has no cap when we simply did not receive one (Codex, PR #61).
+          // A real API null still passes through as unlimited.
+          ...(sub.actionsQuota === undefined ? {} : { actionsQuota: sub.actionsQuota }),
           trial: sub.trial ? { daysLeft: sub.trial.daysLeft, endsAt: sub.trial.endsAt } : null,
         },
         { json: true },
