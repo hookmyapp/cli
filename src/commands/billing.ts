@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import open from 'open';
-import { apiClient, isNetworkFailure } from '../api/client.js';
+import { apiClient, isNetworkFailure, getBillingEligibility, type BillingSubscription } from '../api/client.js';
 import { output } from '../output/format.js';
 import { c } from '../output/color.js';
 import { ApiError, NetworkError, ValidationError } from '../output/error.js';
@@ -87,18 +87,36 @@ const UPGRADE_POLL_HINT_EVERY_MS = 60_000;
  *  (expired auth, revoked permission, client-outdated) rethrow — polling
  *  forever on those would tell the user to "finish checkout" while the CLI
  *  itself is the thing that's broken. */
+/** Has the thing we opened Stripe for actually happened?
+ *
+ *  The default answer ("on a paid plan, and live") is right for a legacy org,
+ *  which starts from `free`. It is WRONG for a money-model-v2 org in a trial:
+ *  that org already reads `plan.slug: 'business'`, `status: 'trialing'` BEFORE
+ *  checkout, so the poll returned on its first tick and printed
+ *  "✓ Upgraded to Business" about five seconds after opening the browser —
+ *  even if the user closed the tab and paid nothing (Codex + CodeRabbit,
+ *  cli PR #61). The trial path passes `trialSettled` instead, which requires
+ *  the observable transition: `trial` goes null once `paidAt` lands. */
+type UpgradeComplete = (sub: BillingSubscription) => boolean;
+
+const onPaidPlan: UpgradeComplete = (sub) =>
+  sub.plan.slug !== 'free' && ['active', 'trialing'].includes(sub.status);
+
+const trialSettled: UpgradeComplete = (sub) => onPaidPlan(sub) && !sub.trial;
+
 async function pollForUpgrade(
   orgPublicId: string,
-): Promise<{ plan: { slug: string; name: string; messages: number }; status: string }> {
+  isComplete: UpgradeComplete = onPaidPlan,
+): Promise<BillingSubscription> {
   const startedAt = Date.now();
   let lastHintAt = startedAt;
   for (;;) {
     await new Promise((resolve) => setTimeout(resolve, UPGRADE_POLL_INTERVAL_MS));
-    let sub: { plan: { slug: string; name: string; messages: number }; status: string } | null;
+    let sub: BillingSubscription | null;
     try {
       sub = (await apiClient(
         `/organizations/${orgPublicId}/billing/subscription`,
-      )) as { plan: { slug: string; name: string; messages: number }; status: string };
+      )) as BillingSubscription;
     } catch (err) {
       // apiClient wraps raw fetch failures in its own NetworkError before
       // they ever reach here — isNetworkFailure() inspects the *raw* fetch
@@ -113,7 +131,7 @@ async function pollForUpgrade(
       if (!transient) throw err;
       sub = null;
     }
-    if (sub && sub.plan.slug !== 'free' && ['active', 'trialing'].includes(sub.status)) {
+    if (sub && isComplete(sub)) {
       return sub;
     }
     if (Date.now() - lastHintAt >= UPGRADE_POLL_HINT_EVERY_MS) {
@@ -140,20 +158,147 @@ export async function billingManage(opts: { json?: boolean } = {}): Promise<void
   await open(url);
 }
 
+// Money-model-v2 static plan copy (Plan 05 Task 2). Mirrors the existing
+// convention in this file (80%/exceeded nudge text, etc.) of hardcoding
+// user-facing copy rather than threading it through the catalog — the
+// snapshot list this implements is verbatim and binding.
+const UPSELL_HINTS: Record<string, string> = {
+  build: 'Running hot? Scale gives you 15,000 actions for $24/month.',
+  scale: 'Running hot? Business gives you 100,000 actions for $97/month.',
+};
+const ELIGIBLE_PLAN_DISPLAY: Record<'build' | 'scale' | 'business', { name: string; priceLabel: string }> = {
+  build: { name: 'Build', priceLabel: '$1/month' },
+  scale: { name: 'Scale', priceLabel: '$24/month' },
+  business: { name: 'Business', priceLabel: '$97/month' },
+};
+
+/** Money-model-v2 org (`sub.usageUnit === 'actions'`) status rendering —
+ *  trial states, then paid Build/Scale usage. Never called for legacy orgs. */
+async function printMoneyModelStatus(orgPublicId: string, sub: BillingSubscription): Promise<void> {
+  const billingUrl = orgBillingUrl(orgPublicId);
+
+  if (sub.trial) {
+    if (sub.trial.status === 'not_started') {
+      // Dead in practice (AIT-420 Task 3 provisions the Business trial at
+      // signup, before any CLI call can observe this org), kept only
+      // because the API contract still types the state defensively.
+      console.log('Plan: Free trial, not started yet.');
+      return;
+    }
+    if (sub.trial.status === 'active') {
+      const daysLeft = sub.trial.daysLeft ?? 0;
+      const used = (sub.actionsUsed ?? 0).toLocaleString('en-US');
+      // Quota always comes from the API, never hardcoded — the trial is
+      // 100,000 actions on Business today, but this line must not assume it.
+      const quota = sub.actionsQuota;
+      // A missing quota drops the "of X" clause rather than claiming
+      // unlimited: the trial is finite, so guessing the wrong way is worse
+      // than saying less.
+      console.log(
+        quota === null || quota === undefined
+          ? `Free trial: ${daysLeft} days left · ${used} actions used`
+          : `Free trial: ${daysLeft} days left · ${used} of ${quota.toLocaleString('en-US')} actions`,
+      );
+      console.log(`Add a credit card so nothing stops when the trial ends: ${billingUrl}`);
+      return;
+    }
+    if (sub.trial.status === 'expired') {
+      // Plan name/price for the resume line comes from eligibility, not the
+      // (paused) subscription's own plan — that's the source of truth for
+      // which plan the org is allowed to resume onto.
+      const eligibility = await getBillingEligibility(orgPublicId);
+      const display = eligibility ? ELIGIBLE_PLAN_DISPLAY[eligibility.eligiblePlan] : undefined;
+      console.log('Your trial ended. Channels are paused.');
+      console.log(
+        display
+          ? `Add a credit card to resume on ${display.name} (${display.priceLabel}): ${billingUrl}`
+          : `Add a credit card to resume: ${billingUrl}`,
+      );
+      return;
+    }
+  }
+
+  // Paid Build/Scale org (no active trial). NULL-GUARD: actionsQuota is null
+  // for unlimited — never call .toLocaleString on it directly.
+  const used = (sub.actionsUsed ?? 0).toLocaleString('en-US');
+  const quota = sub.actionsQuota;
+  // Only a real `null` means unlimited. An ABSENT quota is unknown, and
+  // printing "unlimited" for it falsely promises an uncapped plan
+  // (Codex, PR #61) -- the same distinction the --json branch makes.
+  const quotaLabel = quota === null ? 'unlimited' : quota === undefined ? 'unknown' : quota.toLocaleString('en-US');
+  console.log(`Plan: ${sub.plan.name} — ${used}/${quotaLabel} actions this period`);
+
+  // Every action-metered subscription reaches this renderer, including
+  // past_due / canceled / incomplete / unpaid. Printing only plan and usage
+  // made a suspended or canceled plan look live (Codex, PR #61), so any state
+  // that is not plainly running says so.
+  if (sub.status !== 'active' && sub.status !== 'trialing') {
+    console.log(c.warn(`Subscription status: ${sub.status}.`));
+  }
+
+  const upsellHint = UPSELL_HINTS[sub.plan.slug];
+  if (typeof quota === 'number' && quota > 0 && upsellHint) {
+    const usedRatio = (sub.actionsUsed ?? 0) / quota;
+    if (usedRatio >= 0.75) {
+      console.log(upsellHint);
+    }
+  }
+}
+
 export async function billingStatus(opts: { json?: boolean; human?: boolean } = {}): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId();
   const orgPublicId = await resolveOrgPublicIdForWorkspace(workspaceId);
-  const [sub, usage] = await Promise.all([
+  const [sub, usage] = (await Promise.all([
     apiClient(`/organizations/${orgPublicId}/billing/subscription`),
     apiClient('/webhook/usage', { workspaceId }),
-  ]);
+  ])) as [BillingSubscription, { totalMessages: number; limit: number; percentage: number }];
 
   // Accept either `json: true` or `human: false` (back-compat with callers
   // and tests that predate the phase-108 opts shape).
   const isJson = opts.json === true || opts.human === false;
 
+  // Branch on usageUnit — never re-derive generation from plan slug. Legacy
+  // orgs (usageUnit undefined) get byte-identical output to before this
+  // feature existed; money-model-v2 orgs (usageUnit 'actions'/'messages')
+  // get the new trial/action-plan rendering.
+  // 'actions', not merely "usageUnit is present": a v2-flagged org still on the
+  // MESSAGE meter reports usageUnit 'messages' with actionsUsed/actionsQuota 0,
+  // and the action renderer would print "0 of 0 actions" instead of their real
+  // message usage (Codex, PR #61). Message-metered orgs stay on the legacy
+  // renderer whether or not the flag is on for them.
+  const isMoneyModelV2 = sub.usageUnit === 'actions';
+
   if (isJson) {
+    if (isMoneyModelV2) {
+      output(
+        {
+          subscription: sub,
+          usage,
+          plan: sub.plan.name,
+          actionsUsed: sub.actionsUsed ?? null,
+          // `null` is the published contract for UNLIMITED, so an ABSENT quota
+          // must not be coerced into it: that would tell a machine consumer the
+          // org has no cap when we simply did not receive one (Codex, PR #61).
+          // A real API null still passes through as unlimited.
+          ...(sub.actionsQuota === undefined ? {} : { actionsQuota: sub.actionsQuota }),
+          trial: sub.trial ? { daysLeft: sub.trial.daysLeft, endsAt: sub.trial.endsAt } : null,
+        },
+        { json: true },
+      );
+      return;
+    }
     output({ subscription: sub, usage }, { json: true });
+    return;
+  }
+
+  if (isMoneyModelV2) {
+    await printMoneyModelStatus(orgPublicId, sub);
+    // The action renderer returns early, so the shared warning below never ran
+    // for these organizations: `billing status` showed usage and silently hid
+    // that service is scheduled to end (Codex, PR #61).
+    if (sub.cancelAtPeriodEnd === true) {
+      console.log('\n' + c.warn('Subscription will cancel at period end.'));
+    }
     return;
   }
 
@@ -279,6 +424,53 @@ async function changePlanInTerminal(
   );
 }
 
+/** Money-model-v2 orgs report usage in actions, not messages — the post-
+ *  checkout confirmation line branches on `usageUnit` instead of assuming
+ *  `plan.messages` is meaningful (it isn't, for an actions-priced plan). */
+function describeUpgradedPlan(sub: BillingSubscription): string {
+  if (sub.usageUnit === 'actions') {
+    const quota = sub.actionsQuota;
+    // Same distinction as the status renderer: absent is unknown, null is unlimited.
+    const quotaLabel = quota === null ? 'unlimited' : quota === undefined ? 'unknown' : quota.toLocaleString('en-US');
+    return `✓ Upgraded to ${sub.plan.name} (${quotaLabel} actions/mo).`;
+  }
+  return `✓ Upgraded to ${sub.plan.name} (${sub.plan.messages.toLocaleString('en-US')} messages/mo).`;
+}
+
+/** Trial/expired money-model-v2 orgs (Plan 05 Task 3): eligibility, not the
+ *  user, decides which single plan they may check out into — no "Choose a
+ *  plan" prompt. Interval is still a real choice (Build/Scale both bill
+ *  monthly or annual). */
+async function checkoutEligiblePlan(orgPublicId: string): Promise<void> {
+  const eligibility = await getBillingEligibility(orgPublicId);
+  if (!eligibility) {
+    throw new ValidationError(
+      'Could not determine your eligible plan. Try again, or run ' +
+        `\`${cliCommandPrefix()} billing manage\` to open your Billing page.`,
+      'ELIGIBILITY_UNAVAILABLE',
+    );
+  }
+
+  const { select } = await import('@inquirer/prompts');
+  const billingInterval = await select({
+    message: 'Billing interval',
+    choices: [
+      { name: 'Annual (save ~17%)', value: 'annual' },
+      { name: 'Monthly', value: 'monthly' },
+    ],
+  });
+  const data = await apiClient(`/organizations/${orgPublicId}/billing/checkout`, {
+    method: 'POST',
+    body: JSON.stringify({ planSlug: eligibility.eligiblePlan, billingInterval }),
+  });
+  console.log('Opening Stripe Checkout...');
+  await open(data.url);
+
+  console.log('Waiting for payment confirmation... (Ctrl+C to cancel)');
+  const upgraded = await pollForUpgrade(orgPublicId, trialSettled);
+  console.log(describeUpgradedPlan(upgraded));
+}
+
 export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<void> {
   // `billing upgrade` is interactive end-to-end: both paths prompt for a plan
   // and confirm before anything is charged. There is no machine-readable form,
@@ -310,7 +502,33 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
 
   const workspaceId = await getDefaultWorkspaceId();
   const orgPublicId = await resolveOrgPublicIdForWorkspace(workspaceId);
-  const sub = await apiClient(`/organizations/${orgPublicId}/billing/subscription`);
+  const sub = (await apiClient(
+    `/organizations/${orgPublicId}/billing/subscription`,
+  )) as BillingSubscription;
+
+  // Money-model-v2 orgs still inside the trial lifecycle (not started,
+  // active, or expired) never see the plan picker — eligibility is the only
+  // source of truth for which plan they may check out into (Task 3). Once
+  // trial resolves into a real paid subscription, `sub.trial` goes away and
+  // the org falls through to the normal active/free paths below.
+  if (sub.usageUnit !== undefined && sub.trial) {
+    await checkoutEligiblePlan(orgPublicId);
+    return;
+  }
+
+  // Any remaining action-metered subscription goes to the Billing page, and it
+  // is checked BEFORE `hasActiveSub` deliberately: `GET /plans` serves the
+  // LEGACY catalog, so a canceled, incomplete, or unpaid action org would
+  // otherwise fall through to the terminal picker and be offered
+  // starter/growth/pro at legacy prices, then a cross-generation checkout
+  // (Codex, PR #61 -- the first fix guarded only the active case). The trial
+  // branch above has already claimed every org that still has a trial.
+  if (sub.usageUnit === 'actions') {
+    console.log('Opening your Billing page to update your plan...');
+    await open(orgBillingUrl(orgPublicId));
+    return;
+  }
+
   // Phase A drops stripeSubscriptionId. Gate on plan.slug for paid-tier
   // detection AND preserve the existing status check so cancelled or
   // incomplete subscriptions still route to the checkout flow.
@@ -334,7 +552,9 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
       await open(orgBillingUrl(orgPublicId));
       return;
     }
-    await changePlanInTerminal(orgPublicId, sub);
+    // The guard above already ruled out an undefined billingInterval;
+    // changePlanInTerminal takes the narrower literal-required shape.
+    await changePlanInTerminal(orgPublicId, sub as typeof sub & { billingInterval: 'monthly' | 'annual' });
     return;
   }
 
@@ -360,9 +580,7 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
 
   console.log('Waiting for payment confirmation... (Ctrl+C to cancel)');
   const upgraded = await pollForUpgrade(orgPublicId);
-  console.log(
-    `✓ Upgraded to ${upgraded.plan.name} (${upgraded.plan.messages.toLocaleString('en-US')} messages/mo).`,
-  );
+  console.log(describeUpgradedPlan(upgraded));
 }
 
 export function registerBillingCommand(_program: Command): void {

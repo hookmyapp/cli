@@ -401,6 +401,65 @@ export async function apiClient(
   }
 }
 
+// --- money model v2 billing contract (Plan 05 Task 1) ---
+//
+// Mirrors backend/src/organizations/billing/eligibility.controller.ts.
+// `eligiblePlan` is which plan a trial/expired org is allowed to check out
+// into — never a picker, the eligibility gate decides. `trialStatus` mirrors
+// the subscription's own `trial.status` but is returned unauthenticated-org-
+// scoped so the CLI can call it before deciding whether to show a picker at
+// all (Task 3).
+export interface BillingEligibility {
+  eligiblePlan: 'build' | 'scale' | 'business';
+  trialActions: number;
+  trialStatus: 'not_started' | 'active' | 'expired';
+}
+
+// Plan 02 Task 6's additive subscription contract. Legacy orgs never carry
+// these fields (usageUnit undefined) — callers branch on `usageUnit`/`trial`
+// presence, never re-derive "is this a money-model-v2 org" some other way.
+export interface BillingTrial {
+  status: 'not_started' | 'active' | 'expired';
+  endsAt: string | null;
+  daysLeft: number | null;
+}
+
+export interface BillingSubscription {
+  status: string;
+  plan: { slug: string; name: string; messages: number; priceInCents?: number; annualPriceInCents?: number };
+  billingInterval?: 'monthly' | 'annual';
+  currentPeriodEnd?: string;
+  cancelAtPeriodEnd?: boolean;
+  pendingPlanChange?: unknown;
+  // Additive — absent entirely for legacy (messages-generation) orgs.
+  usageUnit?: 'messages' | 'actions';
+  actionsUsed?: number;
+  actionsQuota?: number | null; // null = unlimited
+  unlimited?: boolean;
+  trial?: BillingTrial | null;
+}
+
+/**
+ * Fetch checkout eligibility for the org. Returns `null` when the backend has
+ * the money-model-v2 flag off (400 `PLAN_NOT_AVAILABLE`) — callers treat null
+ * as "legacy world" and keep pre-v2 output/behavior unchanged. Any other
+ * error rethrows through the normal mapApiError contract.
+ */
+export async function getBillingEligibility(
+  orgPublicId: string,
+): Promise<BillingEligibility | null> {
+  try {
+    return (await apiClient(
+      `/organizations/${orgPublicId}/billing/eligibility`,
+    )) as BillingEligibility;
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 'PLAN_NOT_AVAILABLE') {
+      return null;
+    }
+    throw err;
+  }
+}
+
 // --- sandbox bind-code contract ---
 //
 // Mirrors backend/src/sandbox/bind-code.controller.ts (Plan 03 Wave 2 locked

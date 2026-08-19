@@ -1,6 +1,6 @@
 {
   "name": "@gethookmyapp/cli",
-  "version": "0.14.17",
+  "version": "0.14.18",
   "description": "HookMyApp CLI, No BS. Just go live.",
   "type": "module",
   "bin": {

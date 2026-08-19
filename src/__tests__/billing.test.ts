@@ -7,6 +7,7 @@ vi.mock('../api/client.js', () => ({
   // pollForUpgrade's transient-error check calls this on every poll failure;
   // default to "not a network blip" so it never masks a real error.
   isNetworkFailure: vi.fn(() => false),
+  getBillingEligibility: vi.fn(),
 }));
 
 // Mock open
@@ -32,11 +33,12 @@ const mockExit = vi.spyOn(process, 'exit').mockImplementation((() => {
 const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-import { apiClient } from '../api/client.js';
+import { apiClient, getBillingEligibility } from '../api/client.js';
 import openDefault from 'open';
 
 const mockedApiClient = vi.mocked(apiClient);
 const mockedOpen = vi.mocked(openDefault);
+const mockedGetBillingEligibility = vi.mocked(getBillingEligibility);
 
 const WORKSPACE_ID = 'ws_TEST0070';
 const ORG_PUBLIC_ID = 'org_abc12345';
@@ -96,7 +98,7 @@ function mockSubAndUsage(sub: any, usage: { totalMessages: number; limit: number
 }
 
 describe('billing commands', () => {
-  let billingStatus: (opts: { human?: boolean }) => Promise<void>;
+  let billingStatus: (opts: { json?: boolean; human?: boolean }) => Promise<void>;
   let billingUpgrade: (opts?: { json?: boolean }) => Promise<void>;
   let billingManage: () => Promise<void>;
 
@@ -104,6 +106,7 @@ describe('billing commands', () => {
     vi.resetModules();
     mockedApiClient.mockReset();
     mockedOpen.mockReset();
+    mockedGetBillingEligibility.mockReset();
     mockExit.mockClear();
     mockConsoleError.mockClear();
     mockConsoleLog.mockClear();
@@ -212,6 +215,316 @@ describe('billing commands', () => {
       const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
       expect(logged).toContain('exceeded');
       expect(logged).toContain('105%');
+    });
+  });
+
+  describe('billingStatus — money model v2 (trial + action plans)', () => {
+    beforeEach(() => {
+      vi.stubEnv('HOOKMYAPP_APP_URL', 'https://app.test');
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    const BILLING_URL = `https://app.test/org/${ORG_PUBLIC_ID}/billing`;
+
+    it('trial not started: exact copy, no false channel-connect claim', async () => {
+      mockSubAndUsage(
+        {
+          status: 'trialing',
+          plan: { slug: 'build', name: 'Build', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 0,
+          actionsQuota: null,
+          unlimited: true,
+          trial: { status: 'not_started', endsAt: null, daysLeft: null },
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toBe('Plan: Free trial, not started yet.');
+      expect(mockedGetBillingEligibility).not.toHaveBeenCalled();
+    });
+
+    it('trial active: days left, actions of quota from the API, add-card hint', async () => {
+      mockSubAndUsage(
+        {
+          status: 'trialing',
+          plan: { slug: 'business', name: 'Business', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 37,
+          actionsQuota: 100000,
+          unlimited: false,
+          trial: { status: 'active', endsAt: '2026-08-22T00:00:00.000Z', daysLeft: 4 },
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('Free trial: 4 days left · 37 of 100,000 actions');
+      expect(logged).toContain(`Add a credit card so nothing stops when the trial ends: ${BILLING_URL}`);
+    });
+
+    // Codex, PR #61: usageUnit 'messages' is a valid variant. Such an org has
+    // actionsUsed/actionsQuota 0, so routing it to the action renderer printed
+    // "0 of 0 actions" in place of its real message usage.
+    it('v2-flagged org still on the MESSAGE meter keeps the message output', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'starter', name: 'Build', messages: 30000 },
+          usageUnit: 'messages',
+          actionsUsed: 0,
+          actionsQuota: 0,
+          unlimited: false,
+        },
+        { totalMessages: 1234, limit: 30000, percentage: 4 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('plan: Build');
+      expect(logged).not.toContain('actions this period');
+    });
+
+    // Codex, PR #61: the action renderer returned before the shared warning, so
+    // a scheduled cancellation was silently hidden from these organizations.
+    it('action org with a scheduled cancellation still says so', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 900,
+          actionsQuota: 15000,
+          unlimited: false,
+          trial: null,
+          cancelAtPeriodEnd: true,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('cancel at period end');
+    });
+
+    // Codex, PR #61: every action-metered subscription reaches this renderer,
+    // so a canceled or past_due plan was printing exactly like a live one.
+    it('past_due action org: says the subscription is not running', async () => {
+      mockSubAndUsage(
+        {
+          status: 'past_due',
+          plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 900,
+          actionsQuota: 15000,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('past_due');
+    });
+
+    // `null` means unlimited in the published JSON contract, so an ABSENT quota
+    // must not be coerced to null (Codex, PR #61).
+    it('--json omits actionsQuota entirely when the API did not send one', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 900,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ json: true });
+
+      const payload = JSON.parse(mockConsoleLog.mock.calls.map((c) => String(c[0])).join(''));
+      expect(payload).not.toHaveProperty('actionsQuota');
+    });
+
+    // Codex, PR #61: only a real null means unlimited. An absent quota printed
+    // as "unlimited" falsely promised an uncapped plan.
+    it('human output says unknown, not unlimited, when the API sent no quota', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 900,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('unknown');
+      expect(logged).not.toContain('unlimited');
+    });
+
+    it('trial expired: paused copy + resume line from eligibility plan/price', async () => {
+      mockSubAndUsage(
+        {
+          status: 'trialing',
+          plan: { slug: 'business', name: 'Business', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 12,
+          actionsQuota: 100000,
+          unlimited: false,
+          trial: { status: 'expired', endsAt: '2026-08-10T00:00:00.000Z', daysLeft: 0 },
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+      mockedGetBillingEligibility.mockResolvedValueOnce({
+        eligiblePlan: 'build',
+        trialActions: 12,
+        trialStatus: 'expired',
+      });
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('Your trial ended. Channels are paused.');
+      expect(logged).toContain(`Add a credit card to resume on Build ($1/month): ${BILLING_URL}`);
+      expect(mockedGetBillingEligibility).toHaveBeenCalledWith(ORG_PUBLIC_ID);
+    });
+
+    it('build org under 75% usage: plan line only, no upsell', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'build', name: 'Build', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 137,
+          actionsQuota: 200,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toBe('Plan: Build — 137/200 actions this period');
+    });
+
+    it('build org at/above 75% usage: shows Scale upsell hint', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'build', name: 'Build', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 180,
+          actionsQuota: 200,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('Plan: Build — 180/200 actions this period');
+      expect(logged).toContain('Running hot? Scale gives you 15,000 actions for $24/month.');
+    });
+
+    it('business org: plan line with comma-formatted quota, no upsell (top tier)', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'business', name: 'Business', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 90123,
+          actionsQuota: 100000,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toBe('Plan: Business — 90,123/100,000 actions this period');
+    });
+
+    it('scale org running hot: upsell hint points at Business', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 12406,
+          actionsQuota: 15000,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('Plan: Scale — 12,406/15,000 actions this period');
+      expect(logged).toContain('Running hot? Business gives you 100,000 actions for $97/month.');
+    });
+
+    it('legacy org (no usageUnit) is untouched: no eligibility call, existing output shape', async () => {
+      mockSubAndUsage(activeSub, { totalMessages: 600, limit: 1200, percentage: 50 });
+
+      await billingStatus({ human: true });
+
+      expect(mockedGetBillingEligibility).not.toHaveBeenCalled();
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('plan: Scale');
+      expect(logged).not.toContain('actions this period');
+    });
+
+    it('--json is additive: adds plan/actionsUsed/actionsQuota/trial for a money-model-v2 org', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'build', name: 'Build', messages: 0 },
+          usageUnit: 'actions',
+          actionsUsed: 137,
+          actionsQuota: 200,
+          unlimited: false,
+          trial: null,
+        },
+        { totalMessages: 0, limit: 0, percentage: 0 },
+      );
+
+      await billingStatus({ human: false });
+
+      const calls = mockConsoleLog.mock.calls.map((c) => c[0]);
+      const jsonCall = calls.find((c) => typeof c === 'string' && c.includes('"subscription"'));
+      expect(jsonCall).toBeDefined();
+      const parsed = JSON.parse(jsonCall as string);
+      expect(parsed.plan).toBe('Build');
+      expect(parsed.actionsUsed).toBe(137);
+      expect(parsed.actionsQuota).toBe(200);
+      expect(parsed.trial).toBeNull();
     });
   });
 
@@ -413,11 +726,219 @@ describe('billing commands', () => {
       }));
       expect(mockedOpen).toHaveBeenCalledWith('https://checkout.stripe.com/x');
     });
+
+    it('expired trial org: suppresses the plan picker and checks out only the eligible plan', async () => {
+      const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
+      const inq = await import('@inquirer/prompts');
+      // Only ONE select call expected: billing interval. No "Choose a plan"
+      // prompt — the eligible plan is not user-selectable.
+      vi.mocked(inq.select).mockResolvedValueOnce('monthly' as never);
+      mockedGetBillingEligibility.mockResolvedValueOnce({
+        eligiblePlan: 'build',
+        trialActions: 12,
+        trialStatus: 'expired',
+      });
+
+      let checkoutMinted = false;
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === SUBSCRIPTION_PATH) {
+          return checkoutMinted
+            ? {
+                status: 'active',
+                usageUnit: 'actions',
+                actionsUsed: 0,
+                actionsQuota: 200,
+                plan: { slug: 'build', name: 'Build', messages: 0 },
+              }
+            : {
+                status: 'trialing',
+                usageUnit: 'actions',
+                actionsUsed: 12,
+                actionsQuota: null,
+                plan: { slug: 'build', name: 'Build', messages: 0 },
+                trial: { status: 'expired', endsAt: '2026-08-10T00:00:00.000Z', daysLeft: 0 },
+              };
+        }
+        if (path === '/workspaces') return WORKSPACES;
+        // The plan catalog must never be fetched on this path — the picker
+        // is suppressed entirely, so nothing should ask for it.
+        if (path === '/plans') throw new Error('unexpected /plans fetch on eligibility-locked path');
+        if (path === CHECKOUT_PATH) {
+          checkoutMinted = true;
+          return { url: 'https://checkout.stripe.com/x' };
+        }
+        throw new Error(`unexpected path: ${path}`);
+      });
+
+      await import('../index.js');
+
+      vi.useFakeTimers();
+      try {
+        const run = billingUpgrade();
+        await advanceUntilSettled(run);
+        await run;
+      } finally {
+        process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
+        vi.useRealTimers();
+      }
+
+      expect(inq.select).toHaveBeenCalledTimes(1);
+      expect(mockedGetBillingEligibility).toHaveBeenCalledWith(ORG_PUBLIC_ID);
+      expect(mockedApiClient).toHaveBeenCalledWith(CHECKOUT_PATH, expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ planSlug: 'build', billingInterval: 'monthly' }),
+      }));
+      expect(mockedOpen).toHaveBeenCalledWith('https://checkout.stripe.com/x');
+    });
+
+    // Codex + CodeRabbit, PR #61: an ACTIVE trial already reads
+    // plan.slug 'business' / status 'trialing' BEFORE checkout, so the old
+    // "not free and live" poll predicate matched on its first tick and printed
+    // the upgrade line ~5s after opening the browser, whether or not the user
+    // paid. Completion now requires the trial to actually clear.
+    it('active trial org: does NOT confirm the upgrade while the trial is still open', async () => {
+      const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
+      const inq = await import('@inquirer/prompts');
+      vi.mocked(inq.select).mockResolvedValueOnce('monthly' as never);
+      mockedGetBillingEligibility.mockResolvedValueOnce({
+        eligiblePlan: 'scale',
+        trialActions: 900,
+        trialStatus: 'active',
+      });
+
+      // The subscription NEVER changes: the user abandoned Stripe Checkout.
+      // A trialing v2 org looks "upgraded" to the naive predicate the whole time.
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === SUBSCRIPTION_PATH) {
+          return {
+            status: 'trialing',
+            usageUnit: 'actions',
+            actionsUsed: 900,
+            actionsQuota: 100000,
+            plan: { slug: 'business', name: 'Business', messages: 0 },
+            trial: { status: 'active', endsAt: '2026-08-22T00:00:00.000Z', daysLeft: 4 },
+          };
+        }
+        if (path === '/workspaces') return WORKSPACES;
+        if (path === '/plans') throw new Error('unexpected /plans fetch on eligibility-locked path');
+        if (path === CHECKOUT_PATH) return { url: 'https://checkout.stripe.com/x' };
+        throw new Error(`unexpected path: ${path}`);
+      });
+
+      await import('../index.js');
+
+      vi.useFakeTimers();
+      try {
+        const run = billingUpgrade();
+        run.catch(() => {}); // never settles here; keep the rejection handled
+        // Small steps, same reason advanceUntilSettled uses them: one big jump
+        // races ahead of the pending chain before the first poll timer exists.
+        // 600 x 50ms is well past several poll intervals — the old predicate
+        // returned on the FIRST one.
+        for (let i = 0; i < 600; i++) await vi.advanceTimersByTimeAsync(50);
+
+        const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(logged).toContain('Waiting for payment confirmation');
+        expect(logged).not.toContain('Upgraded to');
+      } finally {
+        process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
+        vi.useRealTimers();
+      }
+    });
+
+    // Codex, PR #61: /plans serves the LEGACY catalog only, so a paid v2 org
+    // reaching the terminal picker would be offered starter/growth/pro at
+    // legacy prices and then attempt a cross-generation plan change.
+    it('paid action-metered org: opens Billing instead of the legacy plan picker', async () => {
+      const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
+      const inq = await import('@inquirer/prompts');
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === SUBSCRIPTION_PATH) {
+          return {
+            status: 'active',
+            billingInterval: 'monthly',
+            usageUnit: 'actions',
+            actionsUsed: 900,
+            actionsQuota: 15000,
+            unlimited: false,
+            trial: null,
+            plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          };
+        }
+        if (path === '/workspaces') return WORKSPACES;
+        if (path === '/plans') throw new Error('unexpected /plans fetch for an action-metered org');
+        throw new Error(`unexpected path: ${path}`);
+      });
+
+      try {
+        await billingUpgrade();
+      } finally {
+        process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
+      }
+
+      expect(mockedOpen).toHaveBeenCalledWith(expect.stringContaining('billing'));
+      expect(inq.select).not.toHaveBeenCalled();
+    });
+
+    // Codex, PR #61 round 2: the first fix guarded only the ACTIVE case, so a
+    // canceled/incomplete/unpaid action org still reached the legacy picker.
+    it('CANCELED action-metered org: still opens Billing, never the legacy picker', async () => {
+      const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
+      const inq = await import('@inquirer/prompts');
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === SUBSCRIPTION_PATH) {
+          return {
+            status: 'canceled',
+            billingInterval: 'monthly',
+            usageUnit: 'actions',
+            actionsUsed: 40,
+            actionsQuota: 200,
+            unlimited: false,
+            trial: null,
+            plan: { slug: 'build', name: 'Build', messages: 0 },
+          };
+        }
+        if (path === '/workspaces') return WORKSPACES;
+        if (path === '/plans') throw new Error('unexpected /plans fetch for an action-metered org');
+        throw new Error(`unexpected path: ${path}`);
+      });
+
+      try {
+        await billingUpgrade();
+      } finally {
+        process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
+      }
+
+      expect(mockedOpen).toHaveBeenCalledWith(expect.stringContaining('billing'));
+      expect(inq.select).not.toHaveBeenCalled();
+    });
+
+    it('legacy active org still gets the plan picker (unchanged)', async () => {
+      await runPaidPathDeclining('active');
+
+      expect(mockedGetBillingEligibility).not.toHaveBeenCalled();
+    });
   });
 });
 
 describe('billing commands — npx prefix roll-out (cliCommandPrefix)', () => {
-  let billingStatus: (opts: { human?: boolean }) => Promise<void>;
+  let billingStatus: (opts: { json?: boolean; human?: boolean }) => Promise<void>;
 
   beforeEach(async () => {
     vi.resetModules();
