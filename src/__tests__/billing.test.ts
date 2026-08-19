@@ -766,6 +766,44 @@ describe('billing commands', () => {
       }
     });
 
+    // Codex, PR #61: /plans serves the LEGACY catalog only, so a paid v2 org
+    // reaching the terminal picker would be offered starter/growth/pro at
+    // legacy prices and then attempt a cross-generation plan change.
+    it('paid action-metered org: opens Billing instead of the legacy plan picker', async () => {
+      const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
+      const inq = await import('@inquirer/prompts');
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === SUBSCRIPTION_PATH) {
+          return {
+            status: 'active',
+            billingInterval: 'monthly',
+            usageUnit: 'actions',
+            actionsUsed: 900,
+            actionsQuota: 15000,
+            unlimited: false,
+            trial: null,
+            plan: { slug: 'scale', name: 'Scale', messages: 0 },
+          };
+        }
+        if (path === '/workspaces') return WORKSPACES;
+        if (path === '/plans') throw new Error('unexpected /plans fetch for an action-metered org');
+        throw new Error(`unexpected path: ${path}`);
+      });
+
+      try {
+        await billingUpgrade();
+      } finally {
+        process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
+      }
+
+      expect(mockedOpen).toHaveBeenCalledWith(expect.stringContaining('billing'));
+      expect(inq.select).not.toHaveBeenCalled();
+    });
+
     it('legacy active org still gets the plan picker (unchanged)', async () => {
       await runPaidPathDeclining('active');
 

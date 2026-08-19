@@ -509,6 +509,12 @@ export async function billingUpgrade(opts: { json?: boolean } = {}): Promise<voi
     // assuming one could move an annual customer to monthly billing.
     if (
       sub.plan.slug === 'custom' ||
+      // A PAID action-metered org (trial resolved, so the branch above did not
+      // catch it). `GET /plans` serves the LEGACY catalog only, so the terminal
+      // picker would offer this customer starter/growth/pro at legacy prices and
+      // then attempt a cross-generation plan change — not merely a "0 messages"
+      // mislabel (Codex, PR #61). The Billing page carries the real v2 picker.
+      sub.usageUnit === 'actions' ||
       sub.cancelAtPeriodEnd === true ||
       sub.pendingPlanChange ||
       (sub.billingInterval !== 'monthly' && sub.billingInterval !== 'annual')
