@@ -270,6 +270,29 @@ describe('billing commands', () => {
       expect(logged).toContain(`Add a credit card so nothing stops when the trial ends: ${BILLING_URL}`);
     });
 
+    // Codex, PR #61: usageUnit 'messages' is a valid variant. Such an org has
+    // actionsUsed/actionsQuota 0, so routing it to the action renderer printed
+    // "0 of 0 actions" in place of its real message usage.
+    it('v2-flagged org still on the MESSAGE meter keeps the message output', async () => {
+      mockSubAndUsage(
+        {
+          status: 'active',
+          plan: { slug: 'starter', name: 'Build', messages: 30000 },
+          usageUnit: 'messages',
+          actionsUsed: 0,
+          actionsQuota: 0,
+          unlimited: false,
+        },
+        { totalMessages: 1234, limit: 30000, percentage: 4 },
+      );
+
+      await billingStatus({ human: true });
+
+      const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('plan: Build');
+      expect(logged).not.toContain('actions this period');
+    });
+
     it('trial expired: paused copy + resume line from eligibility plan/price', async () => {
       mockSubAndUsage(
         {

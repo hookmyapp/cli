@@ -250,7 +250,12 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
   // orgs (usageUnit undefined) get byte-identical output to before this
   // feature existed; money-model-v2 orgs (usageUnit 'actions'/'messages')
   // get the new trial/action-plan rendering.
-  const isMoneyModelV2 = sub.usageUnit !== undefined;
+  // 'actions', not merely "usageUnit is present": a v2-flagged org still on the
+  // MESSAGE meter reports usageUnit 'messages' with actionsUsed/actionsQuota 0,
+  // and the action renderer would print "0 of 0 actions" instead of their real
+  // message usage (Codex, PR #61). Message-metered orgs stay on the legacy
+  // renderer whether or not the flag is on for them.
+  const isMoneyModelV2 = sub.usageUnit === 'actions';
 
   if (isJson) {
     if (isMoneyModelV2) {
