@@ -684,6 +684,65 @@ describe('billing commands', () => {
       expect(mockedOpen).toHaveBeenCalledWith('https://checkout.stripe.com/x');
     });
 
+    // Codex + CodeRabbit, PR #61: an ACTIVE trial already reads
+    // plan.slug 'business' / status 'trialing' BEFORE checkout, so the old
+    // "not free and live" poll predicate matched on its first tick and printed
+    // the upgrade line ~5s after opening the browser, whether or not the user
+    // paid. Completion now requires the trial to actually clear.
+    it('active trial org: does NOT confirm the upgrade while the trial is still open', async () => {
+      const origTTY = process.stdout.isTTY;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdout.isTTY = true;
+      process.stdin.isTTY = true;
+      const inq = await import('@inquirer/prompts');
+      vi.mocked(inq.select).mockResolvedValueOnce('monthly' as never);
+      mockedGetBillingEligibility.mockResolvedValueOnce({
+        eligiblePlan: 'scale',
+        trialActions: 900,
+        trialStatus: 'active',
+      });
+
+      // The subscription NEVER changes: the user abandoned Stripe Checkout.
+      // A trialing v2 org looks "upgraded" to the naive predicate the whole time.
+      mockedApiClient.mockImplementation(async (path: string) => {
+        if (path === SUBSCRIPTION_PATH) {
+          return {
+            status: 'trialing',
+            usageUnit: 'actions',
+            actionsUsed: 900,
+            actionsQuota: 100000,
+            plan: { slug: 'business', name: 'Business', messages: 0 },
+            trial: { status: 'active', endsAt: '2026-08-22T00:00:00.000Z', daysLeft: 4 },
+          };
+        }
+        if (path === '/workspaces') return WORKSPACES;
+        if (path === '/plans') throw new Error('unexpected /plans fetch on eligibility-locked path');
+        if (path === CHECKOUT_PATH) return { url: 'https://checkout.stripe.com/x' };
+        throw new Error(`unexpected path: ${path}`);
+      });
+
+      await import('../index.js');
+
+      vi.useFakeTimers();
+      try {
+        const run = billingUpgrade();
+        run.catch(() => {}); // never settles here; keep the rejection handled
+        // Small steps, same reason advanceUntilSettled uses them: one big jump
+        // races ahead of the pending chain before the first poll timer exists.
+        // 600 x 50ms is well past several poll intervals — the old predicate
+        // returned on the FIRST one.
+        for (let i = 0; i < 600; i++) await vi.advanceTimersByTimeAsync(50);
+
+        const logged = mockConsoleLog.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(logged).toContain('Waiting for payment confirmation');
+        expect(logged).not.toContain('Upgraded to');
+      } finally {
+        process.stdout.isTTY = origTTY;
+        process.stdin.isTTY = origStdinTTY;
+        vi.useRealTimers();
+      }
+    });
+
     it('legacy active org still gets the plan picker (unchanged)', async () => {
       await runPaidPathDeclining('active');
 

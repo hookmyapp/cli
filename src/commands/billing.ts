@@ -87,7 +87,27 @@ const UPGRADE_POLL_HINT_EVERY_MS = 60_000;
  *  (expired auth, revoked permission, client-outdated) rethrow — polling
  *  forever on those would tell the user to "finish checkout" while the CLI
  *  itself is the thing that's broken. */
-async function pollForUpgrade(orgPublicId: string): Promise<BillingSubscription> {
+/** Has the thing we opened Stripe for actually happened?
+ *
+ *  The default answer ("on a paid plan, and live") is right for a legacy org,
+ *  which starts from `free`. It is WRONG for a money-model-v2 org in a trial:
+ *  that org already reads `plan.slug: 'business'`, `status: 'trialing'` BEFORE
+ *  checkout, so the poll returned on its first tick and printed
+ *  "✓ Upgraded to Business" about five seconds after opening the browser —
+ *  even if the user closed the tab and paid nothing (Codex + CodeRabbit,
+ *  cli PR #61). The trial path passes `trialSettled` instead, which requires
+ *  the observable transition: `trial` goes null once `paidAt` lands. */
+type UpgradeComplete = (sub: BillingSubscription) => boolean;
+
+const onPaidPlan: UpgradeComplete = (sub) =>
+  sub.plan.slug !== 'free' && ['active', 'trialing'].includes(sub.status);
+
+const trialSettled: UpgradeComplete = (sub) => onPaidPlan(sub) && !sub.trial;
+
+async function pollForUpgrade(
+  orgPublicId: string,
+  isComplete: UpgradeComplete = onPaidPlan,
+): Promise<BillingSubscription> {
   const startedAt = Date.now();
   let lastHintAt = startedAt;
   for (;;) {
@@ -111,7 +131,7 @@ async function pollForUpgrade(orgPublicId: string): Promise<BillingSubscription>
       if (!transient) throw err;
       sub = null;
     }
-    if (sub && sub.plan.slug !== 'free' && ['active', 'trialing'].includes(sub.status)) {
+    if (sub && isComplete(sub)) {
       return sub;
     }
     if (Date.now() - lastHintAt >= UPGRADE_POLL_HINT_EVERY_MS) {
@@ -420,7 +440,7 @@ async function checkoutEligiblePlan(orgPublicId: string): Promise<void> {
   await open(data.url);
 
   console.log('Waiting for payment confirmation... (Ctrl+C to cancel)');
-  const upgraded = await pollForUpgrade(orgPublicId);
+  const upgraded = await pollForUpgrade(orgPublicId, trialSettled);
   console.log(describeUpgradedPlan(upgraded));
 }
 
