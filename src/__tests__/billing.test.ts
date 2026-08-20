@@ -88,11 +88,18 @@ async function advanceUntilSettled(
   }
 }
 
-function mockSubAndUsage(sub: any, usage: { totalMessages: number; limit: number; percentage: number }) {
+// AIT-436: `usageUnit` is part of the /webhook/usage contract, so a fixture
+// without it is a payload the backend never sends (CodeRabbit, PR #62). It
+// defaults to the legacy meter, which is what every one of these cases is.
+function mockSubAndUsage(
+  sub: any,
+  usage: { total: number; limit: number; percentage: number; usageUnit?: 'messages' | 'actions' },
+) {
+  const withUnit = { usageUnit: 'messages' as const, ...usage };
   mockedApiClient.mockImplementation(async (path: string) => {
     if (path === '/workspaces') return WORKSPACES;
     if (path === SUBSCRIPTION_PATH) return sub;
-    if (path === '/webhook/usage') return usage;
+    if (path === '/webhook/usage') return withUnit;
     throw new Error(`unexpected path: ${path}`);
   });
 }
@@ -122,7 +129,7 @@ describe('billing commands', () => {
 
   describe('billingStatus', () => {
     it('calls apiClient with GET the org subscription route and /webhook/usage', async () => {
-      mockSubAndUsage(activeSub, { totalMessages: 100, limit: 1200, percentage: 8 });
+      mockSubAndUsage(activeSub, { total: 100, limit: 1200, percentage: 8 });
 
       await billingStatus({ human: false });
 
@@ -135,7 +142,7 @@ describe('billing commands', () => {
 
   describe('billingStatus json', () => {
     it('emits structured { subscription, usage } when human=false', async () => {
-      const usage = { totalMessages: 100, limit: 1200, percentage: 8 };
+      const usage = { total: 100, limit: 1200, percentage: 8, usageUnit: 'messages' as const };
       mockSubAndUsage(activeSub, usage);
 
       await billingStatus({ human: false });
@@ -151,7 +158,7 @@ describe('billing commands', () => {
 
   describe('billingStatus human', () => {
     it('renders plan/status/interval/renews/messages with no nudge under 80%', async () => {
-      mockSubAndUsage(activeSub, { totalMessages: 600, limit: 1200, percentage: 50 });
+      mockSubAndUsage(activeSub, { total: 600, limit: 1200, percentage: 50 });
 
       await billingStatus({ human: true });
 
@@ -168,7 +175,7 @@ describe('billing commands', () => {
 
   describe('billingStatus human — free tier', () => {
     it('renders interval/renews as "n/a" (not an em-dash) when the subscription has no billing fields', async () => {
-      mockSubAndUsage(freeSub, { totalMessages: 10, limit: 50, percentage: 20 });
+      mockSubAndUsage(freeSub, { total: 10, limit: 50, percentage: 20 });
 
       await billingStatus({ human: true });
 
@@ -182,7 +189,7 @@ describe('billing commands', () => {
   describe('billingStatus cancel warning', () => {
     it('prints cancel warning when cancelAtPeriodEnd is true', async () => {
       mockSubAndUsage({ ...activeSub, cancelAtPeriodEnd: true }, {
-        totalMessages: 100,
+        total: 100,
         limit: 1200,
         percentage: 8,
       });
@@ -196,7 +203,7 @@ describe('billing commands', () => {
 
   describe('billingStatus 80% nudge', () => {
     it('prints yellow nudge with billing upgrade reference at 85%', async () => {
-      mockSubAndUsage(activeSub, { totalMessages: 1020, limit: 1200, percentage: 85 });
+      mockSubAndUsage(activeSub, { total: 1020, limit: 1200, percentage: 85 });
 
       await billingStatus({ human: true });
 
@@ -208,7 +215,7 @@ describe('billing commands', () => {
 
   describe('billingStatus 100% over limit', () => {
     it('prints red exceeded line at 105%', async () => {
-      mockSubAndUsage(activeSub, { totalMessages: 1260, limit: 1200, percentage: 105 });
+      mockSubAndUsage(activeSub, { total: 1260, limit: 1200, percentage: 105 });
 
       await billingStatus({ human: true });
 
@@ -239,7 +246,7 @@ describe('billing commands', () => {
           unlimited: true,
           trial: { status: 'not_started', endsAt: null, daysLeft: null },
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ human: true });
@@ -260,7 +267,7 @@ describe('billing commands', () => {
           unlimited: false,
           trial: { status: 'active', endsAt: '2026-08-22T00:00:00.000Z', daysLeft: 4 },
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ human: true });
@@ -283,7 +290,7 @@ describe('billing commands', () => {
           actionsQuota: 0,
           unlimited: false,
         },
-        { totalMessages: 1234, limit: 30000, percentage: 4 },
+        { total: 1234, limit: 30000, percentage: 4 },
       );
 
       await billingStatus({ human: true });
@@ -307,7 +314,7 @@ describe('billing commands', () => {
           trial: null,
           cancelAtPeriodEnd: true,
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ human: true });
@@ -329,7 +336,7 @@ describe('billing commands', () => {
           unlimited: false,
           trial: null,
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ human: true });
@@ -350,7 +357,7 @@ describe('billing commands', () => {
           unlimited: false,
           trial: null,
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ json: true });
@@ -371,7 +378,7 @@ describe('billing commands', () => {
           unlimited: false,
           trial: null,
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ human: true });
@@ -392,7 +399,7 @@ describe('billing commands', () => {
           unlimited: false,
           trial: { status: 'expired', endsAt: '2026-08-10T00:00:00.000Z', daysLeft: 0 },
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
       mockedGetBillingEligibility.mockResolvedValueOnce({
         eligiblePlan: 'build',
@@ -419,7 +426,7 @@ describe('billing commands', () => {
           unlimited: false,
           trial: null,
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ human: true });
@@ -439,7 +446,7 @@ describe('billing commands', () => {
           unlimited: false,
           trial: null,
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ human: true });
@@ -460,7 +467,7 @@ describe('billing commands', () => {
           unlimited: false,
           trial: null,
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ human: true });
@@ -480,7 +487,7 @@ describe('billing commands', () => {
           unlimited: false,
           trial: null,
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ human: true });
@@ -491,7 +498,7 @@ describe('billing commands', () => {
     });
 
     it('legacy org (no usageUnit) is untouched: no eligibility call, existing output shape', async () => {
-      mockSubAndUsage(activeSub, { totalMessages: 600, limit: 1200, percentage: 50 });
+      mockSubAndUsage(activeSub, { total: 600, limit: 1200, percentage: 50 });
 
       await billingStatus({ human: true });
 
@@ -512,7 +519,7 @@ describe('billing commands', () => {
           unlimited: false,
           trial: null,
         },
-        { totalMessages: 0, limit: 0, percentage: 0 },
+        { total: 0, limit: 0, percentage: 0 },
       );
 
       await billingStatus({ human: false });
@@ -958,7 +965,7 @@ describe('billing commands — npx prefix roll-out (cliCommandPrefix)', () => {
   });
 
   it('billingStatus 80% nudge prints "npx hookmyapp billing upgrade" under npm_command=exec', async () => {
-    mockSubAndUsage(activeSub, { totalMessages: 1020, limit: 1200, percentage: 85 });
+    mockSubAndUsage(activeSub, { total: 1020, limit: 1200, percentage: 85 });
 
     await billingStatus({ human: true });
 
@@ -967,7 +974,7 @@ describe('billing commands — npx prefix roll-out (cliCommandPrefix)', () => {
   });
 
   it('billingStatus 100% over-limit prints "npx hookmyapp billing upgrade"', async () => {
-    mockSubAndUsage(activeSub, { totalMessages: 1260, limit: 1200, percentage: 105 });
+    mockSubAndUsage(activeSub, { total: 1260, limit: 1200, percentage: 105 });
 
     await billingStatus({ human: true });
 

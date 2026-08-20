@@ -251,7 +251,14 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
   const [sub, usage] = (await Promise.all([
     apiClient(`/organizations/${orgPublicId}/billing/subscription`),
     apiClient('/webhook/usage', { workspaceId }),
-  ])) as [BillingSubscription, { totalMessages: number; limit: number; percentage: number }];
+    // AIT-436: `/webhook/usage` reports ONE number, in `usageUnit`. The
+    // totalMessages/totalForwards aliases and the inbound/outbound split are
+    // gone -- they were three names for the same figure, two of them saying
+    // "messages" over an action count.
+  ])) as [
+    BillingSubscription,
+    { total: number; limit: number; percentage: number; usageUnit: 'messages' | 'actions' },
+  ];
 
   // Accept either `json: true` or `human: false` (back-compat with callers
   // and tests that predate the phase-108 opts shape).
@@ -306,7 +313,9 @@ export async function billingStatus(opts: { json?: boolean; human?: boolean } = 
   const status = sub.status;
   const interval = sub.billingInterval ?? 'n/a';
   const renews = sub.currentPeriodEnd ?? 'n/a';
-  const messages = `${usage.totalMessages} / ${usage.limit} (${usage.percentage}%)`;
+  // This renderer is only reached for message-metered orgs (the actions
+  // branch returned above), so the label is literally true here.
+  const messages = `${usage.total} / ${usage.limit} (${usage.percentage}%)`;
 
   output({ plan, status, interval, renews, messages }, { json: false, kind: 'read' });
 
