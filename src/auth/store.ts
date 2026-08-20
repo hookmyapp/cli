@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { getConfigFile } from '../storage/path.js';
 import { AuthError } from '../output/error.js';
-import { API_KEY_ENV_VAR } from '../config/env-vars.js';
+import { API_KEY_ENV_VAR, stripEnvQuotes } from '../config/env-vars.js';
 import {
   writeSecrets,
   readSecrets,
@@ -36,7 +36,7 @@ export async function saveCredentials(creds: Credentials): Promise<void> {
  * "Not logged in. Run: hookmyapp login" hides where the bad key came from.
  */
 export function readEnvCredential(): Credentials | null {
-  const raw = process.env[API_KEY_ENV_VAR]?.trim();
+  const raw = stripEnvQuotes(process.env[API_KEY_ENV_VAR]?.trim() ?? '');
   if (!raw) return null;
   if (!raw.startsWith('hmok_') && !raw.startsWith('ac_')) {
     throw new AuthError(

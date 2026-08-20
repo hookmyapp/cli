@@ -2,7 +2,7 @@ import { apiClient, setWorkspaceContext } from '../api/client.js';
 import { AuthError, CliError, NetworkError, ValidationError, exitCodeFor } from '../output/error.js';
 import { readWorkspaceConfig, writeWorkspaceConfig } from './workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
-import { WORKSPACE_ENV_VAR } from '../config/env-vars.js';
+import { WORKSPACE_ENV_VAR, stripEnvQuotes } from '../config/env-vars.js';
 import { emit, shouldEmitCommandInvoked } from '../observability/posthog.js';
 import type { CliExitCode } from '../analytics/events.js';
 import { getCliVersion } from '../observability/posthog.js';
@@ -95,7 +95,8 @@ export async function getDefaultWorkspaceId(): Promise<string> {
   // scoped to. Mirrors HOOKMYAPP_CHANNEL_ID (see resolveChannelRefOrDefault)
   // and sits above the stored config for the same reason the API key does:
   // an explicitly exported value beats a persisted default.
-  const envWorkspace = process.env[WORKSPACE_ENV_VAR]?.trim();
+  // stripQuotes: cmd.exe keeps the quotes in `set VAR="ws_abc12345"`.
+  const envWorkspace = stripEnvQuotes(process.env[WORKSPACE_ENV_VAR]?.trim() ?? '');
   if (envWorkspace) {
     if (!isValidPublicId(envWorkspace, 'ws')) {
       throw new ValidationError(
