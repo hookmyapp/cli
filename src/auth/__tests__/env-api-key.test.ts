@@ -70,6 +70,20 @@ describe('HOOKMYAPP_API_KEY credential (AIT-438)', () => {
     expect(() => readEnvCredential()).toThrow(AuthError);
   });
 
+  it('gives each env key its own notification-cache fingerprint', async () => {
+    const { credentialFingerprint } = await import('../../notifications-nudge.js');
+    const a = credentialFingerprint({
+      accessToken: 'hmok_keyA', refreshToken: '', expiresAt: 0, kind: 'agent', source: 'env',
+    });
+    const b = credentialFingerprint({
+      accessToken: 'hmok_keyB', refreshToken: '', expiresAt: 0, kind: 'agent', source: 'env',
+    });
+    expect(a).not.toBe(b);
+    expect(a).not.toBe('unknown');
+    // Derived, never the secret itself.
+    expect(a).not.toContain('hmok_keyA');
+  });
+
   it('rejects a malformed value, naming the variable', () => {
     process.env[API_KEY_ENV_VAR] = 'not-a-key';
     expect(() => readEnvCredential()).toThrow(AuthError);

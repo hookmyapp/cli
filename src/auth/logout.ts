@@ -27,7 +27,18 @@ export function logoutCommand(program: Command): void {
       // environment is not ours to clear, and revoking it server-side would
       // break every other process sharing that key.
       const creds = await readSecrets();
-      if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
+      // The revoke call goes through apiClient, which authenticates with the
+      // env key while it is set. If both hold the same key, the "self-revoke"
+      // would kill the environment credential every other process is using;
+      // if they differ, the backend rejects it as a non-self revoke anyway.
+      // Skip it and say so — the local credential is still cleared.
+      if (envKeyActive && creds && isAgentCredential(creds)) {
+        console.error(
+          `\n⚠ Stored key ${creds.credentialPublicId ?? ''} was not revoked server-side: ` +
+            `while ${API_KEY_ENV_VAR} is set, the request would authenticate as that key. ` +
+            `Unset it and run: hookmyapp credentials revoke ${creds.credentialPublicId ?? '<id>'}\n`,
+        );
+      } else if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
         try {
           const { apiClient } = await import('../api/client.js');
           await apiClient(`/agent/credentials/${creds.credentialPublicId}`, {

@@ -99,6 +99,38 @@ describe('logout', () => {
     }
   });
 
+  // AIT-438: the revoke goes through apiClient, which authenticates with the
+  // env key while it is set — a "self-revoke" would kill the credential every
+  // other process is sharing.
+  test('skips the server-side revoke while HOOKMYAPP_API_KEY is set', async () => {
+    const original = process.env.HOOKMYAPP_API_KEY;
+    process.env.HOOKMYAPP_API_KEY = 'hmok_stillhere';
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({
+        accessToken: 'hmok_stillhere',
+        refreshToken: '',
+        expiresAt: 0,
+        kind: 'agent',
+        credentialPublicId: 'ac_self0001',
+      }),
+    );
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    try {
+      await runLogout(['--json']);
+      const payload = JSON.parse(
+        stdoutSpy.mock.calls.map((c) => String(c[0])).join('').trim(),
+      );
+      expect(payload.revoked).toBe(false);
+      expect(payload.envKeyActive).toBe(true);
+      expect(existsSync(join(DIR, 'credentials.json'))).toBe(false);
+    } finally {
+      if (original === undefined) delete process.env.HOOKMYAPP_API_KEY;
+      else process.env.HOOKMYAPP_API_KEY = original;
+    }
+  });
+
   test('reports MCP cleanup failure after credentials are removed', async () => {
     removeClaudeMcpMock.mockReturnValue({ ok: false, detail: 'Claude MCP cleanup timed out' });
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
