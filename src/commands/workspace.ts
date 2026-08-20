@@ -230,14 +230,14 @@ export function registerWorkspaceCommand(program: Command): void {
       // the fail-safe: an unknown kind never renders as a team workspace.
       const all = (await apiClient('/workspaces')) as Workspace[];
       const data = all.filter((w) => w.kind === 'team').map(dropWorkosOrgId);
-      const config = readWorkspaceConfig();
+      const activeId = effectiveActiveWorkspaceId();
       if (opts.json) {
         console.log(JSON.stringify(data, null, 2));
         return;
       }
       if (!program.opts().json) {
         const rows = data.map((w) => ({
-          ACTIVE: w.id === config.activeWorkspaceId ? '*' : ' ',
+          ACTIVE: w.id === activeId ? '*' : ' ',
           NAME: w.name,
           ID: w.id,
           ROLE: w.role,

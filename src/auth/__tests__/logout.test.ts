@@ -124,7 +124,45 @@ describe('logout', () => {
       );
       expect(payload.revoked).toBe(false);
       expect(payload.envKeyActive).toBe(true);
+      expect(payload.envKeyIsStoredKey).toBe(true);
       expect(existsSync(join(DIR, 'credentials.json'))).toBe(false);
+    } finally {
+      if (original === undefined) delete process.env.HOOKMYAPP_API_KEY;
+      else process.env.HOOKMYAPP_API_KEY = original;
+    }
+  });
+
+  // A different env key must not stop logout from revoking the stored one:
+  // the request is pinned to the stored token, so it is a real self-revoke.
+  test('still revokes a stored key when the env holds a DIFFERENT key', async () => {
+    const original = process.env.HOOKMYAPP_API_KEY;
+    process.env.HOOKMYAPP_API_KEY = 'hmok_otherkey';
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({
+        accessToken: 'hmok_storedkey',
+        refreshToken: '',
+        expiresAt: 0,
+        kind: 'agent',
+        credentialPublicId: 'ac_stored01',
+      }),
+    );
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await runLogout(['--json']);
+      const payload = JSON.parse(
+        stdoutSpy.mock.calls.map((c) => String(c[0])).join('').trim(),
+      );
+      expect(payload.envKeyIsStoredKey).toBe(false);
+      const call = fetchMock.mock.calls.find(([url]) =>
+        String(url).includes('/agent/credentials/ac_stored01'),
+      );
+      expect(call).toBeDefined();
+      // Pinned to the stored key, NOT the env key that would otherwise win.
+      expect(call![1].headers.Authorization).toBe('Bearer hmok_storedkey');
     } finally {
       if (original === undefined) delete process.env.HOOKMYAPP_API_KEY;
       else process.env.HOOKMYAPP_API_KEY = original;
