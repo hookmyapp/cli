@@ -20,6 +20,7 @@ import {
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
 import { buildVersionHeaders } from './version-headers.js';
+import { API_KEY_ENV_VAR } from '../config/env-vars.js';
 
 // Module-level workspace context populated by the top-level CLI entry after
 // parsing --workspace. Explicit options.workspaceId on a specific apiClient()
@@ -312,9 +313,14 @@ export function describeFetchError(err: unknown): string {
 
 export async function apiClient(
   path: string,
-  options?: RequestInit & { workspaceId?: string },
+  // `bearerToken` pins the request to one credential instead of the resolved
+  // one. Only logout needs it: it must authenticate as the STORED key to
+  // revoke it, which the env key would otherwise shadow (AIT-438).
+  options?: RequestInit & { workspaceId?: string; bearerToken?: string },
 ): Promise<any> {
-  const creds = await readCredentials();
+  const creds = options?.bearerToken
+    ? ({ accessToken: options.bearerToken, refreshToken: '', expiresAt: 0, kind: 'agent' } as const)
+    : await readCredentials();
   if (!creds) {
     throw new AuthError('Not logged in. Run: hookmyapp login');
   }
@@ -335,7 +341,7 @@ export async function apiClient(
 
   const baseUrl = getEffectiveApiUrl();
 
-  const { workspaceId, ...fetchOptions } = options ?? {};
+  const { workspaceId, bearerToken: _bearerToken, ...fetchOptions } = options ?? {};
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
@@ -383,7 +389,31 @@ export async function apiClient(
   }
 
   if (!res.ok) {
-    throw await mapApiError(res);
+    const err = await mapApiError(res);
+    // A 401 on an env credential must not say "Session expired. Run: login":
+    // there is no session, and `login` refuses to run while the variable is
+    // set, so that guidance is a loop (AIT-438).
+    if ('source' in creds && creds.source === 'env') {
+      if (err instanceof AuthError) {
+        throw new AuthError(
+          `The API key in ${API_KEY_ENV_VAR} was rejected (invalid or revoked). Replace it or unset the variable.`,
+        );
+      }
+      // A bare 403 maps to PermissionError, whose message names the persisted
+      // workspace slug and says "run: hookmyapp login" — wrong on both counts
+      // here: login refuses while the variable is set, and the workspace in
+      // play may have come from the environment too.
+      if (err instanceof PermissionError) {
+        // resolvedWsId already folds in options.workspaceId, which beats the
+        // shared context for this specific call.
+        const ws = resolvedWsId ?? '(unresolved)';
+        throw new ForbiddenError(
+          `The API key in ${API_KEY_ENV_VAR} lacks permission for workspace ${ws}. Use a key with the required role, or unset the variable to use your stored login.`,
+          'AGENT_KEY_FORBIDDEN',
+        );
+      }
+    }
+    throw err;
   }
 
   // 204 No Content (and other empty-body 2xx responses) have no JSON to parse.

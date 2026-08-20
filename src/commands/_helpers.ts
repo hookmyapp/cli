@@ -110,7 +110,8 @@ export async function getDefaultWorkspaceId(): Promise<string> {
 
   if (Array.isArray(workspaces) && workspaces.length > 1) {
     throw new ValidationError(
-      `You're a member of ${workspaces.length} workspaces. Pick one first:\n  hookmyapp workspace use <name|id>`,
+      `You're a member of ${workspaces.length} workspaces. Pick one first:\n  hookmyapp workspace use <name|id>\n` +
+        '  (non-interactive: pass --workspace <name|ws_id>)',
     );
   }
 

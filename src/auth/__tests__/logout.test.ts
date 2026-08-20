@@ -15,12 +15,17 @@ vi.mock('../../commands/mcp.js', () => ({ removeClaudeMcp: removeClaudeMcpMock }
 
 let DIR: string;
 const SAVED = process.env.HOOKMYAPP_CONFIG_DIR;
+// HOOKMYAPP_API_KEY is a supported auth mechanism now, so a CI runner may well
+// have one exported. Every baseline expectation here assumes no env
+// credential; clear it per test and let the env-specific cases set their own.
+const SAVED_KEY = process.env.HOOKMYAPP_API_KEY;
 let logSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   removeClaudeMcpMock.mockReset().mockReturnValue({ ok: true });
   DIR = mkdtempSync(join(tmpdir(), 'hma-logout-'));
   process.env.HOOKMYAPP_CONFIG_DIR = DIR;
+  delete process.env.HOOKMYAPP_API_KEY;
   logSpy = vi.spyOn(console, 'log').mockReturnValue(undefined);
 });
 
@@ -28,6 +33,8 @@ afterEach(() => {
   rmSync(DIR, { recursive: true, force: true });
   if (SAVED) process.env.HOOKMYAPP_CONFIG_DIR = SAVED;
   else delete process.env.HOOKMYAPP_CONFIG_DIR;
+  if (SAVED_KEY === undefined) delete process.env.HOOKMYAPP_API_KEY;
+  else process.env.HOOKMYAPP_API_KEY = SAVED_KEY;
   vi.restoreAllMocks();
 });
 
@@ -69,10 +76,92 @@ describe('logout', () => {
     expect(JSON.parse(written.trim())).toEqual({
       status: 'logged_out',
       revoked: false,
+      envKeyActive: false,
       mcpCleanup: { ok: true },
     });
     // The human check line must NOT be printed in --json mode.
     expect(logSpy.mock.calls.flat().join('')).not.toMatch(/Logged out/);
+  });
+
+  // AIT-438: an env key keeps authenticating after logout. Automation reads
+  // the payload, not the stderr warning, so the signal has to be in the JSON.
+  test('--json flags a still-active HOOKMYAPP_API_KEY', async () => {
+    process.env.HOOKMYAPP_API_KEY = 'hmok_stillhere';
+    const credsPath = join(DIR, 'credentials.json');
+    writeFileSync(credsPath, JSON.stringify({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }));
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    {
+      await runLogout(['--json']);
+      const written = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      expect(JSON.parse(written.trim())).toMatchObject({
+        status: 'logged_out_with_warning',
+        envKeyActive: true,
+        envKeyVar: 'HOOKMYAPP_API_KEY',
+      });
+    }
+  });
+
+  // AIT-438: the revoke goes through apiClient, which authenticates with the
+  // env key while it is set — a "self-revoke" would kill the credential every
+  // other process is sharing.
+  test('skips the server-side revoke while HOOKMYAPP_API_KEY is set', async () => {
+    process.env.HOOKMYAPP_API_KEY = 'hmok_stillhere';
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({
+        accessToken: 'hmok_stillhere',
+        refreshToken: '',
+        expiresAt: 0,
+        kind: 'agent',
+        credentialPublicId: 'ac_self0001',
+      }),
+    );
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    {
+      await runLogout(['--json']);
+      const payload = JSON.parse(
+        stdoutSpy.mock.calls.map((c) => String(c[0])).join('').trim(),
+      );
+      expect(payload.revoked).toBe(false);
+      expect(payload.envKeyActive).toBe(true);
+      expect(payload.envKeyIsStoredKey).toBe(true);
+      expect(existsSync(join(DIR, 'credentials.json'))).toBe(false);
+    }
+  });
+
+  // A different env key must not stop logout from revoking the stored one:
+  // the request is pinned to the stored token, so it is a real self-revoke.
+  test('still revokes a stored key when the env holds a DIFFERENT key', async () => {
+    process.env.HOOKMYAPP_API_KEY = 'hmok_otherkey';
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({
+        accessToken: 'hmok_storedkey',
+        refreshToken: '',
+        expiresAt: 0,
+        kind: 'agent',
+        credentialPublicId: 'ac_stored01',
+      }),
+    );
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    {
+      await runLogout(['--json']);
+      const payload = JSON.parse(
+        stdoutSpy.mock.calls.map((c) => String(c[0])).join('').trim(),
+      );
+      expect(payload.envKeyIsStoredKey).toBe(false);
+      const call = fetchMock.mock.calls.find(([url]) =>
+        String(url).includes('/agent/credentials/ac_stored01'),
+      );
+      expect(call).toBeDefined();
+      // Pinned to the stored key, NOT the env key that would otherwise win.
+      expect(call![1].headers.Authorization).toBe('Bearer hmok_storedkey');
+    }
   });
 
   test('reports MCP cleanup failure after credentials are removed', async () => {
