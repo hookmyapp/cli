@@ -10,6 +10,13 @@ if (!process.env.HOOKMYAPP_CONFIG_DIR) {
   process.env.HOOKMYAPP_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'hookmyapp-cli-test-'));
 }
 
+// Unset the credential env var for the whole suite. It is a supported auth
+// mechanism (AIT-438), so a developer or CI runner may legitimately have one
+// exported — and it outranks the stored credential, which silently flips every
+// test that assumes "not logged in" or writes its own credentials.json. Tests
+// that exercise the variable set it themselves.
+delete process.env.HOOKMYAPP_API_KEY;
+
 // Pin color output OFF for the whole suite. picocolors latches color support
 // from process.stdout.isTTY at first import; several tests toggle isTTY to
 // exercise interactive paths, which — combined with lazy dynamic imports —
