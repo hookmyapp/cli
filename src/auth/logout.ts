@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { deleteCredentials } from './store.js';
-import { API_KEY_ENV_VAR } from '../config/env-vars.js';
+import { API_KEY_ENV_VAR, envApiKey } from '../config/env-vars.js';
 import { isAgentCredential, readSecrets } from '../storage/secrets.js';
 import { addExamples } from '../output/help.js';
 import { removeClaudeMcp } from '../commands/mcp.js';
@@ -14,7 +14,7 @@ export function logoutCommand(program: Command): void {
       // AIT-438: an env key keeps authenticating after logout. Humans get the
       // warning below; --json callers need the same signal in the payload, or
       // automation reads status "logged_out" and assumes it is signed out.
-      const envKeyActive = Boolean(process.env[API_KEY_ENV_VAR]?.trim());
+      const envKeyActive = Boolean(envApiKey());
 
       // AIT-153: for an agent credential (org API key), also revoke it
       // server-side so it can't keep being used after logout. Best-effort — an

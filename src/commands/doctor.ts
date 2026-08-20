@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { runTool } from '../lib/spawn-tool.js';
 import { readCredentials } from '../auth/store.js';
-import { API_KEY_ENV_VAR, WORKSPACE_ENV_VAR, stripEnvQuotes } from '../config/env-vars.js';
+import { API_KEY_ENV_VAR, WORKSPACE_ENV_VAR, envWorkspaceId } from '../config/env-vars.js';
 import { isValidPublicId } from '../lib/publicId.js';
 import { apiClient } from '../api/client.js';
 import { AuthError, ForbiddenError, PermissionError } from '../output/error.js';
@@ -95,9 +95,17 @@ export async function collectDoctorReport(
       // still a rejected credential, not a network flake.
       if (err instanceof AuthError || err instanceof PermissionError || err instanceof ForbiddenError) {
         loggedIn = false;
+        // Only a 401 means the credential itself is bad. A 403 is an
+        // authenticated principal without permission — telling the user their
+        // key is revoked would send them to replace a perfectly good key.
+        const denied = !(err instanceof AuthError);
         authDetail = creds?.source === 'env'
-          ? `credentials present but rejected by this env — the key in ${API_KEY_ENV_VAR} is invalid or revoked`
-          : 'credentials present but rejected by this env — run: hookmyapp login';
+          ? denied
+            ? `credentials present but denied on this env — the key in ${API_KEY_ENV_VAR} lacks permission for this workspace`
+            : `credentials present but rejected by this env — the key in ${API_KEY_ENV_VAR} is invalid or revoked`
+          : denied
+            ? 'credentials present but denied on this env — this account lacks permission for this workspace'
+            : 'credentials present but rejected by this env — run: hookmyapp login';
       }
       // Anything else (network flake, 5xx) — leave the presence-based verdict.
     }
@@ -111,7 +119,7 @@ export async function collectDoctorReport(
   // getDefaultWorkspaceId(), so doctor has to report the same winner — reading
   // only the config would say "(none)" for an env-only agent, or flag the
   // ignored persisted workspace as stale.
-  const envWs = stripEnvQuotes(process.env[WORKSPACE_ENV_VAR]?.trim() ?? '');
+  const envWs = envWorkspaceId();
   let wsFromEnv = false;
   if (envWs) {
     wsFromEnv = true;

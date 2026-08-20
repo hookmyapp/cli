@@ -8,7 +8,7 @@ import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
 import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 import { resolveEnv } from '../config/env-profiles.js';
-import { WORKSPACE_ENV_VAR, stripEnvQuotes } from '../config/env-vars.js';
+import { WORKSPACE_ENV_VAR, envWorkspaceId } from '../config/env-vars.js';
 
 export interface WorkspaceConfig {
   activeWorkspaceId?: string;
@@ -56,6 +56,15 @@ export function readWorkspaceConfig(): WorkspaceConfig {
     activeWorkspaceId,
     activeWorkspaceSlug: activeWorkspaceId ? candidateSlug : undefined,
   };
+}
+
+/**
+ * The workspace commands actually act on: the env override when set, else the
+ * persisted selection. Status surfaces must use this, not the raw config, or
+ * they describe a workspace no command is using (AIT-438).
+ */
+export function effectiveActiveWorkspaceId(): string | undefined {
+  return envWorkspaceId() || readWorkspaceConfig().activeWorkspaceId || undefined;
 }
 
 export function writeWorkspaceConfig(config: WorkspaceConfig): void {
@@ -137,7 +146,7 @@ export async function switchActiveWorkspace(
   // writing one here would report a switch that never takes effect and send
   // the next mutating command at the old workspace. Same contract as `login`
   // under HOOKMYAPP_API_KEY: refuse, and say what to unset.
-  const envWs = stripEnvQuotes(process.env[WORKSPACE_ENV_VAR]?.trim() ?? '');
+  const envWs = envWorkspaceId();
   if (envWs) {
     throw new ValidationError(
       `${WORKSPACE_ENV_VAR} is set to ${envWs} and takes precedence, so this switch would have no effect. ` +
@@ -248,6 +257,25 @@ export function registerWorkspaceCommand(program: Command): void {
         method: 'POST',
         body: JSON.stringify({ name }),
       });
+      // AIT-438: HOOKMYAPP_WORKSPACE_ID outranks the persisted selection, so
+      // the usual create-then-switch would report a switch that never takes
+      // effect. Create the workspace (that part works), skip the switch, say so.
+      const envWsNew = envWorkspaceId();
+      if (envWsNew) {
+        if (!program.opts().json) {
+          console.log(
+            `Created workspace "${result.name}" (${result.id})\n` +
+              `Active workspace unchanged: ${WORKSPACE_ENV_VAR} is set to ${envWsNew}. ` +
+              `Unset it to switch, or point it at ${result.id}.`,
+          );
+        } else {
+          output(
+            { id: result.id, name: result.name, switched: false, activeWorkspaceId: envWsNew },
+            { human: false },
+          );
+        }
+        return;
+      }
       // Re-scope the JWT to the newly-created workspace's org (server-side,
       // AIT-182) BEFORE persisting the switch — a failed rescope must not
       // leave config pointing at a workspace the token isn't valid for.

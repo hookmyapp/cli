@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { saveCredentials, peekIdentity } from './store.js';
-import { API_KEY_ENV_VAR } from '../config/env-vars.js';
+import { API_KEY_ENV_VAR, envApiKey } from '../config/env-vars.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
@@ -697,7 +697,7 @@ export function loginCommand(program: Command): void {
         // login completed now would be authenticated over and have no effect.
         // Refuse with the fix rather than let the user sign in for nothing
         // (same contract as `gh auth login` under GH_TOKEN).
-        if (process.env[API_KEY_ENV_VAR]?.trim()) {
+        if (envApiKey()) {
           throw new ValidationError(
             `${API_KEY_ENV_VAR} is set, and it takes precedence over a stored login — signing in now would have no effect. ` +
               `Unset ${API_KEY_ENV_VAR} first, then run: ${cliCommandPrefix()} login`,

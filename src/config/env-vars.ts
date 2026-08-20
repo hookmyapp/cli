@@ -24,3 +24,18 @@ export function stripEnvQuotes(value: string): string {
   }
   return value;
 }
+
+/**
+ * The active org API key from the environment, normalized ('' when unset).
+ * Every caller must go through this: `HOOKMYAPP_API_KEY='""'` strips to empty,
+ * so a raw `process.env[...]` truthiness test would refuse a login (or claim a
+ * key is active) when no credential exists at all.
+ */
+export function envApiKey(): string {
+  return stripEnvQuotes(process.env[API_KEY_ENV_VAR]?.trim() ?? '');
+}
+
+/** The workspace override from the environment, normalized ('' when unset). */
+export function envWorkspaceId(): string {
+  return stripEnvQuotes(process.env[WORKSPACE_ENV_VAR]?.trim() ?? '');
+}
