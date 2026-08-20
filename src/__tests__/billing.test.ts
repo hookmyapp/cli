@@ -88,11 +88,18 @@ async function advanceUntilSettled(
   }
 }
 
-function mockSubAndUsage(sub: any, usage: { total: number; limit: number; percentage: number }) {
+// AIT-436: `usageUnit` is part of the /webhook/usage contract, so a fixture
+// without it is a payload the backend never sends (CodeRabbit, PR #62). It
+// defaults to the legacy meter, which is what every one of these cases is.
+function mockSubAndUsage(
+  sub: any,
+  usage: { total: number; limit: number; percentage: number; usageUnit?: 'messages' | 'actions' },
+) {
+  const withUnit = { usageUnit: 'messages' as const, ...usage };
   mockedApiClient.mockImplementation(async (path: string) => {
     if (path === '/workspaces') return WORKSPACES;
     if (path === SUBSCRIPTION_PATH) return sub;
-    if (path === '/webhook/usage') return usage;
+    if (path === '/webhook/usage') return withUnit;
     throw new Error(`unexpected path: ${path}`);
   });
 }
@@ -135,7 +142,7 @@ describe('billing commands', () => {
 
   describe('billingStatus json', () => {
     it('emits structured { subscription, usage } when human=false', async () => {
-      const usage = { total: 100, limit: 1200, percentage: 8 };
+      const usage = { total: 100, limit: 1200, percentage: 8, usageUnit: 'messages' as const };
       mockSubAndUsage(activeSub, usage);
 
       await billingStatus({ human: false });
