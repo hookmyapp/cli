@@ -47,3 +47,30 @@ describe('effectiveActiveWorkspaceId', () => {
     expect(effectiveActiveWorkspaceId()).not.toBe('""');
   });
 });
+
+// Telemetry must tag events with the workspace the request targeted, which is
+// the flag when one was passed — not the environment override it outranks.
+describe('telemetry workspace attribution', () => {
+  const original = process.env.HOOKMYAPP_WORKSPACE_ID;
+  afterEach(async () => {
+    if (original === undefined) delete process.env.HOOKMYAPP_WORKSPACE_ID;
+    else process.env.HOOKMYAPP_WORKSPACE_ID = original;
+    const { setWorkspaceContext } = await import('../../config/workspace-context.js');
+    setWorkspaceContext({ workspaceId: null });
+  });
+
+  it('prefers the workspace resolved for the invocation over the env value', async () => {
+    process.env.HOOKMYAPP_WORKSPACE_ID = 'ws_envAAAAA';
+    const { setWorkspaceContext } = await import('../../config/workspace-context.js');
+    const { readActiveWorkspacePublicId } = await import('../../config/index.js');
+
+    setWorkspaceContext({ workspaceId: 'ws_flagBBBB' });
+    expect(readActiveWorkspacePublicId()).toBe('ws_flagBBBB');
+  });
+
+  it('falls back to the env value when nothing was resolved', async () => {
+    process.env.HOOKMYAPP_WORKSPACE_ID = 'ws_envAAAAA';
+    const { readActiveWorkspacePublicId } = await import('../../config/index.js');
+    expect(readActiveWorkspacePublicId()).toBe('ws_envAAAAA');
+  });
+});

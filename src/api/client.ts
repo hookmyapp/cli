@@ -21,16 +21,15 @@ import {
 } from '../config/env-profiles.js';
 import { buildVersionHeaders } from './version-headers.js';
 import { API_KEY_ENV_VAR } from '../config/env-vars.js';
+import { getWorkspaceContext } from '../config/workspace-context.js';
 
-// Module-level workspace context populated by the top-level CLI entry after
-// parsing --workspace. Explicit options.workspaceId on a specific apiClient()
-// call always wins; this is the fallback used by every other call site, so
-// subcommands like `env` don't have to remember to thread the header through.
-let workspaceCtx: { workspaceId: string | null } = { workspaceId: null };
-
-export function setWorkspaceContext(ctx: { workspaceId: string | null }): void {
-  workspaceCtx = ctx;
-}
+// Workspace context populated by getDefaultWorkspaceId() after applying the
+// --workspace / HOOKMYAPP_WORKSPACE_ID / config precedence. Explicit
+// options.workspaceId on a specific apiClient() call always wins; this is the
+// fallback used by every other call site, so subcommands like `env` don't have
+// to remember to thread the header through. Lives in a leaf module because
+// telemetry needs the same value and cannot import this file (AIT-438).
+export { setWorkspaceContext } from '../config/workspace-context.js';
 
 function decodeJwtExp(token: string): number {
   try {
@@ -354,7 +353,7 @@ export async function apiClient(
   // global --workspace context. /workspaces is the discovery endpoint — we
   // intentionally never inject (chicken-and-egg: the user is fetching the
   // list precisely to pick a workspace).
-  const resolvedWsId = workspaceId !== undefined ? workspaceId : workspaceCtx.workspaceId;
+  const resolvedWsId = workspaceId !== undefined ? workspaceId : getWorkspaceContext();
   if (resolvedWsId && !path.startsWith('/workspaces')) {
     headers['X-Workspace-Id'] = resolvedWsId;
   }
@@ -393,10 +392,23 @@ export async function apiClient(
     // A 401 on an env credential must not say "Session expired. Run: login":
     // there is no session, and `login` refuses to run while the variable is
     // set, so that guidance is a loop (AIT-438).
-    if (err instanceof AuthError && 'source' in creds && creds.source === 'env') {
-      throw new AuthError(
-        `The API key in ${API_KEY_ENV_VAR} was rejected (invalid or revoked). Replace it or unset the variable.`,
-      );
+    if ('source' in creds && creds.source === 'env') {
+      if (err instanceof AuthError) {
+        throw new AuthError(
+          `The API key in ${API_KEY_ENV_VAR} was rejected (invalid or revoked). Replace it or unset the variable.`,
+        );
+      }
+      // A bare 403 maps to PermissionError, whose message names the persisted
+      // workspace slug and says "run: hookmyapp login" — wrong on both counts
+      // here: login refuses while the variable is set, and the workspace in
+      // play may have come from the environment too.
+      if (err instanceof PermissionError) {
+        const ws = getWorkspaceContext() ?? resolvedWsId ?? '(unresolved)';
+        throw new ForbiddenError(
+          `The API key in ${API_KEY_ENV_VAR} lacks permission for workspace ${ws}. Use a key with the required role, or unset the variable to use your stored login.`,
+          'AGENT_KEY_FORBIDDEN',
+        );
+      }
     }
     throw err;
   }

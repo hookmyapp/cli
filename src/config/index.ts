@@ -25,6 +25,7 @@ import {
 } from 'node:fs';
 import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 import { envWorkspaceId } from './env-vars.js';
+import { getWorkspaceContext } from './workspace-context.js';
 
 /**
  * The full on-disk config shape — narrow type for the keys this module reads /
@@ -125,10 +126,12 @@ export function writePosthogConfig(slice: Partial<PosthogConfigSlice>): void {
  * cycle (commands/workspace.ts → api/client.ts → … → posthog.ts → config).
  */
 export function readActiveWorkspacePublicId(): string | undefined {
-  // HOOKMYAPP_WORKSPACE_ID outranks the persisted selection for every command
-  // (AIT-438), so telemetry has to attribute events to it too — otherwise each
-  // env-driven invocation is tagged with the stale persisted workspace, or no
-  // workspace at all, while the API request targets a different one.
+  // Mirror getDefaultWorkspaceId()'s precedence exactly, or events get tagged
+  // with a workspace the request never touched (AIT-438). The resolved context
+  // is set once the flag/env/config decision is made, so it already accounts
+  // for `--workspace ws_B` beating HOOKMYAPP_WORKSPACE_ID=ws_A.
+  const resolved = getWorkspaceContext();
+  if (resolved?.startsWith('ws_')) return resolved;
   const env = envWorkspaceId();
   if (env.startsWith('ws_')) return env;
   const cfg = readFullConfig();

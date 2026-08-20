@@ -1,4 +1,5 @@
-import { apiClient, setWorkspaceContext } from '../api/client.js';
+import { apiClient } from '../api/client.js';
+import { setWorkspaceContext } from '../config/workspace-context.js';
 import { AuthError, CliError, NetworkError, ValidationError, exitCodeFor } from '../output/error.js';
 import { readWorkspaceConfig, writeWorkspaceConfig } from './workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
