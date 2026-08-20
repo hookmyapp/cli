@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { apiClient } from '../client.js';
 import { API_KEY_ENV_VAR } from '../../config/env-vars.js';
 import * as secrets from '../../storage/secrets.js';
-import { AuthError } from '../../output/error.js';
+import { AuthError, ForbiddenError } from '../../output/error.js';
+import { setWorkspaceContext } from '../../config/workspace-context.js';
 
 // The env key must reach the wire as the bearer token, exactly as a stored
 // agent credential does — no refresh attempt, no rewriting (AIT-438).
@@ -34,6 +35,26 @@ describe('apiClient with HOOKMYAPP_API_KEY (AIT-438)', () => {
     await expect(apiClient('/workspaces')).rejects.toThrow(
       /HOOKMYAPP_API_KEY was rejected/,
     );
+  });
+
+  // A bare 403 maps to PermissionError, whose stock message says "run:
+  // hookmyapp login" — which login now refuses to do while the key is set.
+  it('gives permission guidance, not login advice, on a bare 403', async () => {
+    process.env[API_KEY_ENV_VAR] = 'hmok_lowperm';
+    setWorkspaceContext({ workspaceId: 'ws_abc12345' });
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      headers: new Headers(),
+      json: async () => ({ message: 'Forbidden' }),
+    })));
+
+    await expect(apiClient('/channels')).rejects.toThrow(ForbiddenError);
+    await expect(apiClient('/channels')).rejects.toThrow(
+      /HOOKMYAPP_API_KEY lacks permission for workspace ws_abc12345/,
+    );
+    await expect(apiClient('/channels')).rejects.not.toThrow(/hookmyapp login/);
+    setWorkspaceContext({ workspaceId: null });
   });
 
   it('sends the env key as the Authorization bearer', async () => {
