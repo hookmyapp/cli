@@ -2,6 +2,7 @@ import { apiClient, setWorkspaceContext } from '../api/client.js';
 import { AuthError, CliError, NetworkError, ValidationError, exitCodeFor } from '../output/error.js';
 import { readWorkspaceConfig, writeWorkspaceConfig } from './workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
+import { WORKSPACE_ENV_VAR } from '../config/env-vars.js';
 import { emit, shouldEmitCommandInvoked } from '../observability/posthog.js';
 import type { CliExitCode } from '../analytics/events.js';
 import { getCliVersion } from '../observability/posthog.js';
@@ -89,6 +90,22 @@ export async function getDefaultWorkspaceId(): Promise<string> {
     return match.id;
   }
 
+  // AIT-438: a headless caller has no workspace config to read — the same
+  // environment that carries HOOKMYAPP_API_KEY carries the workspace it is
+  // scoped to. Mirrors HOOKMYAPP_CHANNEL_ID (see resolveChannelRefOrDefault)
+  // and sits above the stored config for the same reason the API key does:
+  // an explicitly exported value beats a persisted default.
+  const envWorkspace = process.env[WORKSPACE_ENV_VAR]?.trim();
+  if (envWorkspace) {
+    if (!isValidPublicId(envWorkspace, 'ws')) {
+      throw new ValidationError(
+        `${WORKSPACE_ENV_VAR} must be a workspace publicId (ws_<8-char>), got "${envWorkspace}".`,
+      );
+    }
+    setWorkspaceContext({ workspaceId: envWorkspace });
+    return envWorkspace;
+  }
+
   const config = readWorkspaceConfig();
   if (config.activeWorkspaceId) {
     setWorkspaceContext({ workspaceId: config.activeWorkspaceId });
@@ -110,7 +127,8 @@ export async function getDefaultWorkspaceId(): Promise<string> {
 
   if (Array.isArray(workspaces) && workspaces.length > 1) {
     throw new ValidationError(
-      `You're a member of ${workspaces.length} workspaces. Pick one first:\n  hookmyapp workspace use <name|id>`,
+      `You're a member of ${workspaces.length} workspaces. Pick one first:\n  hookmyapp workspace use <name|id>\n` +
+        '  (non-interactive: pass --workspace <ws_id> or set HOOKMYAPP_WORKSPACE_ID)',
     );
   }
 

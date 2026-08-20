@@ -45,8 +45,39 @@ describe('doctor — auth probe uses the real authenticated request path', () =>
     expect(apiClient).toHaveBeenCalledWith('/workspaces');
     expect(report.loggedIn).toBe(true);
     expect(report.checks.find((c) => c.id === 'auth')!.detail).toBe(
-      'credentials valid for this env',
+      'credentials valid for this env — stored credentials',
     );
+  });
+
+  // AIT-438: which credential is in play must be visible — an env key and a
+  // stored login produce identical output otherwise.
+  it('names HOOKMYAPP_API_KEY when the credential came from the environment', async () => {
+    vi.mocked(apiClient).mockResolvedValue([]);
+    vi.mocked(readCredentials).mockResolvedValue({
+      accessToken: 'hmok_abc',
+      refreshToken: '',
+      expiresAt: 0,
+      kind: 'agent',
+      source: 'env',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const report = await collectDoctorReport({ checkTools: false });
+
+    expect(report.checks.find((c) => c.id === 'auth')!.detail).toBe(
+      'credentials valid for this env — HOOKMYAPP_API_KEY (environment)',
+    );
+  });
+
+  it('surfaces a malformed env key instead of "not logged in"', async () => {
+    vi.mocked(readCredentials).mockRejectedValue(
+      new AuthError('HOOKMYAPP_API_KEY is not a valid API key (expected it to start with "hmok_").'),
+    );
+
+    const report = await collectDoctorReport({ checkTools: false });
+
+    expect(report.loggedIn).toBe(false);
+    expect(report.checks.find((c) => c.id === 'auth')!.detail).toContain('HOOKMYAPP_API_KEY');
   });
 
   it('fails auth when apiClient throws AuthError (genuinely invalid credentials)', async () => {
@@ -67,7 +98,9 @@ describe('doctor — auth probe uses the real authenticated request path', () =>
     const report = await collectDoctorReport({ checkTools: false });
 
     expect(report.loggedIn).toBe(true);
-    expect(report.checks.find((c) => c.id === 'auth')!.detail).toBe('credentials present');
+    expect(report.checks.find((c) => c.id === 'auth')!.detail).toBe(
+      'credentials present — stored credentials',
+    );
   });
 });
 
