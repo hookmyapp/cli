@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../../auth/store.js', () => ({ readCredentials: vi.fn(async () => null) }));
 vi.mock('../../api/client.js', () => ({ apiClient: vi.fn() }));
 vi.mock('../workspace.js', () => ({ readWorkspaceConfig: vi.fn(() => ({})) }));
@@ -101,6 +101,63 @@ describe('doctor — auth probe uses the real authenticated request path', () =>
     expect(report.checks.find((c) => c.id === 'auth')!.detail).toBe(
       'credentials present — stored credentials',
     );
+  });
+});
+
+describe('doctor — HOOKMYAPP_WORKSPACE_ID override (AIT-438)', () => {
+  const original = process.env.HOOKMYAPP_WORKSPACE_ID;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200 })));
+    vi.mocked(readCredentials).mockResolvedValue({
+      accessToken: 'hmok_x',
+      refreshToken: '',
+      expiresAt: 0,
+      kind: 'agent',
+      source: 'env',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    vi.mocked(readWorkspaceConfig).mockReturnValue({});
+  });
+  afterEach(() => {
+    if (original === undefined) delete process.env.HOOKMYAPP_WORKSPACE_ID;
+    else process.env.HOOKMYAPP_WORKSPACE_ID = original;
+  });
+
+  it('reports the env workspace instead of "(none)"', async () => {
+    process.env.HOOKMYAPP_WORKSPACE_ID = 'ws_abc12345';
+    vi.mocked(apiClient).mockResolvedValue([{ id: 'ws_abc12345' }]);
+
+    const report = await collectDoctorReport({ checkTools: false });
+    const ws = report.checks.find((c) => c.id === 'workspace')!;
+
+    expect(ws.ok).toBe(true);
+    expect(ws.detail).toBe('ws_abc12345 — HOOKMYAPP_WORKSPACE_ID (environment)');
+  });
+
+  it('fails the check on a malformed value, the same way commands do', async () => {
+    process.env.HOOKMYAPP_WORKSPACE_ID = 'not-a-ws-id';
+    vi.mocked(apiClient).mockResolvedValue([]);
+
+    const ws = (await collectDoctorReport({ checkTools: false })).checks.find(
+      (c) => c.id === 'workspace',
+    )!;
+
+    expect(ws.ok).toBe(false);
+    expect(ws.detail).toContain('HOOKMYAPP_WORKSPACE_ID');
+  });
+
+  it('points at the variable, not `workspace use`, when the env workspace is unknown', async () => {
+    process.env.HOOKMYAPP_WORKSPACE_ID = 'ws_gone1234';
+    vi.mocked(apiClient).mockResolvedValue([{ id: 'ws_other123' }]);
+
+    const ws = (await collectDoctorReport({ checkTools: false })).checks.find(
+      (c) => c.id === 'workspace',
+    )!;
+
+    expect(ws.ok).toBe(false);
+    expect(ws.detail).toContain('unset HOOKMYAPP_WORKSPACE_ID');
+    expect(ws.detail).not.toContain('workspace use');
   });
 });
 

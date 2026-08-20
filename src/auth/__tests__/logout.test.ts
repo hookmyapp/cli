@@ -69,10 +69,34 @@ describe('logout', () => {
     expect(JSON.parse(written.trim())).toEqual({
       status: 'logged_out',
       revoked: false,
+      envKeyActive: false,
       mcpCleanup: { ok: true },
     });
     // The human check line must NOT be printed in --json mode.
     expect(logSpy.mock.calls.flat().join('')).not.toMatch(/Logged out/);
+  });
+
+  // AIT-438: an env key keeps authenticating after logout. Automation reads
+  // the payload, not the stderr warning, so the signal has to be in the JSON.
+  test('--json flags a still-active HOOKMYAPP_API_KEY', async () => {
+    const original = process.env.HOOKMYAPP_API_KEY;
+    process.env.HOOKMYAPP_API_KEY = 'hmok_stillhere';
+    const credsPath = join(DIR, 'credentials.json');
+    writeFileSync(credsPath, JSON.stringify({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }));
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    try {
+      await runLogout(['--json']);
+      const written = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      expect(JSON.parse(written.trim())).toMatchObject({
+        status: 'logged_out_with_warning',
+        envKeyActive: true,
+        envKeyVar: 'HOOKMYAPP_API_KEY',
+      });
+    } finally {
+      if (original === undefined) delete process.env.HOOKMYAPP_API_KEY;
+      else process.env.HOOKMYAPP_API_KEY = original;
+    }
   });
 
   test('reports MCP cleanup failure after credentials are removed', async () => {

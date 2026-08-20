@@ -11,6 +11,10 @@ export function logoutCommand(program: Command): void {
     .description('Remove stored credentials')
     .action(async () => {
       const json = !!program.opts().json;
+      // AIT-438: an env key keeps authenticating after logout. Humans get the
+      // warning below; --json callers need the same signal in the payload, or
+      // automation reads status "logged_out" and assumes it is signed out.
+      const envKeyActive = Boolean(process.env[API_KEY_ENV_VAR]?.trim());
 
       // AIT-153: for an agent credential (org API key), also revoke it
       // server-side so it can't keep being used after logout. Best-effort — an
@@ -41,8 +45,13 @@ export function logoutCommand(program: Command): void {
       if (json) {
         process.stdout.write(
           JSON.stringify({
-            status: mcpCleanup.ok ? 'logged_out' : 'logged_out_with_warning',
+            status:
+              !mcpCleanup.ok || envKeyActive
+                ? 'logged_out_with_warning'
+                : 'logged_out',
             revoked,
+            envKeyActive,
+            ...(envKeyActive ? { envKeyVar: API_KEY_ENV_VAR } : {}),
             mcpCleanup,
           }) + '\n',
         );
@@ -52,7 +61,7 @@ export function logoutCommand(program: Command): void {
             ? '\n✓ Logged out\n'
             : `\n✓ Logged out\n⚠ ${mcpCleanup.detail}\n`,
         );
-        if (process.env[API_KEY_ENV_VAR]?.trim()) {
+        if (envKeyActive) {
           console.log(
             `⚠ ${API_KEY_ENV_VAR} is still set — commands stay authenticated with it. Unset it to sign out fully.\n`,
           );
