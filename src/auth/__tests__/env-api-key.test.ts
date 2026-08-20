@@ -55,6 +55,21 @@ describe('HOOKMYAPP_API_KEY credential (AIT-438)', () => {
     expect(readEnvCredential()).toBeNull();
   });
 
+  // cmd.exe keeps the quotes in `set HOOKMYAPP_API_KEY="hmok_abc"`, unlike
+  // PowerShell and POSIX shells — without stripping, Windows users get
+  // "not a valid API key" for a key that plainly starts with hmok_.
+  it('accepts a value quoted the way cmd.exe stores it', () => {
+    process.env[API_KEY_ENV_VAR] = '"hmok_abc123"';
+    expect(readEnvCredential()?.accessToken).toBe('hmok_abc123');
+    process.env[API_KEY_ENV_VAR] = "'hmok_abc123'";
+    expect(readEnvCredential()?.accessToken).toBe('hmok_abc123');
+  });
+
+  it('leaves an unbalanced quote alone, so it still fails as malformed', () => {
+    process.env[API_KEY_ENV_VAR] = '"hmok_abc123';
+    expect(() => readEnvCredential()).toThrow(AuthError);
+  });
+
   it('rejects a malformed value, naming the variable', () => {
     process.env[API_KEY_ENV_VAR] = 'not-a-key';
     expect(() => readEnvCredential()).toThrow(AuthError);
