@@ -27,22 +27,18 @@ export function logoutCommand(program: Command): void {
       // environment is not ours to clear, and revoking it server-side would
       // break every other process sharing that key.
       const creds = await readSecrets();
-      // The revoke call goes through apiClient, which authenticates with the
-      // env key while it is set. If both hold the same key, the "self-revoke"
-      // would kill the environment credential every other process is using;
-      // if they differ, the backend rejects it as a non-self revoke anyway.
-      // Skip it and say so — the local credential is still cleared.
-      if (envKeyActive && creds && isAgentCredential(creds)) {
-        console.error(
-          `\n⚠ Stored key ${creds.credentialPublicId ?? ''} was not revoked server-side: ` +
-            `while ${API_KEY_ENV_VAR} is set, the request would authenticate as that key. ` +
-            `Unset it and run: hookmyapp credentials revoke ${creds.credentialPublicId ?? '<id>'}\n`,
-        );
-      } else if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
+      // The revoke goes through apiClient, which prefers the env key. Pin it
+      // to the stored token so logout revokes the credential it is actually
+      // clearing. The one case to skip: the env holds that SAME key — revoking
+      // it would break every other process sharing it, and the user did not
+      // ask to invalidate their environment (AIT-438).
+      const envIsSameKey = envKeyActive && creds?.accessToken === envApiKey();
+      if (creds && isAgentCredential(creds) && creds.credentialPublicId && !envIsSameKey) {
         try {
           const { apiClient } = await import('../api/client.js');
           await apiClient(`/agent/credentials/${creds.credentialPublicId}`, {
             method: 'DELETE',
+            bearerToken: creds.accessToken,
           });
           revoked = true;
         } catch {
@@ -62,7 +58,7 @@ export function logoutCommand(program: Command): void {
                 : 'logged_out',
             revoked,
             envKeyActive,
-            ...(envKeyActive ? { envKeyVar: API_KEY_ENV_VAR } : {}),
+            ...(envKeyActive ? { envKeyVar: API_KEY_ENV_VAR, envKeyIsStoredKey: envIsSameKey } : {}),
             mcpCleanup,
           }) + '\n',
         );
@@ -74,7 +70,9 @@ export function logoutCommand(program: Command): void {
         );
         if (envKeyActive) {
           console.log(
-            `⚠ ${API_KEY_ENV_VAR} is still set — commands stay authenticated with it. Unset it to sign out fully.\n`,
+            envIsSameKey
+              ? `⚠ ${API_KEY_ENV_VAR} holds this same key, so it was not revoked and commands stay authenticated with it. Unset it to sign out fully.\n`
+              : `⚠ ${API_KEY_ENV_VAR} is still set — commands stay authenticated with it. Unset it to sign out fully.\n`,
           );
         }
       }

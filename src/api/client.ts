@@ -313,9 +313,14 @@ export function describeFetchError(err: unknown): string {
 
 export async function apiClient(
   path: string,
-  options?: RequestInit & { workspaceId?: string },
+  // `bearerToken` pins the request to one credential instead of the resolved
+  // one. Only logout needs it: it must authenticate as the STORED key to
+  // revoke it, which the env key would otherwise shadow (AIT-438).
+  options?: RequestInit & { workspaceId?: string; bearerToken?: string },
 ): Promise<any> {
-  const creds = await readCredentials();
+  const creds = options?.bearerToken
+    ? ({ accessToken: options.bearerToken, refreshToken: '', expiresAt: 0, kind: 'agent' } as const)
+    : await readCredentials();
   if (!creds) {
     throw new AuthError('Not logged in. Run: hookmyapp login');
   }
@@ -336,7 +341,7 @@ export async function apiClient(
 
   const baseUrl = getEffectiveApiUrl();
 
-  const { workspaceId, ...fetchOptions } = options ?? {};
+  const { workspaceId, bearerToken: _bearerToken, ...fetchOptions } = options ?? {};
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
@@ -388,7 +393,7 @@ export async function apiClient(
     // A 401 on an env credential must not say "Session expired. Run: login":
     // there is no session, and `login` refuses to run while the variable is
     // set, so that guidance is a loop (AIT-438).
-    if (err instanceof AuthError && creds.source === 'env') {
+    if (err instanceof AuthError && 'source' in creds && creds.source === 'env') {
       throw new AuthError(
         `The API key in ${API_KEY_ENV_VAR} was rejected (invalid or revoked). Replace it or unset the variable.`,
       );
