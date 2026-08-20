@@ -33,6 +33,9 @@ export interface Secrets {
   /** Agent credentials only: login email — the hmok_ token is opaque, so this
    * is the only human identity available for crash attribution (AIT-278). */
   email?: string;
+  /** Where the credential came from. Undefined = read from credentials.json.
+   * 'env' = synthesized from HOOKMYAPP_API_KEY and never persisted (AIT-438). */
+  source?: 'env';
 }
 
 /** True for an auth.md-issued org-scoped agent credential (no refresh token). */

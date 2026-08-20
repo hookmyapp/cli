@@ -1,6 +1,7 @@
 import { Command } from 'commander';
-import { readCredentials, deleteCredentials } from './store.js';
-import { isAgentCredential } from '../storage/secrets.js';
+import { deleteCredentials } from './store.js';
+import { API_KEY_ENV_VAR } from '../config/env-vars.js';
+import { isAgentCredential, readSecrets } from '../storage/secrets.js';
 import { addExamples } from '../output/help.js';
 import { removeClaudeMcp } from '../commands/mcp.js';
 
@@ -17,7 +18,11 @@ export function logoutCommand(program: Command): void {
       // credentials. WorkOS sessions carry no CLI-side revoke, so this only
       // fires for agent credentials.
       let revoked = false;
-      const creds = await readCredentials();
+      // Stored credential only (AIT-438): logout manages credentials.json and
+      // must never revoke a key that came from HOOKMYAPP_API_KEY — the
+      // environment is not ours to clear, and revoking it server-side would
+      // break every other process sharing that key.
+      const creds = await readSecrets();
       if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
         try {
           const { apiClient } = await import('../api/client.js');
@@ -47,6 +52,11 @@ export function logoutCommand(program: Command): void {
             ? '\n✓ Logged out\n'
             : `\n✓ Logged out\n⚠ ${mcpCleanup.detail}\n`,
         );
+        if (process.env[API_KEY_ENV_VAR]?.trim()) {
+          console.log(
+            `⚠ ${API_KEY_ENV_VAR} is still set — commands stay authenticated with it. Unset it to sign out fully.\n`,
+          );
+        }
       }
     });
 

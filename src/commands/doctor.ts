@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { runTool } from '../lib/spawn-tool.js';
 import { readCredentials } from '../auth/store.js';
+import { API_KEY_ENV_VAR } from '../config/env-vars.js';
 import { apiClient } from '../api/client.js';
 import { AuthError, ForbiddenError, PermissionError } from '../output/error.js';
 import { isJsonMode } from '../output/format.js';
@@ -56,7 +57,17 @@ export async function collectDoctorReport(
 
   let loggedIn = false;
   let creds: Awaited<ReturnType<typeof readCredentials>> = null;
-  try { creds = await readCredentials(); loggedIn = creds !== null; } catch { loggedIn = false; }
+  // A malformed HOOKMYAPP_API_KEY throws here (AIT-438). Keep its message —
+  // "not logged in" would send the user to `login` when the real fix is to
+  // correct the variable.
+  let credsError: string | null = null;
+  try {
+    creds = await readCredentials();
+    loggedIn = creds !== null;
+  } catch (err) {
+    loggedIn = false;
+    credsError = err instanceof Error ? err.message : String(err);
+  }
   // Credentials-present alone is a false positive when the stored token is
   // expired or belongs to another env (2026-07-07 audit: doctor said OK, the
   // next command 401'd). When network checks are on, prove the token works
@@ -64,7 +75,10 @@ export async function collectDoctorReport(
   // command uses, including the token-refresh attempt. A raw fetch with the
   // stored accessToken false-FAILs on tokens that are merely expired but
   // refreshable (2026-07-08 audit).
-  let authDetail = loggedIn ? 'credentials present' : 'not logged in — run: hookmyapp login';
+  const credSource = creds?.source === 'env' ? `${API_KEY_ENV_VAR} (environment)` : 'stored credentials';
+  let authDetail = loggedIn
+    ? `credentials present — ${credSource}`
+    : credsError ?? 'not logged in — run: hookmyapp login';
   // Kept from the auth probe so the workspace check below can validate the
   // persisted activeWorkspaceId against the backend instead of trusting the
   // cache (AIT-51: after a DB re-seed doctor said OK while every scoped
@@ -74,13 +88,15 @@ export async function collectDoctorReport(
     try {
       const res = await apiClient('/workspaces');
       if (Array.isArray(res)) workspaces = res;
-      authDetail = 'credentials valid for this env';
+      authDetail = `credentials valid for this env — ${credSource}`;
     } catch (err) {
       // ForbiddenError is what coded 403s map to since AIT-151 — a denial is
       // still a rejected credential, not a network flake.
       if (err instanceof AuthError || err instanceof PermissionError || err instanceof ForbiddenError) {
         loggedIn = false;
-        authDetail = 'credentials present but rejected by this env — run: hookmyapp login';
+        authDetail = creds?.source === 'env'
+          ? `credentials present but rejected by this env — the key in ${API_KEY_ENV_VAR} is invalid or revoked`
+          : 'credentials present but rejected by this env — run: hookmyapp login';
       }
       // Anything else (network flake, 5xx) — leave the presence-based verdict.
     }
