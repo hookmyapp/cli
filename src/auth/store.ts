@@ -23,9 +23,10 @@ export async function saveCredentials(creds: Credentials): Promise<void> {
  * Build a credential from HOOKMYAPP_API_KEY, or null when the variable is
  * unset/empty.
  *
- * Shaped as `kind: 'agent'` on purpose: an org API key is exactly what
- * `hookmyapp credentials create` persists, so every existing agent-credential
- * path (no refresh, no rescope, bearer sent verbatim) applies unchanged.
+ * Shaped as `kind: 'agent'` on purpose: an org API key is exactly what the
+ * auth.md flow (`login --email … --scope …`) persists, so every existing
+ * agent-credential path (no refresh, no rescope, bearer sent verbatim)
+ * applies unchanged.
  *
  * Accepted prefixes mirror the backend's `isAgentToken` — `hmok_` is the
  * current mint, `ac_` is legacy and still resolves server-side. Rejecting
@@ -41,7 +42,7 @@ export function readEnvCredential(): Credentials | null {
   if (!raw.startsWith('hmok_') && !raw.startsWith('ac_')) {
     throw new AuthError(
       `${API_KEY_ENV_VAR} is not a valid API key (expected it to start with "hmok_"). ` +
-        `Fix or unset the variable, then retry. Mint a key with: hookmyapp credentials create`,
+        `Fix or unset the variable, then retry.`,
     );
   }
   return {
