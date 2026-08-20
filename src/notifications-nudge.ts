@@ -28,6 +28,7 @@ import { getValidAccessToken } from './api/client.js';
 import { readCredentials } from './auth/store.js';
 import type { Secrets } from './storage/secrets.js';
 import { ENV_PROFILES, getEffectiveApiUrl, isValidEnv } from './config/env-profiles.js';
+import { keyFingerprint } from './config/env-vars.js';
 import { getConfigDir } from './storage/path.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,7 +51,7 @@ export function credentialFingerprint(creds: Secrets): string {
   // file — one key's unread state and 24h throttle shown for another. Hash the
   // token into a stable, non-secret id instead. Never logged or transmitted.
   if (creds.source === 'env') {
-    return `env:${createHash('sha256').update(creds.accessToken).digest('hex').slice(0, 16)}`;
+    return `env:${keyFingerprint(creds.accessToken)}`;
   }
   try {
     // WorkOS sessions: `sub` (stable user id) + `org_id` (session org scope)

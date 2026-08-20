@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 /**
  * Name of the environment variable the CLI reads for credentials. Kept in a leaf module (no imports) so consumers can
  * pull the name without dragging in the auth store — several test suites
@@ -31,4 +33,14 @@ export function stripEnvQuotes(value: string): string {
  */
 export function envApiKey(): string {
   return stripEnvQuotes(process.env[API_KEY_ENV_VAR]?.trim() ?? '');
+}
+
+/**
+ * Stable, non-secret id derived from an opaque API key. Used wherever a key
+ * needs an identity — telemetry distinct-id, notification cache key — because
+ * an hmok_ token carries no publicId, no JWT claims and no email. Never
+ * logged, transmitted, or reversible to the key.
+ */
+export function keyFingerprint(token: string): string {
+  return createHash('sha256').update(token).digest('hex').slice(0, 16);
 }
