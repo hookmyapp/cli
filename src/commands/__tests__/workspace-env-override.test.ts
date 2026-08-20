@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { switchActiveWorkspace } from '../workspace.js';
+import { switchActiveWorkspace, effectiveActiveWorkspaceId } from '../workspace.js';
 import { ValidationError } from '../../output/error.js';
 
 // AIT-438: HOOKMYAPP_WORKSPACE_ID outranks the persisted selection, so a
@@ -25,5 +25,25 @@ describe('workspace use under HOOKMYAPP_WORKSPACE_ID', () => {
     await expect(
       switchActiveWorkspace('some-customer', { kind: 'customer' }),
     ).rejects.toThrow(ValidationError);
+  });
+});
+
+// Status surfaces (customers list/current, doctor) must describe the workspace
+// commands actually use, not the persisted one the override supersedes.
+describe('effectiveActiveWorkspaceId', () => {
+  const original = process.env.HOOKMYAPP_WORKSPACE_ID;
+  afterEach(() => {
+    if (original === undefined) delete process.env.HOOKMYAPP_WORKSPACE_ID;
+    else process.env.HOOKMYAPP_WORKSPACE_ID = original;
+  });
+
+  it('prefers the environment override', () => {
+    process.env.HOOKMYAPP_WORKSPACE_ID = 'ws_env12345';
+    expect(effectiveActiveWorkspaceId()).toBe('ws_env12345');
+  });
+
+  it('treats a quoted-empty value as unset', () => {
+    process.env.HOOKMYAPP_WORKSPACE_ID = '""';
+    expect(effectiveActiveWorkspaceId()).not.toBe('""');
   });
 });

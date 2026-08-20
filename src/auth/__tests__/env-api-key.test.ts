@@ -55,6 +55,16 @@ describe('HOOKMYAPP_API_KEY credential (AIT-438)', () => {
     expect(readEnvCredential()).toBeNull();
   });
 
+  // `set HOOKMYAPP_API_KEY=""` on cmd.exe stores the two quote characters.
+  // Every caller must agree that is "unset", or login refuses while no
+  // credential exists.
+  it.each(['""', "''", '"   "'])('treats %s as unset everywhere', async (value) => {
+    process.env[API_KEY_ENV_VAR] = value;
+    expect(readEnvCredential()).toBeNull();
+    const { envApiKey } = await import('../../config/env-vars.js');
+    expect(envApiKey()).toBe('');
+  });
+
   // cmd.exe keeps the quotes in `set HOOKMYAPP_API_KEY="hmok_abc"`, unlike
   // PowerShell and POSIX shells — without stripping, Windows users get
   // "not a valid API key" for a key that plainly starts with hmok_.
@@ -91,7 +101,7 @@ describe('HOOKMYAPP_API_KEY credential (AIT-438)', () => {
   });
 
   it('never echoes the key in the malformed-value error', () => {
-    process.env[API_KEY_ENV_VAR] = 'sk_live_supersecret';
+    process.env[API_KEY_ENV_VAR] = 'not-a-key-supersecret';
     try {
       readEnvCredential();
       throw new Error('expected a throw');
