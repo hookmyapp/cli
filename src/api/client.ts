@@ -20,6 +20,7 @@ import {
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
 import { buildVersionHeaders } from './version-headers.js';
+import { API_KEY_ENV_VAR } from '../config/env-vars.js';
 
 // Module-level workspace context populated by the top-level CLI entry after
 // parsing --workspace. Explicit options.workspaceId on a specific apiClient()
@@ -383,7 +384,16 @@ export async function apiClient(
   }
 
   if (!res.ok) {
-    throw await mapApiError(res);
+    const err = await mapApiError(res);
+    // A 401 on an env credential must not say "Session expired. Run: login":
+    // there is no session, and `login` refuses to run while the variable is
+    // set, so that guidance is a loop (AIT-438).
+    if (err instanceof AuthError && creds.source === 'env') {
+      throw new AuthError(
+        `The API key in ${API_KEY_ENV_VAR} was rejected (invalid or revoked). Replace it or unset the variable.`,
+      );
+    }
+    throw err;
   }
 
   // 204 No Content (and other empty-body 2xx responses) have no JSON to parse.
