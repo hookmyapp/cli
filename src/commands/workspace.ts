@@ -8,6 +8,7 @@ import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
 import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 import { resolveEnv } from '../config/env-profiles.js';
+import { WORKSPACE_ENV_VAR, stripEnvQuotes } from '../config/env-vars.js';
 
 export interface WorkspaceConfig {
   activeWorkspaceId?: string;
@@ -132,6 +133,17 @@ export async function switchActiveWorkspace(
   opts: { kind?: 'team' | 'customer' } = {},
 ): Promise<Workspace> {
   const noun = opts.kind === 'customer' ? 'customer' : 'workspace';
+  // AIT-438: HOOKMYAPP_WORKSPACE_ID outranks the persisted selection, so
+  // writing one here would report a switch that never takes effect and send
+  // the next mutating command at the old workspace. Same contract as `login`
+  // under HOOKMYAPP_API_KEY: refuse, and say what to unset.
+  const envWs = stripEnvQuotes(process.env[WORKSPACE_ENV_VAR]?.trim() ?? '');
+  if (envWs) {
+    throw new ValidationError(
+      `${WORKSPACE_ENV_VAR} is set to ${envWs} and takes precedence, so this switch would have no effect. ` +
+        `Unset ${WORKSPACE_ENV_VAR} first, or change its value.`,
+    );
+  }
   let workspace: Workspace;
   if (nameOrId) {
     workspace = (await resolveWorkspace(nameOrId, opts.kind)) as unknown as Workspace;

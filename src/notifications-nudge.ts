@@ -45,6 +45,13 @@ export interface NotificationsCache {
 /** Non-secret identity for cache namespacing. Never a raw token. */
 export function credentialFingerprint(creds: Secrets): string {
   if (creds.credentialPublicId) return creds.credentialPublicId;
+  // An opaque env key (AIT-438) carries no publicId, no JWT claims and no
+  // email, so every such key would collapse to 'unknown' and share one cache
+  // file — one key's unread state and 24h throttle shown for another. Hash the
+  // token into a stable, non-secret id instead. Never logged or transmitted.
+  if (creds.source === 'env') {
+    return `env:${createHash('sha256').update(creds.accessToken).digest('hex').slice(0, 16)}`;
+  }
   try {
     // WorkOS sessions: `sub` (stable user id) + `org_id` (session org scope)
     // — both non-secret. org_id matters: the same user re-scoped to another
