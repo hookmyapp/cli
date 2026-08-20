@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 import { resolveEnv } from '../config/env-profiles.js';
 import { WORKSPACE_ENV_VAR, envWorkspaceId } from '../config/env-vars.js';
+import { getWorkspaceContext } from '../config/workspace-context.js';
 
 export interface WorkspaceConfig {
   activeWorkspaceId?: string;
@@ -59,12 +60,38 @@ export function readWorkspaceConfig(): WorkspaceConfig {
 }
 
 /**
- * The workspace commands actually act on: the env override when set, else the
- * persisted selection. Status surfaces must use this, not the raw config, or
- * they describe a workspace no command is using (AIT-438).
+ * The workspace commands actually act on, in getDefaultWorkspaceId()'s own
+ * precedence: the workspace resolved for this invocation (--workspace), then
+ * the env override, then the persisted selection. Status surfaces must use
+ * this, not the raw config, or they describe a workspace no command is
+ * using (AIT-438).
  */
 export function effectiveActiveWorkspaceId(): string | undefined {
-  return envWorkspaceId() || readWorkspaceConfig().activeWorkspaceId || undefined;
+  // `||`, not `??`: envWorkspaceId() returns '' when unset, and `??` would
+  // stop there and never reach the persisted selection.
+  return (
+    getWorkspaceContext() || envWorkspaceId() || readWorkspaceConfig().activeWorkspaceId || undefined
+  );
+}
+
+/**
+ * The workspace a status surface should mark as active, given the list it just
+ * fetched. `--workspace` outranks everything but is a name-or-id, so it is
+ * resolved against that list rather than with another round trip; surfaces
+ * that never resolve the flag would otherwise star the env/persisted
+ * workspace while the invocation targets another (AIT-438).
+ */
+export function markActiveWorkspaceId(
+  all: Array<{ id: string; name: string }>,
+  flag?: string,
+): string | undefined {
+  if (flag) {
+    const match = all.find(
+      (w) => w.id === flag || w.name === flag || w.name.toLowerCase() === flag.toLowerCase(),
+    );
+    if (match) return match.id;
+  }
+  return effectiveActiveWorkspaceId();
 }
 
 export function writeWorkspaceConfig(config: WorkspaceConfig): void {
@@ -230,7 +257,7 @@ export function registerWorkspaceCommand(program: Command): void {
       // the fail-safe: an unknown kind never renders as a team workspace.
       const all = (await apiClient('/workspaces')) as Workspace[];
       const data = all.filter((w) => w.kind === 'team').map(dropWorkosOrgId);
-      const activeId = effectiveActiveWorkspaceId();
+      const activeId = markActiveWorkspaceId(all, program.opts().workspace as string | undefined);
       if (opts.json) {
         console.log(JSON.stringify(data, null, 2));
         return;

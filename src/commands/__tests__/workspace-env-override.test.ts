@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { switchActiveWorkspace, effectiveActiveWorkspaceId } from '../workspace.js';
+import { switchActiveWorkspace, effectiveActiveWorkspaceId, markActiveWorkspaceId } from '../workspace.js';
 import { ValidationError } from '../../output/error.js';
 
 // AIT-438: HOOKMYAPP_WORKSPACE_ID outranks the persisted selection, so a
@@ -72,5 +72,35 @@ describe('telemetry workspace attribution', () => {
     process.env.HOOKMYAPP_WORKSPACE_ID = 'ws_envAAAAA';
     const { readActiveWorkspacePublicId } = await import('../../config/index.js');
     expect(readActiveWorkspacePublicId()).toBe('ws_envAAAAA');
+  });
+});
+
+// --workspace outranks the env override for the invocation, so a status
+// surface that ignores it stars a workspace the command is not using.
+describe('markActiveWorkspaceId', () => {
+  const original = process.env.HOOKMYAPP_WORKSPACE_ID;
+  const all = [
+    { id: 'ws_env12345', name: 'EnvSpace' },
+    { id: 'ws_flag1234', name: 'FlagSpace' },
+  ];
+  afterEach(() => {
+    if (original === undefined) delete process.env.HOOKMYAPP_WORKSPACE_ID;
+    else process.env.HOOKMYAPP_WORKSPACE_ID = original;
+  });
+
+  it('resolves the flag by name against the fetched list', () => {
+    process.env.HOOKMYAPP_WORKSPACE_ID = 'ws_env12345';
+    expect(markActiveWorkspaceId(all, 'FlagSpace')).toBe('ws_flag1234');
+    expect(markActiveWorkspaceId(all, 'ws_flag1234')).toBe('ws_flag1234');
+  });
+
+  it('falls back to the effective workspace with no flag', () => {
+    process.env.HOOKMYAPP_WORKSPACE_ID = 'ws_env12345';
+    expect(markActiveWorkspaceId(all)).toBe('ws_env12345');
+  });
+
+  it('ignores a flag that matches nothing in the list', () => {
+    process.env.HOOKMYAPP_WORKSPACE_ID = 'ws_env12345';
+    expect(markActiveWorkspaceId(all, 'nope')).toBe('ws_env12345');
   });
 });
