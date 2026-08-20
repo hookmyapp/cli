@@ -403,7 +403,9 @@ export async function apiClient(
       // here: login refuses while the variable is set, and the workspace in
       // play may have come from the environment too.
       if (err instanceof PermissionError) {
-        const ws = getWorkspaceContext() ?? resolvedWsId ?? '(unresolved)';
+        // resolvedWsId already folds in options.workspaceId, which beats the
+        // shared context for this specific call.
+        const ws = resolvedWsId ?? '(unresolved)';
         throw new ForbiddenError(
           `The API key in ${API_KEY_ENV_VAR} lacks permission for workspace ${ws}. Use a key with the required role, or unset the variable to use your stored login.`,
           'AGENT_KEY_FORBIDDEN',
