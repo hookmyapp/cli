@@ -1,12 +1,10 @@
 /**
- * Names of the environment variables the CLI reads for credentials and
- * workspace selection. Kept in a leaf module (no imports) so consumers can
+ * Name of the environment variable the CLI reads for credentials. Kept in a leaf module (no imports) so consumers can
  * pull the name without dragging in the auth store — several test suites
  * mock `auth/store.js` wholesale, and a constant exported from there would
  * break every one of them.
  */
 export const API_KEY_ENV_VAR = 'HOOKMYAPP_API_KEY';
-export const WORKSPACE_ENV_VAR = 'HOOKMYAPP_WORKSPACE_ID';
 
 /**
  * Drop one layer of matching surrounding quotes from an env-var value.
@@ -33,9 +31,4 @@ export function stripEnvQuotes(value: string): string {
  */
 export function envApiKey(): string {
   return stripEnvQuotes(process.env[API_KEY_ENV_VAR]?.trim() ?? '');
-}
-
-/** The workspace override from the environment, normalized ('' when unset). */
-export function envWorkspaceId(): string {
-  return stripEnvQuotes(process.env[WORKSPACE_ENV_VAR]?.trim() ?? '');
 }

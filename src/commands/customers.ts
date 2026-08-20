@@ -4,7 +4,7 @@ import { output } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { dropWorkosOrgId, type Workspace } from '../types/workspace.js';
-import { switchActiveWorkspace, markActiveWorkspaceId } from './workspace.js';
+import { readWorkspaceConfig, switchActiveWorkspace } from './workspace.js';
 import { getDefaultWorkspaceId, resolveOrgPublicIdForWorkspace } from './_helpers.js';
 
 /** A /workspaces union row carries the org it belongs to; the base Workspace type does not. */
@@ -54,12 +54,9 @@ export function registerCustomersCommand(program: Command): void {
         console.log(JSON.stringify(customers.map(dropWorkosOrgId), null, 2));
         return;
       }
-      // Effective id, not the raw config: HOOKMYAPP_WORKSPACE_ID outranks the
-      // persisted selection, so marking the config row would star a workspace
-      // no command is using (AIT-438).
-      const activeId = markActiveWorkspaceId(all, program.opts().workspace as string | undefined);
+      const config = readWorkspaceConfig();
       const rows = customers.map((w) => ({
-        ACTIVE: w.id === activeId ? '*' : ' ',
+        ACTIVE: w.id === config.activeWorkspaceId ? '*' : ' ',
         NAME: w.name,
         ID: w.id,
         ROLE: w.role,
@@ -112,7 +109,7 @@ export function registerCustomersCommand(program: Command): void {
     .option('--json', 'Output machine-readable JSON')
     .action(async (opts: { json?: boolean }) => {
       const all = (await apiClient('/workspaces')) as Workspace[];
-      const active = markActiveWorkspaceId(all, program.opts().workspace as string | undefined);
+      const active = readWorkspaceConfig().activeWorkspaceId;
       const cur = all.find((w) => w.id === active && w.kind === 'customer');
       const json = !!(opts.json || program.opts().json);
       if (!cur) {

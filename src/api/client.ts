@@ -21,15 +21,16 @@ import {
 } from '../config/env-profiles.js';
 import { buildVersionHeaders } from './version-headers.js';
 import { API_KEY_ENV_VAR } from '../config/env-vars.js';
-import { getWorkspaceContext } from '../config/workspace-context.js';
 
-// Workspace context populated by getDefaultWorkspaceId() after applying the
-// --workspace / HOOKMYAPP_WORKSPACE_ID / config precedence. Explicit
-// options.workspaceId on a specific apiClient() call always wins; this is the
-// fallback used by every other call site, so subcommands like `env` don't have
-// to remember to thread the header through. Lives in a leaf module because
-// telemetry needs the same value and cannot import this file (AIT-438).
-export { setWorkspaceContext } from '../config/workspace-context.js';
+// Module-level workspace context populated by the top-level CLI entry after
+// parsing --workspace. Explicit options.workspaceId on a specific apiClient()
+// call always wins; this is the fallback used by every other call site, so
+// subcommands like `env` don't have to remember to thread the header through.
+let workspaceCtx: { workspaceId: string | null } = { workspaceId: null };
+
+export function setWorkspaceContext(ctx: { workspaceId: string | null }): void {
+  workspaceCtx = ctx;
+}
 
 function decodeJwtExp(token: string): number {
   try {
@@ -353,7 +354,7 @@ export async function apiClient(
   // global --workspace context. /workspaces is the discovery endpoint — we
   // intentionally never inject (chicken-and-egg: the user is fetching the
   // list precisely to pick a workspace).
-  const resolvedWsId = workspaceId !== undefined ? workspaceId : getWorkspaceContext();
+  const resolvedWsId = workspaceId !== undefined ? workspaceId : workspaceCtx.workspaceId;
   if (resolvedWsId && !path.startsWith('/workspaces')) {
     headers['X-Workspace-Id'] = resolvedWsId;
   }

@@ -3,7 +3,7 @@ import { apiClient } from '../client.js';
 import { API_KEY_ENV_VAR } from '../../config/env-vars.js';
 import * as secrets from '../../storage/secrets.js';
 import { AuthError, ForbiddenError } from '../../output/error.js';
-import { setWorkspaceContext } from '../../config/workspace-context.js';
+import { setWorkspaceContext } from '../client.js';
 
 // The env key must reach the wire as the bearer token, exactly as a stored
 // agent credential does — no refresh attempt, no rewriting (AIT-438).

@@ -8,8 +8,6 @@ import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
 import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 import { resolveEnv } from '../config/env-profiles.js';
-import { WORKSPACE_ENV_VAR, envWorkspaceId } from '../config/env-vars.js';
-import { getWorkspaceContext } from '../config/workspace-context.js';
 
 export interface WorkspaceConfig {
   activeWorkspaceId?: string;
@@ -57,41 +55,6 @@ export function readWorkspaceConfig(): WorkspaceConfig {
     activeWorkspaceId,
     activeWorkspaceSlug: activeWorkspaceId ? candidateSlug : undefined,
   };
-}
-
-/**
- * The workspace commands actually act on, in getDefaultWorkspaceId()'s own
- * precedence: the workspace resolved for this invocation (--workspace), then
- * the env override, then the persisted selection. Status surfaces must use
- * this, not the raw config, or they describe a workspace no command is
- * using (AIT-438).
- */
-export function effectiveActiveWorkspaceId(): string | undefined {
-  // `||`, not `??`: envWorkspaceId() returns '' when unset, and `??` would
-  // stop there and never reach the persisted selection.
-  return (
-    getWorkspaceContext() || envWorkspaceId() || readWorkspaceConfig().activeWorkspaceId || undefined
-  );
-}
-
-/**
- * The workspace a status surface should mark as active, given the list it just
- * fetched. `--workspace` outranks everything but is a name-or-id, so it is
- * resolved against that list rather than with another round trip; surfaces
- * that never resolve the flag would otherwise star the env/persisted
- * workspace while the invocation targets another (AIT-438).
- */
-export function markActiveWorkspaceId(
-  all: Array<{ id: string; name: string }>,
-  flag?: string,
-): string | undefined {
-  if (flag) {
-    const match = all.find(
-      (w) => w.id === flag || w.name === flag || w.name.toLowerCase() === flag.toLowerCase(),
-    );
-    if (match) return match.id;
-  }
-  return effectiveActiveWorkspaceId();
 }
 
 export function writeWorkspaceConfig(config: WorkspaceConfig): void {
@@ -169,17 +132,6 @@ export async function switchActiveWorkspace(
   opts: { kind?: 'team' | 'customer' } = {},
 ): Promise<Workspace> {
   const noun = opts.kind === 'customer' ? 'customer' : 'workspace';
-  // AIT-438: HOOKMYAPP_WORKSPACE_ID outranks the persisted selection, so
-  // writing one here would report a switch that never takes effect and send
-  // the next mutating command at the old workspace. Same contract as `login`
-  // under HOOKMYAPP_API_KEY: refuse, and say what to unset.
-  const envWs = envWorkspaceId();
-  if (envWs) {
-    throw new ValidationError(
-      `${WORKSPACE_ENV_VAR} is set to ${envWs} and takes precedence, so this switch would have no effect. ` +
-        `Unset ${WORKSPACE_ENV_VAR} first, or change its value.`,
-    );
-  }
   let workspace: Workspace;
   if (nameOrId) {
     workspace = (await resolveWorkspace(nameOrId, opts.kind)) as unknown as Workspace;
@@ -257,14 +209,14 @@ export function registerWorkspaceCommand(program: Command): void {
       // the fail-safe: an unknown kind never renders as a team workspace.
       const all = (await apiClient('/workspaces')) as Workspace[];
       const data = all.filter((w) => w.kind === 'team').map(dropWorkosOrgId);
-      const activeId = markActiveWorkspaceId(all, program.opts().workspace as string | undefined);
+      const config = readWorkspaceConfig();
       if (opts.json) {
         console.log(JSON.stringify(data, null, 2));
         return;
       }
       if (!program.opts().json) {
         const rows = data.map((w) => ({
-          ACTIVE: w.id === activeId ? '*' : ' ',
+          ACTIVE: w.id === config.activeWorkspaceId ? '*' : ' ',
           NAME: w.name,
           ID: w.id,
           ROLE: w.role,
@@ -284,25 +236,6 @@ export function registerWorkspaceCommand(program: Command): void {
         method: 'POST',
         body: JSON.stringify({ name }),
       });
-      // AIT-438: HOOKMYAPP_WORKSPACE_ID outranks the persisted selection, so
-      // the usual create-then-switch would report a switch that never takes
-      // effect. Create the workspace (that part works), skip the switch, say so.
-      const envWsNew = envWorkspaceId();
-      if (envWsNew) {
-        if (!program.opts().json) {
-          console.log(
-            `Created workspace "${result.name}" (${result.id})\n` +
-              `Active workspace unchanged: ${WORKSPACE_ENV_VAR} is set to ${envWsNew}. ` +
-              `Unset it to switch, or point it at ${result.id}.`,
-          );
-        } else {
-          output(
-            { id: result.id, name: result.name, switched: false, activeWorkspaceId: envWsNew },
-            { human: false },
-          );
-        }
-        return;
-      }
       // Re-scope the JWT to the newly-created workspace's org (server-side,
       // AIT-182) BEFORE persisting the switch — a failed rescope must not
       // leave config pointing at a workspace the token isn't valid for.

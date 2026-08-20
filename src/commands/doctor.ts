@@ -1,8 +1,7 @@
 import type { Command } from 'commander';
 import { runTool } from '../lib/spawn-tool.js';
 import { readCredentials } from '../auth/store.js';
-import { API_KEY_ENV_VAR, WORKSPACE_ENV_VAR, envWorkspaceId } from '../config/env-vars.js';
-import { isValidPublicId } from '../lib/publicId.js';
+import { API_KEY_ENV_VAR } from '../config/env-vars.js';
 import { apiClient } from '../api/client.js';
 import { AuthError, ForbiddenError, PermissionError } from '../output/error.js';
 import { isJsonMode } from '../output/format.js';
@@ -115,38 +114,19 @@ export async function collectDoctorReport(
 
   let wsId: string | undefined;
   let wsSlug: string | undefined;
-  // AIT-438: HOOKMYAPP_WORKSPACE_ID outranks the persisted config in
-  // getDefaultWorkspaceId(), so doctor has to report the same winner — reading
-  // only the config would say "(none)" for an env-only agent, or flag the
-  // ignored persisted workspace as stale.
-  const envWs = envWorkspaceId();
-  let wsFromEnv = false;
-  if (envWs) {
-    wsFromEnv = true;
-    wsId = envWs;
-  } else {
-    try {
-      const cfg = readWorkspaceConfig();
-      wsId = cfg.activeWorkspaceId ?? undefined;
-      wsSlug = cfg.activeWorkspaceSlug ?? undefined;
-    } catch { /* ignore */ }
-  }
+  try {
+    const cfg = readWorkspaceConfig();
+    wsId = cfg.activeWorkspaceId ?? undefined;
+    wsSlug = cfg.activeWorkspaceSlug ?? undefined;
+  } catch { /* ignore */ }
   let wsOk = true;
-  let wsDetail = wsFromEnv
-    ? `${envWs} — ${WORKSPACE_ENV_VAR} (environment)`
-    : wsSlug ?? '(none — auto-resolves on first call)';
-  if (wsFromEnv && !isValidPublicId(envWs, 'ws')) {
-    // Commands throw a ValidationError on this; doctor must not call it OK.
+  let wsDetail = wsSlug ?? '(none — auto-resolves on first call)';
+  // Only a definitive backend list can fail this check — on a network flake
+  // (workspaces === null) the cache-based verdict stands, matching the auth
+  // probe's fail-open posture above.
+  if (wsId && workspaces && !workspaces.some((w) => w?.id === wsId)) {
     wsOk = false;
-    wsDetail = `${WORKSPACE_ENV_VAR} must be a workspace publicId (ws_<8-char>), got "${envWs}"`;
-  } else if (wsId && workspaces && !workspaces.some((w) => w?.id === wsId)) {
-    // Only a definitive backend list can fail this check — on a network flake
-    // (workspaces === null) the cache-based verdict stands, matching the auth
-    // probe's fail-open posture above.
-    wsOk = false;
-    wsDetail = wsFromEnv
-      ? `"${envWs}" not found on this env — fix or unset ${WORKSPACE_ENV_VAR}`
-      : `"${wsSlug ?? wsId}" not found on this env (stale selection) — run: hookmyapp workspace use <name>`;
+    wsDetail = `"${wsSlug ?? wsId}" not found on this env (stale selection) — run: hookmyapp workspace use <name>`;
   }
   checks.push({ id: 'workspace', label: 'Active workspace', ok: wsOk, hard: false, detail: wsDetail });
   const envChannel = process.env.HOOKMYAPP_CHANNEL_ID;
