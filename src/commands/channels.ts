@@ -608,7 +608,9 @@ export function registerChannelsCommand(program: Command): void {
 
   const channelsHealth = channels
     .command('health')
-    .description('Health check for a channel')
+    .description(
+      'Check when sending fails or the channel looks dead: connection state, forwarding, quality rating',
+    )
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx), phone number, or @<username>')
     .action(async (channelRef: string) => {
       await runChannelHealth(channelRef, { human: !program.opts().json });
