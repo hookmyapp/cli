@@ -22,6 +22,7 @@ import { registerSandboxCommand } from './commands/sandbox/index.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { registerConfigCommand } from './commands/config.js';
 import { registerMcpCommand } from './commands/mcp.js';
+import { registerAgentCommand } from './commands/agent.js';
 import {
   CliError,
   UnexpectedError,
@@ -170,6 +171,7 @@ loginCommand(program);
 logoutCommand(program);
 registerCredentialsCommand(program);
 registerMcpCommand(program);
+registerAgentCommand(program);
 
 // Channel management
 registerChannelsCommand(program);

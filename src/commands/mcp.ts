@@ -5,7 +5,7 @@ import { ConfigurationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { isCommandNotFound, runTool } from '../lib/spawn-tool.js';
 
-const MCP_NAME = 'hookmyapp';
+export const MCP_NAME = 'hookmyapp';
 const CLAUDE_OPTIONS = { encoding: 'utf8' as const, timeout: 10_000 };
 
 function headersHelper(): string {
@@ -21,7 +21,7 @@ function timedOut(error: Error | undefined): boolean {
   return (error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT';
 }
 
-function mcpUrl(): string {
+export function mcpUrl(): string {
   return `${getEffectiveApiUrl().replace(/\/$/, '')}/mcp`;
 }
 
@@ -55,20 +55,6 @@ export function installClaudeMcp(): void {
   }
 }
 
-export function maybeInstallClaudeMcp(force = false): void {
-  if (!force && process.env.NODE_ENV === 'test') return;
-  const probe = runTool('claude', ['--version'], CLAUDE_OPTIONS);
-  if (probe.error || probe.status !== 0) return;
-  try {
-    installClaudeMcp();
-  } catch (err) {
-    process.stderr.write(
-      `HookMyApp login succeeded, but Claude MCP setup failed: ${(err as Error).message}\n` +
-        'Run: hookmyapp mcp install --agent claude\n',
-    );
-  }
-}
-
 export function removeClaudeMcp(force = false): { ok: boolean; detail?: string } {
   if (!force && process.env.NODE_ENV === 'test') return { ok: true };
   const result = runTool('claude', ['mcp', 'remove', '--scope', 'user', MCP_NAME], CLAUDE_OPTIONS);
@@ -98,7 +84,7 @@ export function getClaudeMcpStatus(): { ok: boolean; detail: string } {
     ? { ok: true, detail: 'connected' }
     : {
         ok: false,
-        detail: 'not connected — run: hookmyapp mcp install --agent claude',
+        detail: 'not connected — run: hookmyapp agent setup',
       };
 }
 
@@ -110,10 +96,11 @@ export function registerMcpCommand(program: Command): void {
   addExamples(mcp, '\nEXAMPLES:\n  $ hookmyapp mcp install --agent claude\n  $ hookmyapp doctor');
   const install = mcp
     .command('install')
+    .description('Configure Claude Code only. For every agent installed here, use: hookmyapp agent setup')
     .requiredOption('--agent <agent>', 'Agent to configure (claude)')
     .action((opts: { agent: string }) => {
       if (opts.agent !== 'claude') {
-        throw new ConfigurationError(`Unsupported agent "${opts.agent}". Supported: claude`, 'MCP_AGENT_UNSUPPORTED');
+        throw new ConfigurationError(`Unsupported agent "${opts.agent}". Supported: claude. For Codex or Cursor, run: hookmyapp agent setup`, 'MCP_AGENT_UNSUPPORTED');
       }
       installClaudeMcp();
       process.stdout.write(
