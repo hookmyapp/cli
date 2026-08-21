@@ -175,11 +175,15 @@ export function registerChannelsLogsCommand(
 ): void {
   const logs = channels
     .command('logs')
-    .description('Read webhook delivery history for a channel');
+    .description(
+      'Diagnose messages not arriving: what your endpoint answered for each forwarded webhook',
+    );
 
   const logsList = logs
     .command('list')
-    .description('List recent webhook deliveries for a channel')
+    .description(
+      'Check here first when messages stop arriving: HTTP status and failure reason per delivery',
+    )
     .argument('<channel>', 'Channel ID (ch_xxxxxxxx) or display phone/name')
     .option('--limit <n>', 'Max rows per page (1-100, default 50)')
     .option('--since <time>', 'Only deliveries after this time (ISO-8601 or 30m/2h/7d)')
@@ -202,7 +206,7 @@ export function registerChannelsLogsCommand(
 
   const logsShow = logs
     .command('show')
-    .description('Show the full detail of one delivery')
+    .description('Full request and response for one delivery, including your endpoint response body')
     .argument('<id>', 'Delivery ID (wd_xxxxxxxx) from channels logs list')
     .option('--verbose', 'Show the full Meta payload and app response')
     .action(async (id: string, opts: { verbose?: boolean }) => {

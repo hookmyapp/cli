@@ -224,7 +224,9 @@ export function registerSandboxCommand(program: Command): void {
 
   const sandboxLogs = sandbox
     .command('logs')
-    .description('List recent webhook deliveries for a sandbox session')
+    .description(
+      'Check here first when a sandbox test message does not reach your app: status and failure reason',
+    )
     .argument(
       '[identifier]',
       'Positional shape-detected: phone | @username | ssn_XXXXXXXX',
