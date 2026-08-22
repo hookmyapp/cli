@@ -2,6 +2,17 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.19 — 2026-08-21
+
+### Added
+
+- `hookmyapp agent setup` configures the HookMyApp MCP server in every coding agent installed on the machine — Claude Code, Codex, and Cursor — and installs the HookMyApp agent skills. `--client <claude|codex|cursor>` configures one of them; `--no-skills` skips the skills install (AIT-457).
+
+### Changed
+
+- `hookmyapp login` now configures MCP for Codex and Cursor as well as Claude Code, and says what to do next when it finds no agent at all. It previously configured Claude Code and returned in silence for everyone else (AIT-457).
+- `hookmyapp mcp install --agent claude` still works and still configures Claude Code only. Use `hookmyapp agent setup` for the rest (AIT-457).
+
 ## 0.14.18 — 2026-08-18
 
 ### Changed
