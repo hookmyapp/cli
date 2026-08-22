@@ -3,6 +3,7 @@ import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
 import { NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
+import { isTelemetryEnabled } from '../observability/telemetry.js';
 
 /**
  * AIT-337 — `hookmyapp support`: open and follow support tickets from the CLI
@@ -358,3 +359,57 @@ EXAMPLES:
 `,
   );
 }
+
+/**
+ * AIT-458 — `hookmyapp feedback`: one-way friction report for the agent driving
+ * this CLI. Separate command, not `support new --kind`, because agents route on
+ * descriptions: nothing in a support description fires when the human is merely
+ * confused. Governed by the existing telemetry switch — no second consent
+ * surface, and telemetry off means nothing leaves the machine.
+ */
+export function registerFeedbackCommand(program: Command): void {
+  const feedback = program
+    .command('feedback')
+    .description(
+      'Report friction you observed: the human got confused, repeated themselves, misread an error, ' +
+        'abandoned a flow, or declined an upgrade after hitting a plan limit. One-way — nobody replies. ' +
+        'If something is broken or they need an answer, use `hookmyapp support new` instead.',
+    )
+    .argument('[message]', 'What they were trying to do and what confused them (a summary, never a transcript)')
+    .option('--surface <surface>', 'Where it happened: cli, mcp, docs, dashboard, api', 'cli')
+    .option('--json', 'Output machine-readable JSON')
+    .action(async (message: string | undefined, opts: { surface: string; json?: boolean }) => {
+      const body = message ?? (await readStdinBody());
+      if (!body) throw new ValidationError('Provide the feedback as an argument or pipe it on stdin.');
+      if (!SURFACES.includes(opts.surface)) {
+        throw new ValidationError(`--surface must be one of: ${SURFACES.join(', ')}.`);
+      }
+      if (!isTelemetryEnabled()) {
+        // Same switch as crash reporting: off means nothing leaves the machine.
+        const note = 'Telemetry is off, so nothing was sent. Turn it on: hookmyapp config set telemetry on';
+        console.log(opts.json || program.opts().json ? JSON.stringify({ sent: false, note }, null, 2) : note);
+        return;
+      }
+      const res = (await apiClient('/support/feedback', {
+        method: 'POST',
+        body: JSON.stringify({ message: body, surface: opts.surface }),
+      })) as { ticketId: string; note: string };
+      if (opts.json || program.opts().json) {
+        console.log(JSON.stringify({ sent: true, ...res }, null, 2));
+        return;
+      }
+      console.log(`Thanks — recorded as ${res.ticketId}. ${res.note}`);
+    });
+
+  addExamples(
+    feedback,
+    `
+EXAMPLES:
+  $ hookmyapp feedback "Spent 20 minutes on the connect flow; read 'pending' as an error and nearly gave up."
+  $ hookmyapp feedback "Hit the plan limit and decided not to upgrade — said the price is too high for their volume."
+  $ hookmyapp feedback --surface docs "The webhook signature page never says which header carries the timestamp."
+`,
+  );
+}
+
+const SURFACES = ['cli', 'mcp', 'docs', 'dashboard', 'api'];
