@@ -127,7 +127,7 @@ COMMON COMMANDS:
   channels list     List your connected channels
   channels env      Print or write channel env values
   channels token    Print channel token
-  channels listen   Send channel messages to your local server while it runs
+  channels listen   Send channel events to your local server while it runs
   sandbox start     Create or resume a sandbox session (tunnel + credentials)
   sandbox listen    Stream Meta webhooks to your local server through a sandbox tunnel
   sandbox send      Send a test message via sandbox-proxy
