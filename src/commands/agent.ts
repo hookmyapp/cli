@@ -214,7 +214,10 @@ export function maybeSetupAgents(force = false): void {
           `Run: hookmyapp agent setup --client ${r.client}\n`,
       );
     } else {
-      process.stdout.write(`HookMyApp MCP configured for ${LABELS[r.client]}${r.detail ? ` — ${r.detail}` : ''}\n`);
+      // stderr, not stdout: this runs inside `login`, and `login --json` is the
+      // documented agent path — a progress line on stdout lands in front of the
+      // JSON envelope and breaks every parser reading it.
+      process.stderr.write(`HookMyApp MCP configured for ${LABELS[r.client]}${r.detail ? ` — ${r.detail}` : ''}\n`);
     }
   }
 }

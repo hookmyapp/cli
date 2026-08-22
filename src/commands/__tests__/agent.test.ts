@@ -13,7 +13,14 @@ vi.mock('../../config/env-profiles.js', () => ({
   getEffectiveApiUrl: () => 'https://api.hookmyapp.com',
 }));
 
-import { configureCursor, detectClients, installSkills, registerAgentCommand, runAgentSetup } from '../agent.js';
+import {
+  configureCursor,
+  detectClients,
+  installSkills,
+  maybeSetupAgents,
+  registerAgentCommand,
+  runAgentSetup,
+} from '../agent.js';
 
 const ok = { status: 0 } as never;
 const enoent = { status: null, error: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) } as never;
@@ -143,6 +150,17 @@ describe('agent setup', () => {
     expect(parsed.skills).toBeNull();
     expect(parsed.clients[0]).toMatchObject({ client: 'codex', status: 'failed' });
     expect(parsed.clients[0].detail).toContain('codex mcp add');
+  });
+
+  test('keeps login progress off stdout so --json stays parseable', () => {
+    vi.mocked(runTool).mockReturnValue(ok);
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    maybeSetupAgents(true);
+
+    expect(out).not.toHaveBeenCalled();
+    expect(String(err.mock.calls[0]?.[0])).toContain('HookMyApp MCP configured for');
   });
 
   test('rejects an unknown client', () => {
