@@ -13,9 +13,16 @@
 // repo root). To bump the pin: commit a newer SHA into that file and re-run
 // `node scripts/sync-errors-manifest.mjs` before tagging a CLI release.
 //
+// The monorepo is PRIVATE, so this fetch needs credentials. It reads
+// GITHUB_TOKEN or GH_TOKEN, and falls back to `gh auth token` on a developer
+// machine. Without one, GitHub answers 404 rather than 401 for private
+// content, which reads like a bad SHA and sent an earlier debugging session
+// looking for a commit that was there all along.
+//
 // Flags:
 //   --check  Compare current manifest.json against the pinned SHA WITHOUT
 //            writing. Exits 0 if identical, 1 if drifted. For CI use.
+import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,12 +49,48 @@ if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
   process.exit(1);
 }
 
-const url = `https://raw.githubusercontent.com/hookmyapp/hookmyapp/${sha}/packages/observability/src/errors/manifest.json`;
+function githubToken() {
+  const fromEnv = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (fromEnv) return fromEnv;
+  try {
+    return execFileSync('gh', ['auth', 'token'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+const token = githubToken();
+if (!token) {
+  console.error(
+    '[sync-errors-manifest] no GitHub credentials — hookmyapp/hookmyapp is private.\n' +
+      '  Set GITHUB_TOKEN (or GH_TOKEN), or run `gh auth login`.',
+  );
+  process.exit(1);
+}
+
+// Contents API rather than raw.githubusercontent.com: raw only serves private
+// content to a session cookie, not to a token.
+const url =
+  `https://api.github.com/repos/hookmyapp/hookmyapp/contents/` +
+  `packages/observability/src/errors/manifest.json?ref=${sha}`;
 
 console.log(`[sync-errors-manifest] fetching ${url}`);
-const res = await fetch(url);
+const res = await fetch(url, {
+  headers: {
+    Accept: 'application/vnd.github.raw',
+    Authorization: `Bearer ${token}`,
+    'User-Agent': 'hookmyapp-cli-sync-errors-manifest',
+  },
+});
 if (!res.ok) {
-  console.error(`[sync-errors-manifest] fetch failed: ${res.status} ${res.statusText}`);
+  const hint =
+    res.status === 404
+      ? ' — SHA missing from the monorepo, or the token cannot read hookmyapp/hookmyapp'
+      : '';
+  console.error(`[sync-errors-manifest] fetch failed: ${res.status} ${res.statusText}${hint}`);
   process.exit(1);
 }
 const remote = await res.text();
