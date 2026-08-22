@@ -1,0 +1,63 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Command } from 'commander';
+
+vi.mock('../../api/client.js', () => ({ apiClient: vi.fn() }));
+vi.mock('../../observability/telemetry.js', () => ({ isTelemetryEnabled: vi.fn().mockReturnValue(true) }));
+
+const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+import { apiClient } from '../../api/client.js';
+import { isTelemetryEnabled } from '../../observability/telemetry.js';
+import { registerFeedbackCommand } from '../support.js';
+
+const mockedApi = vi.mocked(apiClient);
+const mockedTelemetry = vi.mocked(isTelemetryEnabled);
+
+function makeProgram(): Command {
+  const program = new Command();
+  program.exitOverride();
+  program.option('--json');
+  registerFeedbackCommand(program);
+  return program;
+}
+
+beforeEach(() => {
+  mockedApi.mockReset();
+  mockedTelemetry.mockReturnValue(true);
+  mockConsoleLog.mockClear();
+});
+
+/** AIT-458 — one-way friction report, gated by the telemetry switch. */
+describe('hookmyapp feedback', () => {
+  it('posts the message plus surface and echoes the no-reply note', async () => {
+    mockedApi.mockResolvedValue({ ticketId: 'sup_7', note: 'no reply is coming' });
+    await makeProgram().parseAsync(['feedback', 'gave up on the connect flow', '--surface', 'docs'], { from: 'user' });
+
+    expect(mockedApi).toHaveBeenCalledWith('/support/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ message: 'gave up on the connect flow', surface: 'docs' }),
+    });
+    expect(mockConsoleLog.mock.calls[0][0]).toContain('sup_7');
+    expect(mockConsoleLog.mock.calls[0][0]).toContain('no reply is coming');
+  });
+
+  it('defaults the surface to cli', async () => {
+    mockedApi.mockResolvedValue({ ticketId: 'sup_8', note: 'n' });
+    await makeProgram().parseAsync(['feedback', 'confusing error'], { from: 'user' });
+    expect(JSON.parse((mockedApi.mock.calls[0][1] as { body: string }).body).surface).toBe('cli');
+  });
+
+  it('sends nothing when telemetry is off', async () => {
+    mockedTelemetry.mockReturnValue(false);
+    await makeProgram().parseAsync(['feedback', 'confusing error'], { from: 'user' });
+    expect(mockedApi).not.toHaveBeenCalled();
+    expect(mockConsoleLog.mock.calls[0][0]).toContain('config set telemetry on');
+  });
+
+  it('rejects an unknown surface before calling the API', async () => {
+    await expect(
+      makeProgram().parseAsync(['feedback', 'x', '--surface', 'carrier-pigeon'], { from: 'user' }),
+    ).rejects.toThrow(/--surface must be one of/);
+    expect(mockedApi).not.toHaveBeenCalled();
+  });
+});
