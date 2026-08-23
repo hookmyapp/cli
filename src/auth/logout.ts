@@ -11,17 +11,23 @@ export function logoutCommand(program: Command): void {
     .action(async () => {
       const json = !!program.opts().json;
 
-      // AIT-153: for an agent credential (org API key), also revoke it
-      // server-side so it can't keep being used after logout. Best-effort — an
-      // offline host (or an already-revoked key) must still clear local
-      // credentials. WorkOS sessions carry no CLI-side revoke, so this only
-      // fires for agent credentials.
+      // Revoke every org key this session holds, so none stays usable after
+      // logout. Best-effort — an offline host (or an already-revoked key) must
+      // still clear local credentials.
+      //   AIT-153: an OTP session IS an org key.
+      //   AIT-460: a WorkOS session mints a second one for its MCP clients;
+      //   deleting the local file alone would leave that live on the server,
+      //   still usable by any agent config still holding it.
       let revoked = false;
       const creds = await readCredentials();
-      if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
+      const toRevoke = [
+        creds && isAgentCredential(creds) ? creds.credentialPublicId : undefined,
+        creds?.mcpCredentialPublicId,
+      ].filter((id): id is string => typeof id === 'string' && id.length > 0);
+      for (const publicId of toRevoke) {
         try {
           const { apiClient } = await import('../api/client.js');
-          await apiClient(`/agent/credentials/${creds.credentialPublicId}`, {
+          await apiClient(`/agent/credentials/${encodeURIComponent(publicId)}`, {
             method: 'DELETE',
           });
           revoked = true;

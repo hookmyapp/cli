@@ -26,8 +26,11 @@ export function mcpUrl(): string {
 }
 
 export async function printMcpHeaders(): Promise<void> {
-  const { getValidAccessToken } = await import('../api/client.js');
-  const token = await getValidAccessToken();
+  // NOT the session token: a WorkOS JWT carries no `aud` claim and the /mcp
+  // audience guard rejects it (AIT-460). This resolves to the machine's org
+  // credential, minting one on first use.
+  const { getMcpAccessToken } = await import('../auth/mcp-credential.js');
+  const token = await getMcpAccessToken();
   process.stdout.write(JSON.stringify({ Authorization: `Bearer ${token}` }) + '\n');
 }
 
