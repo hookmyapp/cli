@@ -362,6 +362,15 @@ const COMMANDER_CODE_MAP: Record<string, string> = {
   'commander.help': 'MISSING_SUBCOMMAND',
 };
 
+/**
+ * An unknown command is usually a typo, but it is ALSO what a correct command
+ * from a newer guide looks like on an older install — docs and the npm package
+ * move at different speeds. `hookmyapp agent setup` printed a bare
+ * `unknown command 'agent'` on 0.14.18, which reads like the feature does not
+ * exist rather than like the CLI is behind. Name the second possibility.
+ */
+export const STALE_CLI_HINT = `If a HookMyApp guide told you to run this, your CLI is older than the guide. Update with: npm install -g @gethookmyapp/cli@latest`;
+
 export function wrapCommanderError(err: Error & { code?: string }): CliError {
   const code = COMMANDER_CODE_MAP[err.code ?? ''] ?? 'CLI_ERROR';
   // commander.help carries a useless `(outputHelp)` literal. Replace with a
@@ -370,7 +379,11 @@ export function wrapCommanderError(err: Error & { code?: string }): CliError {
     err.code === 'commander.help'
       ? `No subcommand specified. Run '${cliCommandPrefix()} <command> --help' to see available subcommands.`
       : err.message;
-  return new ValidationError(message, code);
+  const wrapped = new ValidationError(message, code);
+  if (err.code === 'commander.unknownCommand') {
+    (wrapped as CliError & { hint?: string }).hint = STALE_CLI_HINT;
+  }
+  return wrapped;
 }
 
 export function outputError(error: CliError, opts: { human?: boolean }): void {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
@@ -138,6 +138,22 @@ describe('agent setup', () => {
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
       mcpServers: { hookmyapp: { url: 'https://api.hookmyapp.com/mcp' } },
     });
+  });
+
+  test('leaves no temp file and says the config is intact when it cannot be written', () => {
+    // Stands in for Windows refusing to touch a file Cursor holds open: a
+    // read-only directory fails the same write-then-rename the same way.
+    const dir = mkdtempSync(join(tmpdir(), 'hookmyapp-agent-'));
+    const path = join(dir, 'mcp.json');
+    writeFileSync(path, '{"mcpServers":{}}');
+    chmodSync(dir, 0o500);
+
+    try {
+      expect(() => configureCursor(path)).toThrow(/existing config is unchanged/);
+      expect(existsSync(`${path}.hookmyapp.tmp`)).toBe(false);
+    } finally {
+      chmodSync(dir, 0o700);
+    }
   });
 
   test('reports a failed client instead of aborting the run', () => {

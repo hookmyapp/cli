@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Command } from 'commander';
@@ -109,8 +109,24 @@ export function configureCursor(path = cursorConfigPath()): void {
   // where Cursor's other servers used to be.
   const tmp = `${path}.hookmyapp.tmp`;
   const mode = existsSync(path) ? statSync(path).mode : 0o600;
-  writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', { mode });
-  renameSync(tmp, path);
+  try {
+    writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', { mode });
+    renameSync(tmp, path);
+  } catch (err) {
+    // Windows refuses to replace a file another process holds open, where posix
+    // allows it, so a running Cursor is the likeliest cause there. Either way
+    // the existing config is untouched — clean up the temp file and say so.
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* best effort */
+    }
+    throw new ConfigurationError(
+      `Cannot write ${path}: ${(err as Error).message}. ` +
+        'Your existing config is unchanged. Close Cursor if it is running, check you can write that file, and try again.',
+      'MCP_INSTALL_FAILED',
+    );
+  }
 }
 
 function configure(client: ClientId): void {
