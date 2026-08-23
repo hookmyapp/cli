@@ -23,6 +23,10 @@ const LABELS: Record<ClientId, string> = {
 export type ClientResult = { client: ClientId; status: 'configured' | 'failed'; detail?: string };
 export type SkillsResult = { status: 'installed' | 'skipped' | 'failed'; detail?: string };
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function cursorConfigPath(): string {
   return join(homedir(), '.cursor', 'mcp.json');
 }
@@ -88,20 +92,35 @@ export function configureCursor(path = cursorConfigPath()): void {
       throw new ConfigurationError(`Cannot read ${path}: ${(err as Error).message}`, 'MCP_INSTALL_FAILED');
     }
     if (raw.trim().length > 0) {
+      let parsed: unknown;
       try {
-        config = JSON.parse(raw) as Record<string, unknown>;
+        parsed = JSON.parse(raw);
       } catch {
         throw new ConfigurationError(
           `${path} is not valid JSON — fix it first so this does not overwrite your other MCP servers`,
           'MCP_INSTALL_FAILED',
         );
       }
+      // Valid JSON is not necessarily a config: `null` and primitives throw on
+      // property access, and an array silently accepts `mcpServers` in memory
+      // while JSON.stringify drops it — reporting success without configuring
+      // anything. Refuse both rather than guess what the file meant.
+      if (!isPlainObject(parsed)) {
+        throw new ConfigurationError(
+          `${path} does not contain a JSON object — fix it first so this does not overwrite your other MCP servers`,
+          'MCP_INSTALL_FAILED',
+        );
+      }
+      config = parsed;
     }
   }
-  const servers =
-    typeof config.mcpServers === 'object' && config.mcpServers !== null
-      ? (config.mcpServers as Record<string, unknown>)
-      : {};
+  if ('mcpServers' in config && !isPlainObject(config.mcpServers)) {
+    throw new ConfigurationError(
+      `${path} has an mcpServers value that is not a JSON object — fix it first so this does not discard your other MCP servers`,
+      'MCP_INSTALL_FAILED',
+    );
+  }
+  const servers = isPlainObject(config.mcpServers) ? config.mcpServers : {};
   config.mcpServers = { ...servers, [MCP_NAME]: { url: mcpUrl() } };
 
   mkdirSync(dirname(path), { recursive: true });
@@ -186,9 +205,14 @@ function renderText(clients: ClientResult[], skills: SkillsResult | null): strin
   return lines.length === 0 ? '' : lines.join('\n') + '\n';
 }
 
-const NO_CLIENT_TEXT =
-  `No supported agent found (${CLIENTS.map((c) => LABELS[c]).join(', ')}).\n` +
-  `Add the HookMyApp MCP server to your agent manually: ${mcpUrl()}\n`;
+// A function, not a const: `--env` is applied while the command runs, so a URL
+// baked in at import time would name the wrong environment.
+function noClientText(): string {
+  return (
+    `No supported agent found (${CLIENTS.map((c) => LABELS[c]).join(', ')}).\n` +
+    `Add the HookMyApp MCP server to your agent manually: ${mcpUrl()}\n`
+  );
+}
 
 export function runAgentSetup(opts: { client?: string; skills?: boolean; json?: boolean }): void {
   let targets: ClientId[];
@@ -207,11 +231,17 @@ export function runAgentSetup(opts: { client?: string; skills?: boolean; json?: 
   const clients = configureClients(targets);
   const skills = opts.skills === false ? null : installSkills();
 
+  // Report every client before failing, so one broken agent does not hide the
+  // others — but a script or agent reading only the exit status must still see
+  // that something did not get configured. Skills are best-effort by design and
+  // deliberately do not fail the command.
+  if (clients.some((c) => c.status === 'failed')) process.exitCode = 1;
+
   if (opts.json) {
     process.stdout.write(JSON.stringify({ clients, skills }) + '\n');
     return;
   }
-  if (clients.length === 0) process.stdout.write(NO_CLIENT_TEXT);
+  if (clients.length === 0) process.stdout.write(noClientText());
   process.stdout.write(renderText(clients, skills));
 }
 
@@ -226,7 +256,7 @@ export function maybeSetupAgents(force = false): void {
   if (detected.length === 0) {
     // Only worth saying to a human at a terminal — a CI or server login has no
     // agent to configure and does not want the pointer.
-    if (process.stdout.isTTY) process.stderr.write(NO_CLIENT_TEXT);
+    if (process.stdout.isTTY) process.stderr.write(noClientText());
     return;
   }
   for (const r of configureClients(detected)) {

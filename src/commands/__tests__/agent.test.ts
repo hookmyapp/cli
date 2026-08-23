@@ -159,6 +159,34 @@ describe('agent setup', () => {
     }
   });
 
+  test('refuses a Cursor config whose root is not an object', () => {
+    // An array is valid JSON and accepts the property in memory, but
+    // JSON.stringify drops it — success would be reported with nothing written.
+    const path = tmpFile('mcp.json');
+    writeFileSync(path, '[]');
+
+    expect(() => configureCursor(path)).toThrow(/does not contain a JSON object/);
+    expect(readFileSync(path, 'utf8')).toBe('[]');
+  });
+
+  test('refuses to discard an mcpServers value it does not understand', () => {
+    const path = tmpFile('mcp.json');
+    writeFileSync(path, '{"mcpServers":"nonsense"}');
+
+    expect(() => configureCursor(path)).toThrow(/not a JSON object/);
+    expect(readFileSync(path, 'utf8')).toBe('{"mcpServers":"nonsense"}');
+  });
+
+  test('exits non-zero when a client could not be configured', () => {
+    vi.mocked(runTool).mockReturnValue(codexMissing);
+    const before = process.exitCode;
+
+    runAgentSetup({ client: 'codex', skills: false, json: true });
+
+    expect(process.exitCode).toBe(1);
+    process.exitCode = before;
+  });
+
   test('reports a failed client instead of aborting the run', () => {
     vi.mocked(runTool).mockReturnValue(codexMissing);
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -205,17 +233,19 @@ describe('agent setup', () => {
   });
 
   test('installs skills by default and skips them with --no-skills', async () => {
-    vi.mocked(runTool).mockReturnValue(ok);
-    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    // Codex, not Cursor: Cursor is configured through the real filesystem at
+    // the default path, so driving it from here would rewrite the developer's
+    // own ~/.cursor/mcp.json. Every Codex call goes through the mocked runTool.
+    vi.mocked(runTool).mockReturnValue(codexHas('https://api.hookmyapp.com/mcp'));
     const program = new Command().option('--json');
     registerAgentCommand(program);
+    const npxCalls = (): unknown[][] => vi.mocked(runTool).mock.calls.filter((c) => c[0] === 'npx');
 
-    await program.parseAsync(['node', 'hookmyapp', 'agent', 'setup', '--client', 'cursor', '--no-skills']);
-    expect(vi.mocked(runTool)).not.toHaveBeenCalled();
+    await program.parseAsync(['node', 'hookmyapp', 'agent', 'setup', '--client', 'codex', '--no-skills']);
+    expect(npxCalls()).toHaveLength(0);
 
-    vi.mocked(runTool).mockReturnValue(codexHas('https://api.hookmyapp.com/mcp'));
     await program.parseAsync(['node', 'hookmyapp', 'agent', 'setup', '--client', 'codex']);
-    expect(vi.mocked(runTool).mock.calls.at(-1)?.[1]).toEqual([
+    expect(npxCalls().at(-1)?.[1]).toEqual([
       '-y',
       'skills',
       'add',
