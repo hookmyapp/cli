@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,11 +28,20 @@ function credentialPath(): string {
 }
 
 describe('the token handed to MCP clients', () => {
+  const originalConfigDir = process.env.HOOKMYAPP_CONFIG_DIR;
+
   beforeEach(() => {
     vi.clearAllMocks();
     // Its own config dir per test: the credential is a real file now, so the
     // tests must not read or write the developer's own.
     process.env.HOOKMYAPP_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'hookmyapp-mcp-cred-'));
+  });
+
+  // Restore it: vitest may share a worker between files, and a leaked config
+  // dir would silently repoint every later test's persisted config.
+  afterEach(() => {
+    if (originalConfigDir === undefined) delete process.env.HOOKMYAPP_CONFIG_DIR;
+    else process.env.HOOKMYAPP_CONFIG_DIR = originalConfigDir;
   });
 
   test('mints an org credential rather than handing over the session JWT', async () => {
@@ -47,15 +56,26 @@ describe('the token handed to MCP clients', () => {
     expect(vi.mocked(apiClient).mock.calls.at(-1)?.[1]).toMatchObject({ method: 'POST' });
   });
 
-  test('stores the minted key owner-only, in its own file', async () => {
-    // Its own file, not credentials.json: a mint must never rewrite the
-    // session record, or a logout landing mid-mint gets undone by this write.
+  test('stores the minted key in its own file, not on the session record', async () => {
+    // A mint must never rewrite credentials.json, or a logout landing mid-mint
+    // gets undone by this write.
     vi.mocked(readCredentials).mockResolvedValue(workosSession);
     vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
 
     await getMcpAccessToken();
 
     expect(JSON.parse(readFileSync(credentialPath(), 'utf-8'))).toEqual(minted);
+  });
+
+  // POSIX only: chmod cannot express owner-only on Windows, where it toggles
+  // the read-only bit and the mode reads back 0o666. credentials.json has the
+  // same platform limit, so this is the existing security model, not a new gap.
+  test.skipIf(process.platform === 'win32')('stores it owner-only', async () => {
+    vi.mocked(readCredentials).mockResolvedValue(workosSession);
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
+
+    await getMcpAccessToken();
+
     expect(statSync(credentialPath()).mode & 0o777).toBe(0o600);
   });
 
