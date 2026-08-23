@@ -119,8 +119,14 @@ function configure(client: ClientId): void {
   return configureCursor();
 }
 
+/**
+ * Every client loads its MCP servers at startup, so a session that is already
+ * running keeps talking to whatever was configured when it launched. Observed
+ * live: Codex answered a tool call from the PREVIOUS server and reported it as
+ * proof the new one worked. Each note therefore names the restart.
+ */
 function postSetupNote(client: ClientId): string | undefined {
-  if (client === 'codex') return `sign in with: codex mcp login ${MCP_NAME}`;
+  if (client === 'codex') return `run: codex mcp login ${MCP_NAME}, then restart Codex`;
   if (client === 'cursor') return 'restart Cursor, then sign in from its MCP settings';
   return 'tools activate in your next session';
 }

@@ -163,6 +163,15 @@ describe('agent setup', () => {
     expect(String(err.mock.calls[0]?.[0])).toContain('HookMyApp MCP configured for');
   });
 
+  test('tells every client it needs a restart before the new server is live', () => {
+    vi.mocked(runTool).mockReturnValue(codexHas('https://api.hookmyapp.com/mcp'));
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    runAgentSetup({ client: 'codex', skills: false, json: true });
+
+    expect(JSON.parse(String(write.mock.calls.at(-1)?.[0])).clients[0].detail).toContain('restart Codex');
+  });
+
   test('rejects an unknown client', () => {
     expect(() => runAgentSetup({ client: 'windsurf', skills: false, json: false })).toThrow(/Unsupported client/);
   });

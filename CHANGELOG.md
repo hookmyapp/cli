@@ -11,6 +11,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 ### Changed
 
 - `hookmyapp login` now configures MCP for Codex and Cursor as well as Claude Code, and says what to do next when it finds no agent at all. It previously configured Claude Code and returned in silence for everyone else (AIT-457).
+- The per-client note after setup names the restart each agent needs. An agent loads its MCP servers at startup, so a running session keeps using the server it launched with — observed live, where Codex answered a tool call from the previous server and reported it as proof the new one worked (AIT-457).
 - `hookmyapp mcp install --agent claude` still works and still configures Claude Code only. Use `hookmyapp agent setup` for the rest (AIT-457).
 
 ## 0.14.18 — 2026-08-18
