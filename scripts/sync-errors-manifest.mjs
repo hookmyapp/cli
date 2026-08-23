@@ -31,6 +31,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, '..');
 
+const MANIFEST_IN_MONOREPO = 'packages/observability/src/errors/manifest.json';
 const PIN_FILE = resolve(repoRoot, '.observability-sync-sha');
 const MANIFEST_PATH = resolve(repoRoot, 'src/errors/manifest.json');
 
@@ -50,10 +51,16 @@ if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
 }
 
 function githubToken() {
-  const fromEnv = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  // GH_TOKEN first, matching `gh help environment`: an explicitly supplied
+  // GH_TOKEN is how you override a repository-scoped GITHUB_TOKEN that cannot
+  // read the private monorepo.
+  const fromEnv = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   if (fromEnv) return fromEnv;
   try {
-    return execFileSync('gh', ['auth', 'token'], {
+    // Pin the hostname: with GH_HOST set to a GitHub Enterprise instance,
+    // a bare `gh auth token` hands back that host's token, which we would then
+    // send to api.github.com.
+    return execFileSync('gh', ['auth', 'token', '--hostname', 'github.com'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
@@ -75,7 +82,7 @@ if (!token) {
 // content to a session cookie, not to a token.
 const url =
   `https://api.github.com/repos/hookmyapp/hookmyapp/contents/` +
-  `packages/observability/src/errors/manifest.json?ref=${sha}`;
+  `${MANIFEST_IN_MONOREPO}?ref=${sha}`;
 
 console.log(`[sync-errors-manifest] fetching ${url}`);
 const res = await fetch(url, {
@@ -88,7 +95,7 @@ const res = await fetch(url, {
 if (!res.ok) {
   const hint =
     res.status === 404
-      ? ' — SHA missing from the monorepo, or the token cannot read hookmyapp/hookmyapp'
+      ? ` — SHA missing from the monorepo, ${MANIFEST_IN_MONOREPO} missing at that SHA, or the token cannot read hookmyapp/hookmyapp`
       : '';
   console.error(`[sync-errors-manifest] fetch failed: ${res.status} ${res.statusText}${hint}`);
   process.exit(1);
