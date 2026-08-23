@@ -30,42 +30,59 @@ export function credentialName(host = hostname()): string {
   return `${host} (HookMyApp CLI)`.slice(0, NAME_MAX);
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
 interface MintedCredential {
   accessToken: string;
   publicId: string;
 }
 
 /**
- * Revoke this machine's previous key, if one is still on the server. Best
- * effort: a key we cannot see or cannot delete must not stop us minting the
- * one the user is asking for right now.
+ * Revoke every key on the server carrying this machine's name.
+ *
+ * Called before a mint, so a re-login replaces its own key, and again on
+ * logout, where revoking by name rather than by the one stored id is what
+ * closes the concurrency gap: two `mcp-headers` processes racing on first use
+ * can both list an empty set and both mint, and only one id survives in the
+ * file. Sweeping by name catches the one the file forgot.
+ *
+ * Best effort throughout: a key we cannot see or cannot delete must not stop
+ * the caller doing what it was actually asked to do.
  */
-async function revokePrevious(name: string): Promise<void> {
+export async function revokeKeysForThisMachine(name = credentialName()): Promise<void> {
   const { apiClient } = await import('../api/client.js');
+  let existing: { publicId: string; name?: string }[] | undefined;
   try {
-    const existing = (await apiClient('/agent/credentials')) as
-      | { publicId: string; name?: string }[]
-      | undefined;
-    const stale = (existing ?? []).filter((c) => c?.name === name && c.publicId);
-    for (const cred of stale) {
+    existing = (await apiClient('/agent/credentials')) as typeof existing;
+  } catch {
+    // Listing failed (offline, older backend). Nothing to sweep.
+    return;
+  }
+  for (const cred of (existing ?? []).filter((c) => c?.name === name && c.publicId)) {
+    // Per key: one key we are not allowed to delete must not strand the rest.
+    try {
       await apiClient(`/agent/credentials/${encodeURIComponent(cred.publicId)}`, {
         method: 'DELETE',
-      }).catch(() => undefined);
+      });
+    } catch {
+      // Already revoked, or not ours to revoke.
     }
-  } catch {
-    // Listing failed (offline, older backend). Minting is still worth trying.
   }
 }
 
 async function mint(): Promise<MintedCredential> {
   const { apiClient } = await import('../api/client.js');
   const name = credentialName();
-  await revokePrevious(name);
+  await revokeKeysForThisMachine(name);
   const created = (await apiClient('/agent/credentials', {
     method: 'POST',
     body: JSON.stringify({ name }),
-  })) as { accessToken?: string; publicId?: string };
-  if (!created?.accessToken || !created.publicId) {
+  })) as { accessToken?: unknown; publicId?: unknown };
+  // Types, not truthiness: `{accessToken: {}}` would satisfy a truthy check and
+  // then be stringified into a Bearer header and a publicId logout cannot use.
+  if (!isNonEmptyString(created?.accessToken) || !isNonEmptyString(created.publicId)) {
     throw new AuthError(
       'HookMyApp did not return an org credential for this machine. Run: hookmyapp doctor',
     );
@@ -91,8 +108,12 @@ export async function getMcpAccessToken(): Promise<string> {
   if (creds.mcpAccessToken) return creds.mcpAccessToken;
 
   const minted = await mint();
+  // Re-read: the calls inside mint() go through apiClient, which refreshes an
+  // expired session and writes the new tokens. Spreading the snapshot taken
+  // before the mint would put the spent refresh token back on disk.
+  const current = (await readCredentials()) ?? creds;
   await saveCredentials({
-    ...creds,
+    ...current,
     mcpAccessToken: minted.accessToken,
     mcpCredentialPublicId: minted.publicId,
   });

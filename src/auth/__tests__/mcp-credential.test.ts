@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { apiClient } from '../../api/client.js';
 import { readCredentials, saveCredentials } from '../store.js';
-import { credentialName, getMcpAccessToken } from '../mcp-credential.js';
+import { credentialName, getMcpAccessToken, revokeKeysForThisMachine } from '../mcp-credential.js';
 
 vi.mock('../../api/client.js', () => ({ apiClient: vi.fn() }));
 vi.mock('../store.js', () => ({ readCredentials: vi.fn(), saveCredentials: vi.fn() }));
@@ -95,5 +95,51 @@ describe('the token handed to MCP clients', () => {
 
   test('keeps the credential name inside the 60-character server limit', () => {
     expect(credentialName('a'.repeat(80)).length).toBeLessThanOrEqual(60);
+  });
+
+  test('rejects a mint response whose fields are not strings', async () => {
+    // A truthy check would pass this and then stringify an object into a
+    // Bearer header, storing a publicId logout could never revoke.
+    vi.mocked(readCredentials).mockResolvedValue(workosSession);
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ accessToken: {}, publicId: {} });
+
+    await expect(getMcpAccessToken()).rejects.toThrow(/did not return an org credential/);
+    expect(saveCredentials).not.toHaveBeenCalled();
+  });
+
+  test('does not write back the session tokens it read before minting', async () => {
+    // apiClient refreshes an expired session mid-mint and saves the new
+    // tokens; spreading the pre-mint snapshot would restore the spent ones.
+    vi.mocked(readCredentials)
+      .mockResolvedValueOnce({ ...workosSession, refreshToken: 'spent' })
+      .mockResolvedValueOnce({ ...workosSession, refreshToken: 'refreshed' });
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
+
+    await getMcpAccessToken();
+
+    expect(saveCredentials).toHaveBeenCalledWith(
+      expect.objectContaining({ refreshToken: 'refreshed' }),
+    );
+  });
+
+  test("sweeps every key wearing this machine's name, not just one", async () => {
+    // Two first-use mints racing each other leave a key the file never
+    // recorded; logout revokes by name so that orphan cannot outlive it.
+    const name = credentialName();
+    vi.mocked(apiClient).mockResolvedValueOnce([
+      { publicId: 'ac_a', name },
+      { publicId: 'ac_b', name },
+      { publicId: 'ac_other', name: 'someone-elses-laptop (HookMyApp CLI)' },
+    ]);
+
+    await revokeKeysForThisMachine();
+
+    const deleted = vi
+      .mocked(apiClient)
+      .mock.calls.filter((c) => c[1]?.method === 'DELETE')
+      .map((c) => c[0]);
+    expect(deleted).toEqual(['/agent/credentials/ac_a', '/agent/credentials/ac_b']);
   });
 });

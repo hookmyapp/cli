@@ -36,6 +36,15 @@ export function logoutCommand(program: Command): void {
         }
       }
 
+      // Then sweep by name. Only the stored id is revoked above, and two
+      // first-use mints racing each other leave a second key this machine owns
+      // but the file never recorded. A WorkOS session only: an agent
+      // credential may not revoke keys other than itself.
+      if (creds && !isAgentCredential(creds)) {
+        const { revokeKeysForThisMachine } = await import('./mcp-credential.js');
+        await revokeKeysForThisMachine();
+      }
+
       await deleteCredentials();
       const mcpCleanup = removeClaudeMcp();
 
