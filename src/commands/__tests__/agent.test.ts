@@ -140,9 +140,12 @@ describe('agent setup', () => {
     });
   });
 
-  test('leaves no temp file and says the config is intact when it cannot be written', () => {
-    // Stands in for Windows refusing to touch a file Cursor holds open: a
-    // read-only directory fails the same write-then-rename the same way.
+  // POSIX only: chmod on a DIRECTORY is a no-op on Windows, so the read-only
+  // trick cannot build the failure there and the write simply succeeds. The
+  // guard under test is platform-independent — it is the Windows-only CAUSE
+  // (a running Cursor holding the file open) that cannot be simulated in CI
+  // without a second process, which is not worth a test harness.
+  test.skipIf(process.platform === 'win32')('leaves no temp file and says the config is intact when it cannot be written', () => {
     const dir = mkdtempSync(join(tmpdir(), 'hookmyapp-agent-'));
     const path = join(dir, 'mcp.json');
     writeFileSync(path, '{"mcpServers":{}}');
