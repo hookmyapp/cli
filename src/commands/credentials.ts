@@ -64,6 +64,11 @@ export function registerCredentialsCommand(program: Command): void {
       if (creds && isAgentCredential(creds) && creds.credentialPublicId === publicId) {
         await deleteCredentials();
       }
+      // Same for the key handed to MCP clients: it is cached without probing
+      // the server, so leaving it here strands every installed client on 401
+      // until the next login (AIT-460).
+      const { deleteMcpCredential, readMcpCredential } = await import('../auth/mcp-credential.js');
+      if (readMcpCredential()?.publicId === publicId) deleteMcpCredential();
       if (isJson) {
         console.log(JSON.stringify({ ok: true, revoked: publicId }));
         return;

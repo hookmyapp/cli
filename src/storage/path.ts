@@ -37,6 +37,19 @@ export function getCredentialsFile(): string {
 }
 
 /**
+ * Path to mcp-credential.json inside the resolved config dir.
+ *
+ * Deliberately NOT part of credentials.json: the org credential handed to MCP
+ * clients has its own lifecycle, and writing it through the session file meant
+ * every mint rewrote the whole session record. A logout landing mid-mint could
+ * then be undone by that write, leaving the CLI logged in after logout reported
+ * success (AIT-460).
+ */
+export function getMcpCredentialFile(): string {
+  return join(getConfigDir(), 'mcp-credential.json');
+}
+
+/**
  * writeFileSync wrapper that catches EPERM/EACCES/EROFS and re-throws as
  * ConfigWriteForbiddenError so callers get the actionable user message.
  * Auto-creates the parent directory (also error-translated).

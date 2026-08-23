@@ -15,19 +15,13 @@ export function logoutCommand(program: Command): void {
       // logout. Best-effort — an offline host (or an already-revoked key) must
       // still clear local credentials.
       //   AIT-153: an OTP session IS an org key.
-      //   AIT-460: a WorkOS session mints a second one for its MCP clients;
-      //   deleting the local file alone would leave that live on the server,
-      //   still usable by any agent config still holding it.
+      //   AIT-460: a WorkOS session also mints one for its MCP clients.
       let revoked = false;
       const creds = await readCredentials();
-      const toRevoke = [
-        creds && isAgentCredential(creds) ? creds.credentialPublicId : undefined,
-        creds?.mcpCredentialPublicId,
-      ].filter((id): id is string => typeof id === 'string' && id.length > 0);
-      for (const publicId of toRevoke) {
+      if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
         try {
           const { apiClient } = await import('../api/client.js');
-          await apiClient(`/agent/credentials/${encodeURIComponent(publicId)}`, {
+          await apiClient(`/agent/credentials/${encodeURIComponent(creds.credentialPublicId)}`, {
             method: 'DELETE',
           });
           revoked = true;
@@ -36,14 +30,15 @@ export function logoutCommand(program: Command): void {
         }
       }
 
-      // Then sweep by name. Only the stored id is revoked above, and two
-      // first-use mints racing each other leave a second key this machine owns
-      // but the file never recorded. A WorkOS session only: an agent
-      // credential may not revoke keys other than itself.
+      // The MCP key is revoked by NAME, not by the stored id: two first-use
+      // mints racing each other leave a key this machine owns but the file
+      // never recorded, and revoking only what we remember would leave it live.
+      // WorkOS sessions only — an agent credential may not revoke its peers.
+      const { deleteMcpCredential, revokeKeysForThisMachine } = await import('./mcp-credential.js');
       if (creds && !isAgentCredential(creds)) {
-        const { revokeKeysForThisMachine } = await import('./mcp-credential.js');
-        await revokeKeysForThisMachine();
+        revoked = (await revokeKeysForThisMachine()) > 0 || revoked;
       }
+      deleteMcpCredential();
 
       await deleteCredentials();
       const mcpCleanup = removeClaudeMcp();

@@ -1,6 +1,8 @@
+import { chmodSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { readCredentials, saveCredentials } from './store.js';
+import { readCredentials } from './store.js';
 import { isAgentCredential } from '../storage/secrets.js';
+import { getMcpCredentialFile, safeWriteFileSync } from '../storage/path.js';
 import { AuthError } from '../output/error.js';
 
 /**
@@ -19,6 +21,14 @@ import { AuthError } from '../output/error.js';
  *
  * The key is minted lazily — on the first request for MCP headers — so a
  * failure here can never block a login.
+ *
+ * It lives in its OWN file rather than as fields on credentials.json. Sharing
+ * that file meant every mint rewrote the whole session record, so a logout
+ * landing mid-mint was undone by the write that followed it and the CLI stayed
+ * logged in after logout reported success. Nothing here writes the session, so
+ * that cannot happen. The worst a badly-timed mint now leaves behind is a file
+ * holding a token logout already revoked: the next tool call 401s and a fresh
+ * login replaces it.
  */
 
 /** `POST /agent/credentials` caps the name at 60 characters. */
@@ -30,13 +40,36 @@ export function credentialName(host = hostname()): string {
   return `${host} (HookMyApp CLI)`.slice(0, NAME_MAX);
 }
 
+export interface StoredMcpCredential {
+  accessToken: string;
+  publicId: string;
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-interface MintedCredential {
-  accessToken: string;
-  publicId: string;
+export function readMcpCredential(): StoredMcpCredential | null {
+  const path = getMcpCredentialFile();
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<StoredMcpCredential>;
+    if (!isNonEmptyString(parsed?.accessToken) || !isNonEmptyString(parsed.publicId)) return null;
+    return { accessToken: parsed.accessToken, publicId: parsed.publicId };
+  } catch {
+    return null;
+  }
+}
+
+/** Forget the local copy. Does not revoke — callers needing that say so. */
+export function deleteMcpCredential(): void {
+  const path = getMcpCredentialFile();
+  if (!existsSync(path)) return;
+  try {
+    unlinkSync(path);
+  } catch {
+    // Already gone.
+  }
 }
 
 /**
@@ -45,34 +78,40 @@ interface MintedCredential {
  * Called before a mint, so a re-login replaces its own key, and again on
  * logout, where revoking by name rather than by the one stored id is what
  * closes the concurrency gap: two `mcp-headers` processes racing on first use
- * can both list an empty set and both mint, and only one id survives in the
- * file. Sweeping by name catches the one the file forgot.
+ * can both find no key and both mint, and only one ends up in the file.
+ * Sweeping by name catches the one the file forgot.
  *
  * Best effort throughout: a key we cannot see or cannot delete must not stop
  * the caller doing what it was actually asked to do.
+ *
+ * Returns how many keys were actually revoked, so logout can report what it
+ * really did instead of claiming a revocation that never happened.
  */
-export async function revokeKeysForThisMachine(name = credentialName()): Promise<void> {
+export async function revokeKeysForThisMachine(name = credentialName()): Promise<number> {
   const { apiClient } = await import('../api/client.js');
   let existing: { publicId: string; name?: string }[] | undefined;
   try {
     existing = (await apiClient('/agent/credentials')) as typeof existing;
   } catch {
     // Listing failed (offline, older backend). Nothing to sweep.
-    return;
+    return 0;
   }
+  let revoked = 0;
   for (const cred of (existing ?? []).filter((c) => c?.name === name && c.publicId)) {
     // Per key: one key we are not allowed to delete must not strand the rest.
     try {
       await apiClient(`/agent/credentials/${encodeURIComponent(cred.publicId)}`, {
         method: 'DELETE',
       });
+      revoked += 1;
     } catch {
       // Already revoked, or not ours to revoke.
     }
   }
+  return revoked;
 }
 
-async function mint(): Promise<MintedCredential> {
+async function mint(): Promise<StoredMcpCredential> {
   const { apiClient } = await import('../api/client.js');
   const name = credentialName();
   await revokeKeysForThisMachine(name);
@@ -81,7 +120,8 @@ async function mint(): Promise<MintedCredential> {
     body: JSON.stringify({ name }),
   })) as { accessToken?: unknown; publicId?: unknown };
   // Types, not truthiness: `{accessToken: {}}` would satisfy a truthy check and
-  // then be stringified into a Bearer header and a publicId logout cannot use.
+  // then be stringified into a Bearer header, alongside a publicId logout could
+  // never revoke.
   if (!isNonEmptyString(created?.accessToken) || !isNonEmptyString(created.publicId)) {
     throw new AuthError(
       'HookMyApp did not return an org credential for this machine. Run: hookmyapp doctor',
@@ -90,23 +130,15 @@ async function mint(): Promise<MintedCredential> {
   return { accessToken: created.accessToken, publicId: created.publicId };
 }
 
-/** Best-effort undo for a key we minted but are not going to keep. */
-async function revokeMinted(publicId: string): Promise<void> {
-  try {
-    const { apiClient } = await import('../api/client.js');
-    await apiClient(`/agent/credentials/${encodeURIComponent(publicId)}`, { method: 'DELETE' });
-  } catch {
-    // The credentials it would authenticate with may be the ones just deleted.
-  }
-}
-
 /**
  * The Bearer token to give an MCP client. Mints one on first use and reuses it
  * afterwards.
  *
- * A revoked key is NOT detected here — the client's next tool call 401s, and
- * `hookmyapp login` mints a fresh one. Probing the key on every header request
- * would add a round-trip to every single MCP call to catch a rare case.
+ * A key revoked from the dashboard is NOT noticed here — the client's next tool
+ * call 401s and `hookmyapp login` mints a fresh one. Probing on every header
+ * request would add a round-trip to every MCP call to catch a rare case.
+ * Revoking through `hookmyapp credentials revoke` DOES clear it, because that
+ * path knows which key it just killed.
  */
 export async function getMcpAccessToken(): Promise<string> {
   const creds = await readCredentials();
@@ -115,24 +147,12 @@ export async function getMcpAccessToken(): Promise<string> {
   // OTP login already stored an org credential — that IS the MCP token.
   if (isAgentCredential(creds)) return creds.accessToken;
 
-  if (creds.mcpAccessToken) return creds.mcpAccessToken;
+  const stored = readMcpCredential();
+  if (stored) return stored.accessToken;
 
   const minted = await mint();
-  // Re-read: the calls inside mint() go through apiClient, which refreshes an
-  // expired session and writes the new tokens. Spreading the snapshot taken
-  // before the mint would put the spent refresh token back on disk.
-  const current = await readCredentials();
-  if (!current) {
-    // A logout landed while the mint was in flight. Writing the snapshot back
-    // would resurrect the session logout just reported as gone, and the key
-    // minted a moment ago would outlive logout's sweep. Undo instead.
-    await revokeMinted(minted.publicId);
-    throw new AuthError('Logged out while setting up MCP access. Run: hookmyapp login');
-  }
-  await saveCredentials({
-    ...current,
-    mcpAccessToken: minted.accessToken,
-    mcpCredentialPublicId: minted.publicId,
-  });
+  const path = getMcpCredentialFile();
+  safeWriteFileSync(path, JSON.stringify(minted, null, 2));
+  chmodSync(path, 0o600);
   return minted.accessToken;
 }

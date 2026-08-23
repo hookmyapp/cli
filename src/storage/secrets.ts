@@ -33,12 +33,6 @@ export interface Secrets {
   /** Agent credentials only: login email — the hmok_ token is opaque, so this
    * is the only human identity available for crash attribution (AIT-278). */
   email?: string;
-  /** WorkOS sessions only: the hmok_ org credential minted for this machine and
-   * handed to MCP clients. The session JWT has no `aud` claim, so `/mcp`
-   * rejects it; this is the token that works there (AIT-460). */
-  mcpAccessToken?: string;
-  /** The ac_ public id of `mcpAccessToken`, so logout can revoke it. */
-  mcpCredentialPublicId?: string;
 }
 
 /** True for an auth.md-issued org-scoped agent credential (no refresh token). */

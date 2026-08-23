@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { apiClient } from '../../api/client.js';
-import { readCredentials, saveCredentials } from '../store.js';
-import { credentialName, getMcpAccessToken, revokeKeysForThisMachine } from '../mcp-credential.js';
+import { readCredentials } from '../store.js';
+import {
+  credentialName,
+  deleteMcpCredential,
+  getMcpAccessToken,
+  readMcpCredential,
+  revokeKeysForThisMachine,
+} from '../mcp-credential.js';
 
 vi.mock('../../api/client.js', () => ({ apiClient: vi.fn() }));
 vi.mock('../store.js', () => ({ readCredentials: vi.fn(), saveCredentials: vi.fn() }));
@@ -14,8 +23,17 @@ const workosSession = {
 
 const minted = { accessToken: 'hmok_new', publicId: 'ac_new' };
 
+function credentialPath(): string {
+  return join(process.env.HOOKMYAPP_CONFIG_DIR!, 'mcp-credential.json');
+}
+
 describe('the token handed to MCP clients', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Its own config dir per test: the credential is a real file now, so the
+    // tests must not read or write the developer's own.
+    process.env.HOOKMYAPP_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'hookmyapp-mcp-cred-'));
+  });
 
   test('mints an org credential rather than handing over the session JWT', async () => {
     // The JWT has no `aud` claim, so /mcp rejects it — that was the bug.
@@ -29,22 +47,32 @@ describe('the token handed to MCP clients', () => {
     expect(vi.mocked(apiClient).mock.calls.at(-1)?.[1]).toMatchObject({ method: 'POST' });
   });
 
-  test('stores the minted key so the next MCP call does not mint again', async () => {
+  test('stores the minted key owner-only, in its own file', async () => {
+    // Its own file, not credentials.json: a mint must never rewrite the
+    // session record, or a logout landing mid-mint gets undone by this write.
     vi.mocked(readCredentials).mockResolvedValue(workosSession);
     vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
 
     await getMcpAccessToken();
 
-    expect(saveCredentials).toHaveBeenCalledWith(
-      expect.objectContaining({ mcpAccessToken: 'hmok_new', mcpCredentialPublicId: 'ac_new' }),
-    );
+    expect(JSON.parse(readFileSync(credentialPath(), 'utf-8'))).toEqual(minted);
+    expect(statSync(credentialPath()).mode & 0o777).toBe(0o600);
   });
 
   test('reuses a stored key and makes no network call', async () => {
-    vi.mocked(readCredentials).mockResolvedValue({ ...workosSession, mcpAccessToken: 'hmok_old' });
+    vi.mocked(readCredentials).mockResolvedValue(workosSession);
+    writeFileSync(credentialPath(), JSON.stringify({ accessToken: 'hmok_old', publicId: 'ac_old' }));
 
     expect(await getMcpAccessToken()).toBe('hmok_old');
     expect(apiClient).not.toHaveBeenCalled();
+  });
+
+  test('re-mints when the stored file is corrupt rather than serving junk', async () => {
+    vi.mocked(readCredentials).mockResolvedValue(workosSession);
+    writeFileSync(credentialPath(), '{ not json');
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
+
+    expect(await getMcpAccessToken()).toBe('hmok_new');
   });
 
   test('uses an OTP session as-is — it already is an org credential', async () => {
@@ -90,26 +118,7 @@ describe('the token handed to MCP clients', () => {
     vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce({});
 
     await expect(getMcpAccessToken()).rejects.toThrow(/did not return an org credential/);
-    expect(saveCredentials).not.toHaveBeenCalled();
-  });
-
-  test('treats a logout that lands mid-mint as cancellation', async () => {
-    // Writing the pre-mint snapshot back would resurrect the session logout
-    // just reported as gone, and leave the new key live behind its sweep.
-    vi.mocked(readCredentials)
-      .mockResolvedValueOnce(workosSession)
-      .mockResolvedValueOnce(null);
-    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
-
-    await expect(getMcpAccessToken()).rejects.toThrow(/Logged out while setting up/);
-
-    expect(saveCredentials).not.toHaveBeenCalled();
-    const deletes = vi.mocked(apiClient).mock.calls.filter((c) => c[1]?.method === 'DELETE');
-    expect(deletes.map((c) => c[0])).toEqual(['/agent/credentials/ac_new']);
-  });
-
-  test('keeps the credential name inside the 60-character server limit', () => {
-    expect(credentialName('a'.repeat(80)).length).toBeLessThanOrEqual(60);
+    expect(existsSync(credentialPath())).toBe(false);
   });
 
   test('rejects a mint response whose fields are not strings', async () => {
@@ -121,22 +130,7 @@ describe('the token handed to MCP clients', () => {
       .mockResolvedValueOnce({ accessToken: {}, publicId: {} });
 
     await expect(getMcpAccessToken()).rejects.toThrow(/did not return an org credential/);
-    expect(saveCredentials).not.toHaveBeenCalled();
-  });
-
-  test('does not write back the session tokens it read before minting', async () => {
-    // apiClient refreshes an expired session mid-mint and saves the new
-    // tokens; spreading the pre-mint snapshot would restore the spent ones.
-    vi.mocked(readCredentials)
-      .mockResolvedValueOnce({ ...workosSession, refreshToken: 'spent' })
-      .mockResolvedValueOnce({ ...workosSession, refreshToken: 'refreshed' });
-    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
-
-    await getMcpAccessToken();
-
-    expect(saveCredentials).toHaveBeenCalledWith(
-      expect.objectContaining({ refreshToken: 'refreshed' }),
-    );
+    expect(existsSync(credentialPath())).toBe(false);
   });
 
   test("sweeps every key wearing this machine's name, not just one", async () => {
@@ -156,5 +150,18 @@ describe('the token handed to MCP clients', () => {
       .mock.calls.filter((c) => c[1]?.method === 'DELETE')
       .map((c) => c[0]);
     expect(deleted).toEqual(['/agent/credentials/ac_a', '/agent/credentials/ac_b']);
+  });
+
+  test('deleting the local copy leaves no file behind and is safe to repeat', () => {
+    writeFileSync(credentialPath(), JSON.stringify(minted));
+
+    deleteMcpCredential();
+    deleteMcpCredential();
+
+    expect(readMcpCredential()).toBeNull();
+  });
+
+  test('keeps the credential name inside the 60-character server limit', () => {
+    expect(credentialName('a'.repeat(80)).length).toBeLessThanOrEqual(60);
   });
 });
