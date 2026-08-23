@@ -14,7 +14,7 @@ import {
 } from '../config/env-profiles.js';
 import { posthogAliasAndIdentify } from '../observability/posthog.js';
 import { parseSandboxSessions, type WhatsAppSandboxSession } from '../api/sandbox-session.js';
-import { maybeInstallClaudeMcp } from '../commands/mcp.js';
+import { maybeSetupAgents } from '../commands/agent.js';
 
 // --- bootstrap-code exchange DTO ---
 // Mirrors backend/src/auth/bootstrap/dto/exchange-bootstrap.dto.ts (Wave 1
@@ -92,7 +92,7 @@ async function pollForTokens(opts: {
         email: u.email,
         name: fullName.length > 0 ? fullName : undefined,
       });
-      maybeInstallClaudeMcp();
+      maybeSetupAgents();
       console.log(`\n${c.success(icon.success)} Logged in successfully\n`);
       return;
     }
@@ -446,7 +446,7 @@ export async function runBootstrapCodeExchange(
     activeWorkspaceId: data.workspace.id,
     activeWorkspaceSlug: data.workspace.name,
   });
-  maybeInstallClaudeMcp();
+  maybeSetupAgents();
 
   // alias machineId → workosSub once per (machine, user) and
   // emit cli_logged_in. workspace publicId is already on disk above so
@@ -587,7 +587,7 @@ async function persistAgentCredential(
     email,
   });
   await revalidateActiveWorkspace(json);
-  maybeInstallClaudeMcp();
+  maybeSetupAgents();
   if (json) {
     process.stdout.write(
       JSON.stringify({

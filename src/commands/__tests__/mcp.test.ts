@@ -18,7 +18,6 @@ vi.mock('../../config/env-profiles.js', () => ({
 
 import {
   installClaudeMcp,
-  maybeInstallClaudeMcp,
   printMcpHeaders,
   registerMcpCommand,
   removeClaudeMcp,
@@ -57,17 +56,6 @@ describe('MCP setup', () => {
       }),
     ]);
     expect(JSON.stringify(args)).not.toContain('Bearer');
-  });
-
-  test('skips automatic setup when Claude Code is absent', () => {
-    vi.mocked(runTool).mockReturnValueOnce({
-      status: null,
-      error: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }),
-    } as never);
-
-    maybeInstallClaudeMcp(true);
-
-    expect(runTool).toHaveBeenCalledOnce();
   });
 
   test('shell-quotes helper paths without expanding metacharacters', () => {
