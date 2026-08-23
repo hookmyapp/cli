@@ -93,6 +93,21 @@ describe('the token handed to MCP clients', () => {
     expect(saveCredentials).not.toHaveBeenCalled();
   });
 
+  test('treats a logout that lands mid-mint as cancellation', async () => {
+    // Writing the pre-mint snapshot back would resurrect the session logout
+    // just reported as gone, and leave the new key live behind its sweep.
+    vi.mocked(readCredentials)
+      .mockResolvedValueOnce(workosSession)
+      .mockResolvedValueOnce(null);
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
+
+    await expect(getMcpAccessToken()).rejects.toThrow(/Logged out while setting up/);
+
+    expect(saveCredentials).not.toHaveBeenCalled();
+    const deletes = vi.mocked(apiClient).mock.calls.filter((c) => c[1]?.method === 'DELETE');
+    expect(deletes.map((c) => c[0])).toEqual(['/agent/credentials/ac_new']);
+  });
+
   test('keeps the credential name inside the 60-character server limit', () => {
     expect(credentialName('a'.repeat(80)).length).toBeLessThanOrEqual(60);
   });

@@ -90,6 +90,16 @@ async function mint(): Promise<MintedCredential> {
   return { accessToken: created.accessToken, publicId: created.publicId };
 }
 
+/** Best-effort undo for a key we minted but are not going to keep. */
+async function revokeMinted(publicId: string): Promise<void> {
+  try {
+    const { apiClient } = await import('../api/client.js');
+    await apiClient(`/agent/credentials/${encodeURIComponent(publicId)}`, { method: 'DELETE' });
+  } catch {
+    // The credentials it would authenticate with may be the ones just deleted.
+  }
+}
+
 /**
  * The Bearer token to give an MCP client. Mints one on first use and reuses it
  * afterwards.
@@ -111,7 +121,14 @@ export async function getMcpAccessToken(): Promise<string> {
   // Re-read: the calls inside mint() go through apiClient, which refreshes an
   // expired session and writes the new tokens. Spreading the snapshot taken
   // before the mint would put the spent refresh token back on disk.
-  const current = (await readCredentials()) ?? creds;
+  const current = await readCredentials();
+  if (!current) {
+    // A logout landed while the mint was in flight. Writing the snapshot back
+    // would resurrect the session logout just reported as gone, and the key
+    // minted a moment ago would outlive logout's sweep. Undo instead.
+    await revokeMinted(minted.publicId);
+    throw new AuthError('Logged out while setting up MCP access. Run: hookmyapp login');
+  }
   await saveCredentials({
     ...current,
     mcpAccessToken: minted.accessToken,
