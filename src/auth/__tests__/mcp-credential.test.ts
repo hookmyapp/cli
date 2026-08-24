@@ -6,6 +6,7 @@ import { apiClient } from '../../api/client.js';
 import { readCredentials } from '../store.js';
 import {
   credentialName,
+  revokeCredentialsForReplacedSession,
   revokePreviousMcpCredential,
   deleteMcpCredential,
   getMcpAccessToken,
@@ -289,16 +290,16 @@ describe('the token handed to MCP clients', () => {
     expect(await getMcpAccessToken()).toBe('hmok_new');
   });
 
-  test('revokes an OTP session, which IS the org credential', async () => {
-    // login --email stores the org credential as the session itself, so there
-    // is no minted key to sweep and nothing in mcp-credential.json. Logout
-    // revokes it by id; a replacement login has to as well, or it stays live
-    // with a running Cursor still holding it.
+  test('leaves an OTP session alone on a workspace switch', async () => {
+    // `workspace use` calls revokePreviousMcpCredential, and there the session
+    // is staying exactly where it is. Revoking it would kill the CLI's own
+    // credential: the switch reports success and every later command, and
+    // every agent, gets a 401.
     vi.mocked(readCredentials).mockResolvedValue({
       ...workosSession,
       accessToken: 'hmok_from_otp',
       kind: 'agent',
-      credentialPublicId: 'ac_otp_session',
+      credentialPublicId: 'ac_otp',
     });
     vi.mocked(apiClient).mockResolvedValueOnce([]); // list: no machine-named keys
 
@@ -308,7 +309,7 @@ describe('the token handed to MCP clients', () => {
       .mocked(apiClient)
       .mock.calls.filter((c) => c[1]?.method === 'DELETE')
       .map((c) => c[0]);
-    expect(deleted).toContain('/agent/credentials/ac_otp_session');
+    expect(deleted).not.toContain('/agent/credentials/ac_otp');
   });
 
   test("revokes an OTP session's own credential when it is replaced", async () => {
@@ -323,7 +324,7 @@ describe('the token handed to MCP clients', () => {
     });
     vi.mocked(apiClient).mockResolvedValueOnce([]); // list: no machine-named keys
 
-    await revokePreviousMcpCredential();
+    await revokeCredentialsForReplacedSession();
 
     const deleted = vi
       .mocked(apiClient)

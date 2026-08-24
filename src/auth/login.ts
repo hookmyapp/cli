@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { saveCredentials, peekIdentity } from './store.js';
-import { revokePreviousMcpCredential } from './mcp-credential.js';
+import { revokeCredentialsForReplacedSession } from './mcp-credential.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
@@ -80,7 +80,7 @@ async function pollForTokens(opts: {
       // minted the key, and a login replaces the session. `login --code`
       // supports switching accounts without a logout, so without this the old
       // account's key stays live and every client keeps using it.
-      await revokePreviousMcpCredential();
+      await revokeCredentialsForReplacedSession();
       await saveCredentials({
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
@@ -449,7 +449,7 @@ export async function runBootstrapCodeExchange(
 
   // See the device flow above: revoke the outgoing session's key while its
   // credentials can still authenticate the request.
-  await revokePreviousMcpCredential();
+  await revokeCredentialsForReplacedSession();
   await saveCredentials({
     accessToken: data.accessToken,
     refreshToken: data.refreshToken,
@@ -604,7 +604,7 @@ async function persistAgentCredential(
 ): Promise<void> {
   // This session IS an org credential, so nothing gets minted — but a key a
   // previous WorkOS session minted must not outlive it.
-  await revokePreviousMcpCredential();
+  await revokeCredentialsForReplacedSession();
   await saveCredentials({
     accessToken: cred.accessToken,
     refreshToken: '',

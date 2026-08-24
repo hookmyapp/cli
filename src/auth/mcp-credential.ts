@@ -150,20 +150,32 @@ export async function revokePreviousMcpCredential(): Promise<void> {
   // running Cursor already loaded.
   await revokeKeysForThisMachine();
 
-  // An OTP session IS an org credential (AIT-153) — the token handed to the
-  // MCP clients is the session itself, so there is no minted key to sweep and
-  // nothing in mcp-credential.json. Logout revokes it by id; a replacement
-  // login must too, or it stays live with Cursor still holding it.
-  const creds = await readCredentials();
-  if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
-    await revokeMinted(creds.credentialPublicId);
-  }
-
   const stored = readMcpCredential();
   // Belt and braces: a key minted under an older naming scheme, or renamed
   // from the dashboard, is not caught by the sweep above.
   if (stored) await revokeMinted(stored.publicId);
   deleteMcpCredential();
+}
+
+/**
+ * Everything above, PLUS the session's own credential when that session IS one.
+ *
+ * An OTP login (`login --email`) stores an org credential rather than a JWT, so
+ * the token handed to the MCP clients is the session itself: there is no minted
+ * key to sweep and nothing in mcp-credential.json. Logout revokes it by id, and
+ * a replacement login has to as well or it stays live with Cursor holding it.
+ *
+ * Deliberately NOT part of revokePreviousMcpCredential: a workspace switch
+ * calls that one, and there the session is staying exactly where it is.
+ * Revoking it there kills the CLI's own credential — `workspace use` would
+ * report success and leave every later command, and every agent, on a 401.
+ */
+export async function revokeCredentialsForReplacedSession(): Promise<void> {
+  const creds = await readCredentials();
+  if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
+    await revokeMinted(creds.credentialPublicId);
+  }
+  await revokePreviousMcpCredential();
 }
 
 async function mint(): Promise<StoredMcpCredential> {
