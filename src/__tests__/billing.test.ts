@@ -80,6 +80,8 @@ async function advanceUntilSettled(settleOn: Promise<unknown>): Promise<void> {
       settled = true;
     },
   );
+  // No fake-step cap: exhausting it freezes the only clock driver and
+  // deadlocks settleOn. Vitest's real test timeout is the watchdog.
   while (!settled) {
     await vi.advanceTimersByTimeAsync(50);
   }
