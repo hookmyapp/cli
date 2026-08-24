@@ -1,6 +1,14 @@
 import { apiClient, isNetworkFailure } from './client.js';
 import { getGatewayBaseOverride } from '../config/env-profiles.js';
-import { ApiError, NetworkError, ValidationError, AuthError, ConflictError } from '../output/error.js';
+import {
+  ApiError,
+  NetworkError,
+  ValidationError,
+  AuthError,
+  ConflictError,
+  ForbiddenError,
+  RateLimitError,
+} from '../output/error.js';
 import type { Channel } from './channel.js';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
@@ -93,6 +101,32 @@ function metaRestrictionMessage(subcode: number | undefined): string | undefined
 }
 
 function mapGatewayError(status: number, body: unknown): never {
+  const gatewayError =
+    body &&
+    typeof body === 'object' &&
+    typeof (body as { statusCode?: unknown }).statusCode === 'number' &&
+    typeof (body as { code?: unknown }).code === 'string' &&
+    typeof (body as { message?: unknown }).message === 'string'
+      ? (body as { code: string; message: string; retry_after_seconds?: unknown })
+      : undefined;
+  if (gatewayError) {
+    const retryAfter = gatewayError.retry_after_seconds;
+    const details =
+      typeof retryAfter === 'number' && Number.isSafeInteger(retryAfter) && retryAfter > 0
+        ? { retry_after_seconds: retryAfter }
+        : undefined;
+    if (status === 400 || status === 422) {
+      throw new ValidationError(gatewayError.message, gatewayError.code);
+    }
+    if (status === 401) throw new AuthError(gatewayError.message, gatewayError.code);
+    if (status === 403) throw new ForbiddenError(gatewayError.message, gatewayError.code);
+    if (status === 409) throw new ConflictError(gatewayError.message, gatewayError.code);
+    if (status === 429) {
+      throw new RateLimitError(gatewayError.message, gatewayError.code, details);
+    }
+    throw new ApiError(gatewayError.message, status, gatewayError.code, details);
+  }
+
   // Meta error shape: { error: { message, code, error_subcode, type, ... } }
   const metaError =
     body && typeof body === 'object' && 'error' in body
