@@ -26,9 +26,12 @@ import { AuthError } from '../output/error.js';
  * that file meant every mint rewrote the whole session record, so a logout
  * landing mid-mint was undone by the write that followed it and the CLI stayed
  * logged in after logout reported success. Nothing here writes the session, so
- * that cannot happen. The worst a badly-timed mint now leaves behind is a file
- * holding a token logout already revoked: the next tool call 401s and a fresh
- * login replaces it.
+ * that cannot happen.
+ *
+ * A mint racing a logout is still possible the other way: logout sweeps this
+ * machine's keys, then our POST creates a new one the sweep never saw. That key
+ * would be live, not merely stale, so the session is re-checked after the mint
+ * and a key that outlived its session is revoked rather than kept.
  */
 
 /** `POST /agent/credentials` caps the name at 60 characters. */
@@ -96,8 +99,13 @@ export async function revokeKeysForThisMachine(name = credentialName()): Promise
     // Listing failed (offline, older backend). Nothing to sweep.
     return 0;
   }
+  // Array.isArray, not `?? []`: apiClient is untyped, and a successful
+  // non-array body (an error envelope, a paginated wrapper) would throw out of
+  // here on .filter. This runs inside logout BEFORE the local credentials are
+  // deleted, so that throw would leave the user logged in.
+  const rows = Array.isArray(existing) ? existing : [];
   let revoked = 0;
-  for (const cred of (existing ?? []).filter((c) => c?.name === name && c.publicId)) {
+  for (const cred of rows.filter((c) => c?.name === name && c.publicId)) {
     // Per key: one key we are not allowed to delete must not strand the rest.
     try {
       await apiClient(`/agent/credentials/${encodeURIComponent(cred.publicId)}`, {
@@ -130,6 +138,16 @@ async function mint(): Promise<StoredMcpCredential> {
   return { accessToken: created.accessToken, publicId: created.publicId };
 }
 
+/** Best-effort undo for a key we minted but are not going to keep. */
+async function revokeMinted(publicId: string): Promise<void> {
+  try {
+    const { apiClient } = await import('../api/client.js');
+    await apiClient(`/agent/credentials/${encodeURIComponent(publicId)}`, { method: 'DELETE' });
+  } catch {
+    // The credentials it would authenticate with may be the ones just deleted.
+  }
+}
+
 /**
  * The Bearer token to give an MCP client. Mints one on first use and reuses it
  * afterwards.
@@ -151,6 +169,13 @@ export async function getMcpAccessToken(): Promise<string> {
   if (stored) return stored.accessToken;
 
   const minted = await mint();
+  // Re-check: a logout during the mint has already swept this machine's keys,
+  // and the one we just created came after that sweep — live, and about to be
+  // written to a machine that is supposed to be logged out.
+  if (!(await readCredentials())) {
+    await revokeMinted(minted.publicId);
+    throw new AuthError('Logged out while setting up MCP access. Run: hookmyapp login');
+  }
   const path = getMcpCredentialFile();
   safeWriteFileSync(path, JSON.stringify(minted, null, 2));
   chmodSync(path, 0o600);

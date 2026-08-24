@@ -172,6 +172,30 @@ describe('the token handed to MCP clients', () => {
     expect(deleted).toEqual(['/agent/credentials/ac_a', '/agent/credentials/ac_b']);
   });
 
+  test('treats a non-array key list as nothing to sweep instead of throwing', async () => {
+    // apiClient is untyped. A successful non-array body used to throw out of
+    // the sweep, and the sweep runs inside logout BEFORE the local credentials
+    // are deleted — so that throw left the user logged in.
+    vi.mocked(apiClient).mockResolvedValueOnce({ error: 'nope' });
+
+    await expect(revokeKeysForThisMachine()).resolves.toBe(0);
+  });
+
+  test('revokes a key that outlived the logout it raced, rather than storing it', async () => {
+    // Logout sweeps this machine's keys, then our POST creates one the sweep
+    // never saw. That key is live, not stale, and the machine is logged out.
+    vi.mocked(readCredentials)
+      .mockResolvedValueOnce(workosSession)
+      .mockResolvedValueOnce(null);
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
+
+    await expect(getMcpAccessToken()).rejects.toThrow(/Logged out while setting up/);
+
+    expect(existsSync(credentialPath())).toBe(false);
+    const deletes = vi.mocked(apiClient).mock.calls.filter((c) => c[1]?.method === 'DELETE');
+    expect(deletes.map((c) => c[0])).toEqual(['/agent/credentials/ac_new']);
+  });
+
   test('deleting the local copy leaves no file behind and is safe to repeat', () => {
     writeFileSync(credentialPath(), JSON.stringify(minted));
 

@@ -11,6 +11,7 @@ vi.mock('../../lib/spawn-tool.js', async (importOriginal) => ({
 }));
 vi.mock('../../config/env-profiles.js', () => ({
   getEffectiveApiUrl: () => 'https://api.hookmyapp.com',
+  resolveEnv: () => 'production',
 }));
 
 import {
