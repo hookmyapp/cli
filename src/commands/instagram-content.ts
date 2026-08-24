@@ -11,14 +11,14 @@ const IG_MEDIA_ID_RE = /^\d+$/;
 const MEDIA_FIELDS =
   'id,caption,media_type,media_product_type,media_url,permalink,thumbnail_url,timestamp,like_count,comments_count';
 const MEDIA_CHILDREN = 'children{id,media_type,media_url,thumbnail_url}';
-const TAGGED_FIELDS = 'id,caption,media_type,media_url,permalink,timestamp,username';
 const MENTIONED_MEDIA_FIELDS =
   'id,caption,media_type,media_url,permalink,timestamp,username,comments_count';
 const PROFILE_FIELDS =
   'id,username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count';
 
-const SOURCES = ['posts', 'stories', 'tagged'] as const;
-type Source = (typeof SOURCES)[number];
+// No --source for stories or tagged posts: both need a Facebook User access
+// token and pages_read_engagement, and Meta states the Instagram-Login setup
+// "cannot access ads or tagging". Every channel we connect is Instagram-Login.
 
 /** Meta caps a page at 100 and silently truncates a larger ask, which would read
  *  as the end of the list. */
@@ -50,7 +50,6 @@ function printMediaRows(rows: Array<Record<string, unknown>>): void {
 
 export interface IgMediaOpts {
   channel?: string;
-  source?: string;
   media?: string;
   limit?: string;
   after?: string;
@@ -72,22 +71,17 @@ export async function runInstagramMediaList(opts: IgMediaOpts, cmd?: Command): P
     return;
   }
 
-  const source = (opts.source ?? 'posts') as Source;
-  if (!SOURCES.includes(source)) {
-    throw new ValidationError(`--source must be one of ${SOURCES.join(', ')}.`, 'BAD_SOURCE');
-  }
-  const edge = source === 'posts' ? 'media' : source === 'stories' ? 'stories' : 'tags';
   const params = new URLSearchParams({
-    fields: source === 'tagged' ? TAGGED_FIELDS : MEDIA_FIELDS,
+    fields: MEDIA_FIELDS,
     limit: pageSize(opts.limit),
     ...(opts.after ? { after: opts.after } : {}),
   });
-  const res = await gatewayRequest({ channel, method: 'GET', path: `/{ig_id}/${edge}?${params.toString()}` });
+  const res = await gatewayRequest({ channel, method: 'GET', path: `/{ig_id}/media?${params.toString()}` });
   const rows = (res?.data ?? []) as Array<Record<string, unknown>>;
 
   if (cmd && isJsonMode(cmd)) {
     process.stdout.write(
-      JSON.stringify({ source, media: rows, nextCursor: res?.paging?.cursors?.after ?? null }) + '\n',
+      JSON.stringify({ media: rows, nextCursor: res?.paging?.cursors?.after ?? null }) + '\n',
     );
     return;
   }
@@ -201,9 +195,8 @@ export async function runInstagramProfile(opts: IgProfileOpts, cmd?: Command): P
 export function registerInstagramContent(instagram: Command): void {
   const media = instagram
     .command('media')
-    .description('List your posts, stories, and posts you are tagged in')
+    .description('List your published posts, and get the media ids other commands need')
     .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
-    .option('--source <what>', `One of ${SOURCES.join(', ')} (default posts)`)
     .option('--media <id>', 'Read one post instead of a list, including carousel items')
     .option('--limit <n>', 'Page size, 1-100 (default 25)')
     .option('--after <cursor>', 'Continue from a previous page')
@@ -216,7 +209,6 @@ export function registerInstagramContent(instagram: Command): void {
     `
 EXAMPLES:
   $ hookmyapp instagram media --channel @acme
-  $ hookmyapp instagram media --channel @acme --source stories
   $ hookmyapp instagram media --channel @acme --media <ig-media-id>
   $ hookmyapp instagram media --channel @acme --json
 `,

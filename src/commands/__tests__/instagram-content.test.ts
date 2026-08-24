@@ -32,28 +32,6 @@ describe('instagram media', () => {
     expect(out()).toContain('17999\tIMAGE\tT\thello');
   });
 
-  it('reads stories from the stories edge', async () => {
-    vi.mocked(gatewayRequest).mockResolvedValue({ data: [] });
-    const [, restore] = captureStdout();
-
-    await runInstagramMediaList({ channel: '@acme', source: 'stories' });
-    restore();
-
-    expect(vi.mocked(gatewayRequest).mock.calls[0][0].path).toContain('/{ig_id}/stories?');
-  });
-
-  it('reads tagged posts from the tags edge and asks for the tagging username', async () => {
-    vi.mocked(gatewayRequest).mockResolvedValue({ data: [] });
-    const [, restore] = captureStdout();
-
-    await runInstagramMediaList({ channel: '@acme', source: 'tagged' });
-    restore();
-
-    const path = vi.mocked(gatewayRequest).mock.calls[0][0].path as string;
-    expect(path).toContain('/{ig_id}/tags?');
-    expect(decodeURIComponent(path)).toContain('username');
-  });
-
   it('expands carousel children when one post is read', async () => {
     vi.mocked(gatewayRequest).mockResolvedValue({ id: '17999' });
     const [, restore] = captureStdout();
@@ -76,11 +54,6 @@ describe('instagram media', () => {
 
   it('rejects a non-numeric media id before any gateway call', async () => {
     await expect(runInstagramMediaList({ channel: '@acme', media: '../17999' })).rejects.toBeInstanceOf(ValidationError);
-    expect(gatewayRequest).not.toHaveBeenCalled();
-  });
-
-  it('rejects an unknown source before any gateway call', async () => {
-    await expect(runInstagramMediaList({ channel: '@acme', source: 'reels' })).rejects.toBeInstanceOf(ValidationError);
     expect(gatewayRequest).not.toHaveBeenCalled();
   });
 
