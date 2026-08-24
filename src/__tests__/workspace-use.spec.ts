@@ -27,11 +27,21 @@ vi.mock('@inquirer/prompts', () => ({
 }));
 
 // The switch re-points the coding agents at the new workspace. Mocked so the
-// spec asserts the wiring without minting a credential.
-const repointMock = vi.fn().mockResolvedValue(undefined);
+// spec asserts the wiring and its ORDER without minting a credential.
+const callOrder: string[] = [];
+const repointMock = vi.fn(async () => {
+  callOrder.push('repoint');
+});
 vi.mock('../commands/agent.js', () => ({
   repointAgentsAtActiveWorkspace: repointMock,
   registerAgentCommand: vi.fn(),
+}));
+
+const revokePreviousMock = vi.fn(async () => {
+  callOrder.push('revoke');
+});
+vi.mock('../auth/mcp-credential.js', () => ({
+  revokePreviousMcpCredential: revokePreviousMock,
 }));
 
 vi.mock('../auth/store.js', () => ({
@@ -104,16 +114,23 @@ describe('workspace use (RBAC-UX-01/02/03)', () => {
     expect(mockedRescope).toHaveBeenCalledWith('ws_TEST0001');
   });
 
-  it('re-points the coding agents at the workspace it just switched to', async () => {
-    // The MCP credential is scoped to the workspace it was minted for and the
-    // CLI caches it, so rescoping only the CLI's own session left every agent
-    // querying the PREVIOUS workspace while the CLI reported the new one.
+  it('revokes the old workspace key BEFORE rescoping, then re-points the agents', async () => {
+    // The MCP credential belongs to the workspace it was minted for, and
+    // revoking it authenticates as that workspace. Once rescopeWorkspaceToken
+    // has swapped the JWT to the target org, the old key can no longer be
+    // listed or deleted — it would stay live for good, with a running Cursor
+    // still holding it. Minting, conversely, has to come after.
+    callOrder.length = 0;
     repointMock.mockClear();
+    revokePreviousMock.mockClear();
+    mockedRescope.mockImplementation(async () => {
+      callOrder.push('rescope');
+    });
     mockedApi.mockResolvedValue(fakeWorkspaces);
 
     await runWorkspaceUse(['Acme']);
 
-    expect(repointMock).toHaveBeenCalled();
+    expect(callOrder).toEqual(['revoke', 'rescope', 'repoint']);
   });
 
   it('RBAC-UX-02: no-arg TTY uses @inquirer/prompts select and switches', async () => {

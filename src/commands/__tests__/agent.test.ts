@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { Command } from 'commander';
 import { runTool } from '../../lib/spawn-tool.js';
 
@@ -17,7 +17,6 @@ vi.mock('../../config/env-profiles.js', () => ({
 import {
   clearCursorCredential,
   configureCursor,
-  repointAgentsAtActiveWorkspace,
   detectClients,
   installSkills,
   maybeSetupAgents,
@@ -404,46 +403,6 @@ describe('agent setup', () => {
     const detail = JSON.parse(String(write.mock.calls.at(-1)?.[0])).clients[0].detail;
     expect(detail).not.toMatch(/sign in|mcp login/i);
     expect(detail).toContain('restart');
-  });
-
-  test('a workspace switch re-points Cursor at the new workspace', async () => {
-    // The org credential is scoped to the workspace it was minted for, and the
-    // CLI caches it. Rescoping only the CLI's own session leaves every agent
-    // talking to the PREVIOUS workspace — silently, because the cached key
-    // still authenticates.
-    const home = mkdtempSync(join(tmpdir(), 'hookmyapp-ws-'));
-    const cursor = join(home, '.cursor', 'mcp.json');
-    mkdirSync(dirname(cursor), { recursive: true });
-    writeFileSync(
-      cursor,
-      JSON.stringify({
-        mcpServers: { hookmyapp: { url: 'https://api.hookmyapp.com/mcp', headers: { Authorization: 'Bearer hmok_old_ws' } } },
-      }),
-    );
-    const config = mkdtempSync(join(tmpdir(), 'hookmyapp-ws-cfg-'));
-    const savedConfig = process.env.HOOKMYAPP_CONFIG_DIR;
-    const savedHome = process.env.HOME;
-    process.env.HOOKMYAPP_CONFIG_DIR = config;
-    process.env.HOME = home;
-    writeFileSync(
-      join(config, 'mcp-credential.json'),
-      JSON.stringify({ accessToken: 'hmok_old_ws', publicId: 'ac_old_ws' }),
-    );
-
-    try {
-      await repointAgentsAtActiveWorkspace();
-
-      // The stale key is gone, so Claude Code and Codex mint a fresh one on
-      // their next request.
-      expect(existsSync(join(config, 'mcp-credential.json'))).toBe(false);
-    } finally {
-      if (savedConfig === undefined) delete process.env.HOOKMYAPP_CONFIG_DIR;
-      else process.env.HOOKMYAPP_CONFIG_DIR = savedConfig;
-      if (savedHome === undefined) delete process.env.HOME;
-      else process.env.HOME = savedHome;
-      rmSync(home, { recursive: true, force: true });
-      rmSync(config, { recursive: true, force: true });
-    }
   });
 
   test('rejects an unknown client', async () => {

@@ -395,6 +395,10 @@ async function resolveMcpToken(): Promise<string | undefined> {
  * left every agent talking to the PREVIOUS workspace while the CLI reported
  * the new one — silently, because the cached key still authenticates fine.
  *
+ * Runs AFTER the switch is persisted. The outgoing workspace's key is revoked
+ * separately, BEFORE the rescope — see the call site: once the JWT carries the
+ * new org, the old workspace's key can no longer be listed or deleted.
+ *
  * Dropping the cached key is enough for Claude Code and Codex: they resolve
  * their credential through the CLI on every request and mint a fresh one on
  * the next call. Cursor holds the token literally, so its entry is rewritten —
@@ -405,8 +409,6 @@ async function resolveMcpToken(): Promise<string | undefined> {
  */
 export async function repointAgentsAtActiveWorkspace(): Promise<void> {
   try {
-    const { revokePreviousMcpCredential } = await import('../auth/mcp-credential.js');
-    await revokePreviousMcpCredential();
     const path = cursorConfigPath();
     if (!existsSync(path)) return;
     const token = await resolveMcpToken();
