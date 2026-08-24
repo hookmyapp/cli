@@ -63,17 +63,14 @@ const freeSub = {
   plan: { slug: 'free', name: 'Free', messages: 50, priceInCents: 0, annualPriceInCents: 0 },
 };
 
-/** Advance fake timers in small steps until `settleOn` resolves/rejects (or a
- * generous step cap is hit). A single large `advanceTimersByTimeAsync` jump
+/** Advance fake timers in small steps until `settleOn` resolves/rejects. A
+ * single large `advanceTimersByTimeAsync` jump
  * can race ahead of the pending promise chain before pollForUpgrade's first
  * `setTimeout` is even registered (this suite's beforeEach calls
  * vi.resetModules() every test, forcing a cold re-import of
  * '@inquirer/prompts' each time) — especially under full-suite load, where
  * scheduling is less predictable than running this file alone. */
-async function advanceUntilSettled(
-  settleOn: Promise<unknown>,
-  { stepMs = 50, maxSteps = 1000 } = {},
-): Promise<void> {
+async function advanceUntilSettled(settleOn: Promise<unknown>): Promise<void> {
   let settled = false;
   settleOn.then(
     () => {
@@ -83,8 +80,8 @@ async function advanceUntilSettled(
       settled = true;
     },
   );
-  for (let i = 0; i < maxSteps && !settled; i++) {
-    await vi.advanceTimersByTimeAsync(stepMs);
+  while (!settled) {
+    await vi.advanceTimersByTimeAsync(50);
   }
 }
 
@@ -704,17 +701,6 @@ describe('billing commands', () => {
         throw new Error(`unexpected path: ${path}`);
       });
 
-      // getDefaultWorkspaceId() lazy-imports '../index.js' (the full CLI
-      // entry module) to read --workspace off the parsed program options.
-      // This suite's beforeEach calls vi.resetModules() every test, so that
-      // import is cold here — a real, disk-bound module-graph load, not a
-      // microtask. Warm it under REAL timers before flipping to fake ones:
-      // triggering that cold import for the first time while fake timers are
-      // already active starves it of the real setImmediate/IO ticks it needs
-      // to resolve, and vi.advanceTimersByTimeAsync() never drives those,
-      // so the whole command hangs until vitest's real 5s test timeout.
-      await import('../index.js');
-
       vi.useFakeTimers();
       try {
         const run = billingUpgrade();
@@ -779,8 +765,6 @@ describe('billing commands', () => {
         }
         throw new Error(`unexpected path: ${path}`);
       });
-
-      await import('../index.js');
 
       vi.useFakeTimers();
       try {

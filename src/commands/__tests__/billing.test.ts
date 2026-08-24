@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../api/client.js', () => ({
   apiClient: vi.fn(),
@@ -61,22 +61,17 @@ const workspaces = [
   { id: 'ws_test', name: 'Acme', organizationPublicId: 'org_abc12345' },
 ];
 
-/** Advance fake timers in small steps until `settleOn` resolves/rejects (or a
- * generous step cap is hit). A single large `advanceTimersByTimeAsync` jump
+/** Advance fake timers in small steps until `settleOn` resolves/rejects. A
+ * single large `advanceTimersByTimeAsync` jump
  * can race ahead of the pending promise chain before pollForUpgrade's first
  * `setTimeout` is even registered (dynamic `import('@inquirer/prompts')` +
  * several mocked/real awaits) — especially under full-suite load, where
  * scheduling is less predictable than running this file alone. Stepping
  * small and checking settlement each time avoids guessing a fixed total. */
-async function advanceUntilSettled(
-  settleOn: Promise<unknown>,
+async function advanceUntilSettled(settleOn: Promise<unknown>): Promise<void> {
   // stepMs stays BELOW UPGRADE_POLL_INTERVAL_MS (5s) so an advance can never
   // jump past a poll timer that hasn't registered yet — that was the reason
-  // for stepping at all. 1s steps (was 100ms) cut the awaited event-loop
-  // turns per poll cycle 10x; the 100ms version starved out on loaded CI
-  // runners even after the budget was raised to 60s (AIT-395 history).
-  { stepMs = 1_000, maxSteps = 500 } = {},
-): Promise<void> {
+  // for stepping at all.
   let settled = false;
   settleOn.then(
     () => {
@@ -86,24 +81,10 @@ async function advanceUntilSettled(
       settled = true;
     },
   );
-  for (let i = 0; i < maxSteps && !settled; i++) {
-    await vi.advanceTimersByTimeAsync(stepMs);
+  while (!settled) {
+    await vi.advanceTimersByTimeAsync(1_000);
   }
 }
-
-// billingUpgrade's free-tier path resolves `@inquirer/prompts` via a dynamic
-// `import()` at call time. Warm that module resolution once here, outside any
-// fake-timer test — the first cold `import()` in this file can take more
-// event-loop turns than a fake-timer poll test can reliably interleave with.
-// Also warm vi.useFakeTimers() itself: its first-ever call in the process
-// lazily loads the underlying timer-faking library, and a poll test that
-// enables fake timers for the first time can otherwise register its
-// setTimeout against the not-yet-patched real timer.
-beforeAll(async () => {
-  await import('@inquirer/prompts');
-  vi.useFakeTimers();
-  vi.useRealTimers();
-});
 
 describe('billingManage — opens the app Billing page (portal retired)', () => {
   beforeEach(() => {
@@ -480,10 +461,4 @@ describe('billingUpgrade — free tier plan prompt (GET /plans)', () => {
     await advanceUntilSettled(run);
     await assertion;
   });
-  // advanceUntilSettled drives up to 500 real event-loop turns per poll test.
-  // On a loaded CI runner that can exceed the default and time out even
-  // though nothing is wrong. The block-level budget keeps these tests honest
-  // without making each one declare its own — and it OVERRIDES the config's
-  // testTimeout, so raising the budget means raising it here (AIT-395: 30s
-  // still wasn't enough on either runner).
-}, 60_000);
+});
