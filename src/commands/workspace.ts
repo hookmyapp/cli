@@ -162,6 +162,11 @@ export async function switchActiveWorkspace(
     activeWorkspaceId: workspace.id,
     activeWorkspaceSlug: workspace.name,
   });
+  // The MCP credential is scoped to the workspace it was minted for, so a
+  // switch that only rescopes the CLI's own session leaves every coding agent
+  // pointed at the previous one.
+  const { repointAgentsAtActiveWorkspace } = await import('./agent.js');
+  await repointAgentsAtActiveWorkspace();
   return workspace;
 }
 
@@ -246,6 +251,8 @@ export function registerWorkspaceCommand(program: Command): void {
         activeWorkspaceId: result.id,
         activeWorkspaceSlug: result.name,
       });
+      const { repointAgentsAtActiveWorkspace } = await import('./agent.js');
+      await repointAgentsAtActiveWorkspace();
       if (!program.opts().json) {
         console.log(`Created workspace "${result.name}" and switched to it`);
       } else {

@@ -387,6 +387,35 @@ async function resolveMcpToken(): Promise<string | undefined> {
   }
 }
 
+/**
+ * Re-point the clients after the active workspace changed.
+ *
+ * The org credential is scoped to the workspace it was minted for, and the
+ * CLI caches it. A `workspace use` that only rescoped the CLI's own session
+ * left every agent talking to the PREVIOUS workspace while the CLI reported
+ * the new one — silently, because the cached key still authenticates fine.
+ *
+ * Dropping the cached key is enough for Claude Code and Codex: they resolve
+ * their credential through the CLI on every request and mint a fresh one on
+ * the next call. Cursor holds the token literally, so its entry is rewritten —
+ * and only then, because minting for a machine that has no Cursor config is
+ * work nobody asked for.
+ *
+ * Best effort: a switch that worked must not fail here.
+ */
+export async function repointAgentsAtActiveWorkspace(): Promise<void> {
+  try {
+    const { revokePreviousMcpCredential } = await import('../auth/mcp-credential.js');
+    await revokePreviousMcpCredential();
+    const path = cursorConfigPath();
+    if (!existsSync(path)) return;
+    const token = await resolveMcpToken();
+    if (token) configureCursor(path, token);
+  } catch {
+    // Offline, or a config we cannot write. `hookmyapp agent setup` fixes it.
+  }
+}
+
 export async function runAgentSetup(opts: {
   client?: string;
   skills?: boolean;

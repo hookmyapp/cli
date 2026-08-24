@@ -26,6 +26,14 @@ vi.mock('@inquirer/prompts', () => ({
   select: vi.fn(),
 }));
 
+// The switch re-points the coding agents at the new workspace. Mocked so the
+// spec asserts the wiring without minting a credential.
+const repointMock = vi.fn().mockResolvedValue(undefined);
+vi.mock('../commands/agent.js', () => ({
+  repointAgentsAtActiveWorkspace: repointMock,
+  registerAgentCommand: vi.fn(),
+}));
+
 vi.mock('../auth/store.js', () => ({
   readCredentials: vi.fn().mockReturnValue({ accessToken: 't', refreshToken: 'r', expiresAt: Date.now() + 3_600_000 }),
   saveCredentials: vi.fn(),
@@ -94,6 +102,18 @@ describe('workspace use (RBAC-UX-01/02/03)', () => {
     mockedApi.mockResolvedValue(fakeWorkspaces);
     await runWorkspaceUse(['Acme']);
     expect(mockedRescope).toHaveBeenCalledWith('ws_TEST0001');
+  });
+
+  it('re-points the coding agents at the workspace it just switched to', async () => {
+    // The MCP credential is scoped to the workspace it was minted for and the
+    // CLI caches it, so rescoping only the CLI's own session left every agent
+    // querying the PREVIOUS workspace while the CLI reported the new one.
+    repointMock.mockClear();
+    mockedApi.mockResolvedValue(fakeWorkspaces);
+
+    await runWorkspaceUse(['Acme']);
+
+    expect(repointMock).toHaveBeenCalled();
   });
 
   it('RBAC-UX-02: no-arg TTY uses @inquirer/prompts select and switches', async () => {

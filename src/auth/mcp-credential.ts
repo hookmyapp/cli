@@ -200,6 +200,24 @@ async function revokeMinted(publicId: string): Promise<void> {
  * Revoking through `hookmyapp credentials revoke` DOES clear it, because that
  * path knows which key it just killed.
  */
+function sessionIdentity(creds: {
+  accessToken: string;
+  credentialPublicId?: string;
+}): string | null {
+  if (creds.credentialPublicId) return `agent:${creds.credentialPublicId}`;
+  try {
+    // `sub` + the active org, NOT the raw token: a routine refresh replaces
+    // the token without changing who the session is, and treating that as a
+    // replacement would throw away a perfectly good key.
+    const payload = JSON.parse(
+      Buffer.from(creds.accessToken.split('.')[1], 'base64').toString('utf-8'),
+    ) as { sub?: string; org_id?: string };
+    return `${payload.sub ?? ''}:${payload.org_id ?? ''}`;
+  } catch {
+    return null;
+  }
+}
+
 export async function getMcpAccessToken(): Promise<string> {
   const creds = await readCredentials();
   if (!creds) throw new AuthError('Not logged in. Run: hookmyapp login');
@@ -210,13 +228,21 @@ export async function getMcpAccessToken(): Promise<string> {
   const stored = readMcpCredential();
   if (stored) return stored.accessToken;
 
+  const before = sessionIdentity(creds);
   const minted = await mint();
-  // Re-check: a logout during the mint has already swept this machine's keys,
-  // and the one we just created came after that sweep — live, and about to be
-  // written to a machine that is supposed to be logged out.
-  if (!(await readCredentials())) {
+  // Re-check the SESSION, not merely that one exists. A logout during the mint
+  // swept this machine's keys before ours was created, so it is live on a
+  // machine meant to be logged out. A replacement login is worse: the new
+  // session is non-null, so a null check passes and this would persist — and
+  // hand Cursor — a key belonging to the account that was just replaced.
+  const after = await readCredentials();
+  if (!after || sessionIdentity(after) !== before) {
     await revokeMinted(minted.publicId);
-    throw new AuthError('Logged out while setting up MCP access. Run: hookmyapp login');
+    throw new AuthError(
+      after
+        ? 'The session changed while setting up MCP access. Run: hookmyapp agent setup'
+        : 'Logged out while setting up MCP access. Run: hookmyapp login',
+    );
   }
   const path = getMcpCredentialFile();
   safeWriteFileSync(path, JSON.stringify(minted, null, 2));

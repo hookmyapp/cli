@@ -16,6 +16,10 @@ import {
 vi.mock('../../api/client.js', () => ({ apiClient: vi.fn() }));
 vi.mock('../store.js', () => ({ readCredentials: vi.fn(), saveCredentials: vi.fn() }));
 
+function jwt(payload: Record<string, unknown>): string {
+  return `h.${Buffer.from(JSON.stringify(payload)).toString('base64')}.sig`;
+}
+
 const workosSession = {
   accessToken: 'eyJ.jwt.sig',
   refreshToken: 'refresh',
@@ -255,6 +259,34 @@ describe('the token handed to MCP clients', () => {
       .map((c) => c[0]);
     expect(deleted).toContain('/agent/credentials/ac_unrecorded');
     expect(deleted).not.toContain('/agent/credentials/ac_theirs');
+  });
+
+  test('refuses to keep a key minted for a session that got replaced mid-mint', async () => {
+    // A replacement login leaves NON-NULL credentials, so a null check passes
+    // and the outgoing account's key would be stored — and written into
+    // Cursor by the setup that login runs next.
+    vi.mocked(readCredentials)
+      .mockResolvedValueOnce({ ...workosSession, accessToken: jwt({ sub: 'user_a', org_id: 'org_a' }) })
+      .mockResolvedValueOnce({ ...workosSession, accessToken: jwt({ sub: 'user_b', org_id: 'org_b' }) });
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(mintResponse);
+
+    await expect(getMcpAccessToken()).rejects.toThrow(/session changed/i);
+
+    expect(existsSync(credentialPath())).toBe(false);
+    const deletes = vi.mocked(apiClient).mock.calls.filter((c) => c[1]?.method === 'DELETE');
+    expect(deletes.map((c) => c[0])).toEqual(['/agent/credentials/ac_new']);
+  });
+
+  test('treats a routine token refresh as the same session', async () => {
+    // apiClient refreshes the JWT on its own, so the token string changes
+    // during the mint. Identity is sub + org, not the raw token — otherwise
+    // every mint that happened to straddle a refresh would throw its key away.
+    vi.mocked(readCredentials)
+      .mockResolvedValueOnce({ ...workosSession, accessToken: jwt({ sub: 'user_a', org_id: 'org_a', exp: 1 }) })
+      .mockResolvedValueOnce({ ...workosSession, accessToken: jwt({ sub: 'user_a', org_id: 'org_a', exp: 2 }) });
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(mintResponse);
+
+    expect(await getMcpAccessToken()).toBe('hmok_new');
   });
 
   test('deleting the local copy leaves no file behind and is safe to repeat', () => {
