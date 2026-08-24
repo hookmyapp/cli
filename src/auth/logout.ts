@@ -48,22 +48,28 @@ export function logoutCommand(program: Command): void {
       // leave that token live. Strip it; its entry and URL stay, so the next
       // login fills it back in.
       const { clearCursorCredential } = await import('../commands/agent.js');
-      clearCursorCredential();
+      const cursorCleanup = clearCursorCredential();
+
+      // A Cursor config we could not rewrite still holds a usable token, and
+      // the revoke above is best-effort — so this is a real warning, not a
+      // tidiness note.
+      const cursorWarning =
+        cursorCleanup === 'failed'
+          ? `Could not remove the HookMyApp token from Cursor's config. Delete the "headers" entry under mcpServers.hookmyapp by hand.`
+          : undefined;
+      const warning = mcpCleanup.ok ? cursorWarning : mcpCleanup.detail;
 
       if (json) {
         process.stdout.write(
           JSON.stringify({
-            status: mcpCleanup.ok ? 'logged_out' : 'logged_out_with_warning',
+            status: warning ? 'logged_out_with_warning' : 'logged_out',
             revoked,
             mcpCleanup,
+            cursorCleanup,
           }) + '\n',
         );
       } else {
-        console.log(
-          mcpCleanup.ok
-            ? '\n✓ Logged out\n'
-            : `\n✓ Logged out\n⚠ ${mcpCleanup.detail}\n`,
-        );
+        console.log(warning ? `\n✓ Logged out\n⚠ ${warning}\n` : '\n✓ Logged out\n');
       }
     });
 

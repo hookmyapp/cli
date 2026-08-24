@@ -6,6 +6,7 @@ import { apiClient } from '../../api/client.js';
 import { readCredentials } from '../store.js';
 import {
   credentialName,
+  revokePreviousMcpCredential,
   deleteMcpCredential,
   getMcpAccessToken,
   readMcpCredential,
@@ -199,6 +200,37 @@ describe('the token handed to MCP clients', () => {
     expect(existsSync(credentialPath())).toBe(false);
     const deletes = vi.mocked(apiClient).mock.calls.filter((c) => c[1]?.method === 'DELETE');
     expect(deletes.map((c) => c[0])).toEqual(['/agent/credentials/ac_new']);
+  });
+
+  test('revokes the outgoing session\'s key, not just the local record', async () => {
+    // Called before a login writes the new session. Unlinking the file alone
+    // leaves the old account's key live for good: the next mint authenticates
+    // as the NEW session, so its by-name sweep cannot see it.
+    writeFileSync(credentialPath(), JSON.stringify(minted));
+
+    await revokePreviousMcpCredential();
+
+    expect(vi.mocked(apiClient)).toHaveBeenCalledWith(
+      '/agent/credentials/ac_new',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+    expect(readMcpCredential()).toBeNull();
+  });
+
+  test('forgets the local copy even when the revoke cannot go out', async () => {
+    // Offline, or an expired outgoing session. The key does not belong to the
+    // session about to be written either way, and a login must not be blocked.
+    writeFileSync(credentialPath(), JSON.stringify(minted));
+    vi.mocked(apiClient).mockRejectedValueOnce(new Error('offline'));
+
+    await expect(revokePreviousMcpCredential()).resolves.toBeUndefined();
+    expect(readMcpCredential()).toBeNull();
+  });
+
+  test('does nothing when there is no previous key', async () => {
+    await revokePreviousMcpCredential();
+
+    expect(apiClient).not.toHaveBeenCalled();
   });
 
   test('deleting the local copy leaves no file behind and is safe to repeat', () => {

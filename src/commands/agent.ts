@@ -258,24 +258,29 @@ export function configureCursor(path = cursorConfigPath(), token?: string): void
  * Best effort throughout: logout must clear local credentials even when this
  * file is missing, unreadable, or something the CLI did not write.
  */
-export function clearCursorCredential(path = cursorConfigPath()): boolean {
-  if (!existsSync(path)) return false;
+export type CursorCleanup = 'cleared' | 'nothing' | 'failed';
+
+export function clearCursorCredential(path = cursorConfigPath()): CursorCleanup {
+  if (!existsSync(path)) return 'nothing';
   let config: unknown;
   try {
     config = JSON.parse(readFileSync(path, 'utf8'));
   } catch {
-    return false;
+    // Not something the CLI wrote, or not readable — nothing of ours to clear.
+    return 'nothing';
   }
-  if (!isPlainObject(config) || !isPlainObject(config.mcpServers)) return false;
+  if (!isPlainObject(config) || !isPlainObject(config.mcpServers)) return 'nothing';
   const entry = config.mcpServers[MCP_NAME];
-  if (!isPlainObject(entry) || !('headers' in entry)) return false;
+  if (!isPlainObject(entry) || !('headers' in entry)) return 'nothing';
   delete entry.headers;
   try {
     writeAtomically(path, JSON.stringify(config, null, 2) + '\n', statSync(path).mode);
   } catch {
-    return false;
+    // 'failed' is NOT 'nothing': there IS a live token in that file and it is
+    // still there. Logout has to say so rather than report a clean exit.
+    return 'failed';
   }
-  return true;
+  return 'cleared';
 }
 
 function configure(client: ClientId, token?: string): void {

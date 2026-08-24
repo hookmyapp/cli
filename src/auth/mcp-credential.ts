@@ -119,6 +119,33 @@ export async function revokeKeysForThisMachine(name = credentialName()): Promise
   return revoked;
 }
 
+/**
+ * Revoke and forget the credential belonging to a session that is about to be
+ * replaced.
+ *
+ * Must run BEFORE the new session is written. The DELETE authenticates as the
+ * session that minted the key, so once the new credentials are on disk the old
+ * account's key is unreachable and stays live indefinitely — and a running
+ * Cursor holds its loaded token until it restarts, so that is not theoretical.
+ *
+ * Best effort on the network call: offline, or a key already revoked from the
+ * dashboard, must not block a login. The local copy goes either way — it does
+ * not belong to the session being written.
+ */
+export async function revokePreviousMcpCredential(): Promise<void> {
+  const stored = readMcpCredential();
+  if (!stored) return;
+  try {
+    const { apiClient } = await import('../api/client.js');
+    await apiClient(`/agent/credentials/${encodeURIComponent(stored.publicId)}`, {
+      method: 'DELETE',
+    });
+  } catch {
+    // Offline, expired session, or already revoked.
+  }
+  deleteMcpCredential();
+}
+
 async function mint(): Promise<StoredMcpCredential> {
   const { apiClient } = await import('../api/client.js');
   const name = credentialName();

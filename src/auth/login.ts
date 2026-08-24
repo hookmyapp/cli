@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { saveCredentials, peekIdentity } from './store.js';
-import { deleteMcpCredential } from './mcp-credential.js';
+import { revokePreviousMcpCredential } from './mcp-credential.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
@@ -76,16 +76,16 @@ async function pollForTokens(opts: {
 
     if (res.ok) {
       const data = await res.json();
+      // BEFORE saveCredentials: revoking authenticates as the session that
+      // minted the key, and a login replaces the session. `login --code`
+      // supports switching accounts without a logout, so without this the old
+      // account's key stays live and every client keeps using it.
+      await revokePreviousMcpCredential();
       await saveCredentials({
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
         expiresAt: Math.floor(Date.now() / 1000) + 900,
       });
-      // A login replaces the session, so any MCP credential minted for the
-      // PREVIOUS one is not ours. `login --code` supports switching accounts
-      // without a logout, and without this the next mint is skipped and every
-      // client keeps authenticating as the account that just got replaced.
-      deleteMcpCredential();
       // alias machineId → workosSub once per (machine, user) and
       // emit cli_logged_in. Fail-open: a posthog hiccup must never block the
       // login UX. Pass email + name so the PostHog Person profile shows the
@@ -447,14 +447,14 @@ export async function runBootstrapCodeExchange(
 
   const data = (await res.json()) as ExchangeBootstrapResponseDto;
 
+  // See the device flow above: revoke the outgoing session's key while its
+  // credentials can still authenticate the request.
+  await revokePreviousMcpCredential();
   await saveCredentials({
     accessToken: data.accessToken,
     refreshToken: data.refreshToken,
     expiresAt: data.expiresAt,
   });
-  // See the device flow above: a replaced session invalidates the key
-  // minted for the old one.
-  deleteMcpCredential();
 
   // Pin the session to the backend the code was exchanged against. The
   // exchange above ignores any persisted `config.json` env (getBootstrapApiUrl
@@ -602,6 +602,9 @@ async function persistAgentCredential(
   email: string,
   json?: boolean,
 ): Promise<void> {
+  // This session IS an org credential, so nothing gets minted — but a key a
+  // previous WorkOS session minted must not outlive it.
+  await revokePreviousMcpCredential();
   await saveCredentials({
     accessToken: cred.accessToken,
     refreshToken: '',
@@ -611,9 +614,6 @@ async function persistAgentCredential(
     scopes: cred.scopes,
     email,
   });
-  // This session IS an org credential, so nothing gets minted — but a file
-  // left by a previous WorkOS session must not outlive it.
-  deleteMcpCredential();
   await revalidateActiveWorkspace(json);
   await maybeSetupAgents();
   if (json) {

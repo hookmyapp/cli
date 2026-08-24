@@ -18,7 +18,7 @@ vi.mock('../../commands/mcp.js', async (importOriginal) => ({
 // clearCursorCredential resolves Cursor's path from homedir(), which cannot be
 // spied on in ESM. Its behaviour is covered against an explicit path in
 // commands/__tests__/agent.test.ts; what logout owes is CALLING it.
-const clearCursorCredentialMock = vi.hoisted(() => vi.fn(() => false));
+const clearCursorCredentialMock = vi.hoisted(() => vi.fn(() => 'nothing'));
 vi.mock('../../commands/agent.js', () => ({
   clearCursorCredential: clearCursorCredentialMock,
   registerAgentCommand: vi.fn(),
@@ -100,9 +100,41 @@ describe('logout', () => {
       status: 'logged_out',
       revoked: false,
       mcpCleanup: { ok: true },
+      cursorCleanup: 'nothing',
     });
     // The human check line must NOT be printed in --json mode.
     expect(logSpy.mock.calls.flat().join('')).not.toMatch(/Logged out/);
+  });
+
+  test('warns when Cursor still holds a live token it could not remove', async () => {
+    // 'failed' is not 'nothing': the token IS in that file and is still there.
+    // Reporting a clean logout would tell the user they are signed out of a
+    // client that can still reach their workspace.
+    clearCursorCredentialMock.mockReturnValue('failed');
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }),
+    );
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    await runLogout(['--json']);
+
+    const written = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+    const payload = JSON.parse(written.trim());
+    expect(payload.status).toBe('logged_out_with_warning');
+    expect(payload.cursorCleanup).toBe('failed');
+  });
+
+  test('says so in human mode too', async () => {
+    clearCursorCredentialMock.mockReturnValue('failed');
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }),
+    );
+
+    await runLogout();
+
+    expect(logSpy.mock.calls.flat().join('')).toMatch(/Cursor/);
   });
 
   test('reports MCP cleanup failure after credentials are removed', async () => {

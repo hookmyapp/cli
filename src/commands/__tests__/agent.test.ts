@@ -274,7 +274,7 @@ describe('agent setup', () => {
       }),
     );
 
-    expect(clearCursorCredential(path)).toBe(true);
+    expect(clearCursorCredential(path)).toBe('cleared');
 
     const after = JSON.parse(readFileSync(path, 'utf8'));
     // Entry and URL stay, so the next login fills the header back in.
@@ -286,11 +286,11 @@ describe('agent setup', () => {
     // Best effort: logout must clear local credentials even when this file is
     // missing, not JSON, or something the CLI never wrote.
     const missing = tmpFile('mcp.json');
-    expect(clearCursorCredential(missing)).toBe(false);
+    expect(clearCursorCredential(missing)).toBe('nothing');
 
     const junk = tmpFile('mcp.json');
     writeFileSync(junk, '{ not json');
-    expect(clearCursorCredential(junk)).toBe(false);
+    expect(clearCursorCredential(junk)).toBe('nothing');
     expect(readFileSync(junk, 'utf8')).toBe('{ not json');
   });
 

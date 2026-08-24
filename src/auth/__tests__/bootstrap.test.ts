@@ -269,6 +269,14 @@ describe('hookmyapp login --code', () => {
     await mod.runBootstrapCodeExchange('hma_boot_abc123', { next: 'exit' });
 
     expect(existsSync(join(CONFIG_DIR, 'mcp-credential.json'))).toBe(false);
+    // Deleting the local copy is not enough: the key stays live on the old
+    // account, and a running Cursor holds its loaded token until restart. The
+    // revoke has to go out while the OUTGOING session can still authenticate
+    // it — after the swap, that key is unreachable.
+    expect(apiClientMock).toHaveBeenCalledWith(
+      '/agent/credentials/ac_old',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
     logSpy.mockRestore();
   });
 
