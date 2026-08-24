@@ -12,8 +12,8 @@ const MEDIA_FIELDS =
   'id,caption,media_type,media_product_type,media_url,permalink,thumbnail_url,timestamp,like_count,comments_count';
 const MEDIA_CHILDREN = 'children{id,media_type,media_url,thumbnail_url}';
 const TAGGED_FIELDS = 'id,caption,media_type,media_url,permalink,timestamp,username';
-const MENTION_FIELDS =
-  'id,text,timestamp,username,media{id,caption,media_type,media_url,permalink,timestamp,username}';
+const MENTIONED_MEDIA_FIELDS =
+  'id,caption,media_type,media_url,permalink,timestamp,username,comments_count';
 const PROFILE_FIELDS =
   'id,username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count';
 
@@ -98,46 +98,67 @@ export async function runInstagramMediaList(opts: IgMediaOpts, cmd?: Command): P
 
 export interface IgMentionsOpts {
   channel?: string;
+  comment?: string;
   media?: string;
-  limit?: string;
-  after?: string;
+  reply?: string;
 }
 
+/**
+ * Instagram has no endpoint that lists past mentions — `/{ig}/mentions` is
+ * POST-only (it creates the reply). A mention arrives on the `mentions`
+ * webhook carrying the comment id or media id, and that id is read back as a
+ * field expansion on the IG-User node.
+ */
 export async function runInstagramMentions(opts: IgMentionsOpts, cmd?: Command): Promise<void> {
+  const hasComment = Boolean(opts.comment);
+  const hasMedia = Boolean(opts.media);
+  if (!hasComment && !hasMedia) {
+    throw new ValidationError(
+      'Pass --comment or --media from the mentions webhook. Instagram has no endpoint that lists past mentions.',
+      'MENTION_NO_TARGET',
+    );
+  }
+  if (hasComment) assertMediaId(opts.comment!, '--comment');
+  if (hasMedia) assertMediaId(opts.media!, '--media');
+  if (opts.reply && !hasMedia) {
+    throw new ValidationError(
+      'Replying to a mention needs --media from the webhook, alongside --comment.',
+      'MENTION_REPLY_NEEDS_MEDIA',
+    );
+  }
   const channel = await resolveChannelRefOrDefault(opts.channel, 'instagram');
 
-  if (opts.media) {
-    assertMediaId(opts.media, '--media');
-    const res = await gatewayRequest({
-      channel,
-      method: 'GET',
-      path: `/${opts.media}?fields=${encodeURIComponent(TAGGED_FIELDS)}`,
-    });
-    process.stdout.write((cmd && isJsonMode(cmd) ? JSON.stringify(res) : JSON.stringify(res, null, 2)) + '\n');
-    return;
-  }
-
-  const params = new URLSearchParams({
-    fields: MENTION_FIELDS,
-    limit: pageSize(opts.limit),
-    ...(opts.after ? { after: opts.after } : {}),
+  const expansion = hasComment
+    ? `mentioned_comment.comment_id(${opts.comment}){id,text,timestamp,username,like_count}`
+    : `mentioned_media.media_id(${opts.media}){${MENTIONED_MEDIA_FIELDS}}`;
+  const node = await gatewayRequest({
+    channel,
+    method: 'GET',
+    path: `/{ig_id}?fields=${encodeURIComponent(expansion)}`,
   });
-  const res = await gatewayRequest({ channel, method: 'GET', path: `/{ig_id}/mentions?${params.toString()}` });
-  const rows = (res?.data ?? []) as Array<Record<string, unknown>>;
+  const mention = (hasComment ? node?.mentioned_comment : node?.mentioned_media) ?? null;
+
+  let replyId: string | null = null;
+  if (opts.reply) {
+    const posted = await gatewayRequest({
+      channel,
+      method: 'POST',
+      path: '/{ig_id}/mentions',
+      body: {
+        media_id: opts.media,
+        ...(hasComment ? { comment_id: opts.comment } : {}),
+        message: opts.reply,
+      },
+    });
+    replyId = posted?.id ?? null;
+  }
 
   if (cmd && isJsonMode(cmd)) {
-    process.stdout.write(
-      JSON.stringify({ mentions: rows, nextCursor: res?.paging?.cursors?.after ?? null }) + '\n',
-    );
+    process.stdout.write(JSON.stringify({ target: hasComment ? 'comment' : 'media', mention, replyId }) + '\n');
     return;
   }
-  for (const row of rows) {
-    const text = typeof row.text === 'string' ? row.text.replace(/\s+/g, ' ').slice(0, 70) : '';
-    process.stdout.write(`${String(row.id ?? '')}\t@${String(row.username ?? '')}\t${text}\n`);
-  }
-  if (rows.length === 0) process.stdout.write('No mentions found.\n');
-  const next = res?.paging?.cursors?.after;
-  if (next) process.stdout.write(`More: --after ${next}\n`);
+  process.stdout.write(JSON.stringify(mention, null, 2) + '\n');
+  if (replyId) process.stdout.write(`Replied. id=${replyId}\n`);
 }
 
 export interface IgProfileOpts {
@@ -203,11 +224,11 @@ EXAMPLES:
 
   const mentions = instagram
     .command('mentions')
-    .description('List posts and comments where other accounts @mentioned you')
+    .description('Read a post or comment you were @mentioned in, and optionally reply')
     .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
-    .option('--media <id>', 'Read one post you were mentioned in')
-    .option('--limit <n>', 'Page size, 1-100 (default 25)')
-    .option('--after <cursor>', 'Continue from a previous page')
+    .option('--comment <id>', 'Comment id from the mentions webhook')
+    .option('--media <id>', 'Media id from the mentions webhook (required to reply)')
+    .option('--reply <text>', 'Post this reply as a comment from your account')
     .action(async function (this: Command, opts: IgMentionsOpts) {
       await runInstagramMentions(opts, this);
     });
@@ -216,9 +237,12 @@ EXAMPLES:
     mentions,
     `
 EXAMPLES:
-  $ hookmyapp instagram mentions --channel @acme
-  $ hookmyapp instagram mentions --channel @acme --json
-  $ hookmyapp instagram comments reply --channel @acme --comment <mention-id> --text "thanks!"
+  $ hookmyapp instagram mentions --channel @acme --media <media-id>
+  $ hookmyapp instagram mentions --channel @acme --comment <comment-id> --media <media-id>
+  $ hookmyapp instagram mentions --channel @acme --media <media-id> --reply "thanks for the shout-out"
+
+Instagram has no endpoint that lists past mentions. The ids come from the
+mentions webhook — subscribe to it to catch them as they happen.
 `,
   );
 
