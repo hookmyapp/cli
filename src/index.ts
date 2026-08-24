@@ -22,6 +22,7 @@ import { registerSandboxCommand } from './commands/sandbox/index.js';
 import { registerListenCommand } from './commands/sandbox-listen/index.js';
 import { registerConfigCommand } from './commands/config.js';
 import { registerMcpCommand } from './commands/mcp.js';
+import { registerAgentCommand } from './commands/agent.js';
 import {
   CliError,
   UnexpectedError,
@@ -127,7 +128,7 @@ COMMON COMMANDS:
   channels list     List your connected channels
   channels env      Print or write channel env values
   channels token    Print channel token
-  channels listen   Send channel messages to your local server while it runs
+  channels listen   Send channel events to your local server while it runs
   sandbox start     Create or resume a sandbox session (tunnel + credentials)
   sandbox listen    Stream Meta webhooks to your local server through a sandbox tunnel
   sandbox send      Send a test message via sandbox-proxy
@@ -170,6 +171,7 @@ loginCommand(program);
 logoutCommand(program);
 registerCredentialsCommand(program);
 registerMcpCommand(program);
+registerAgentCommand(program);
 
 // Channel management
 registerChannelsCommand(program);
@@ -331,6 +333,11 @@ async function main(): Promise<void> {
       const wrapped = wrapCommanderError(err as Error & { code?: string });
       if (!human) {
         outputError(wrapped, { human: false });
+      } else if (err.code === 'commander.unknownCommand') {
+        // writeErr already printed commander's one-liner; add the reason it is
+        // most likely to be unknown so the user has somewhere to go.
+        const { STALE_CLI_HINT } = await import('./output/error.js');
+        process.stderr.write(`${STALE_CLI_HINT}\n`);
       }
     } else {
       const msg = 'Something went wrong. Try again later.';
