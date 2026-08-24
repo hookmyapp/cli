@@ -123,19 +123,25 @@ async function mint(): Promise<StoredMcpCredential> {
   const { apiClient } = await import('../api/client.js');
   const name = credentialName();
   await revokeKeysForThisMachine(name);
+  // `token`, NOT `accessToken`. The two credential endpoints disagree:
+  // /agent/auth/claim/complete (the OTP flow) answers with `accessToken`, and
+  // this one answers `{ token, publicId, scopes, name }`. Reading the wrong
+  // field failed the guard below and killed the feature outright — and no unit
+  // test caught it, because they mocked the shape this file assumed rather
+  // than the shape the server sends.
   const created = (await apiClient('/agent/credentials', {
     method: 'POST',
     body: JSON.stringify({ name }),
-  })) as { accessToken?: unknown; publicId?: unknown };
-  // Types, not truthiness: `{accessToken: {}}` would satisfy a truthy check and
-  // then be stringified into a Bearer header, alongside a publicId logout could
+  })) as { token?: unknown; publicId?: unknown };
+  // Types, not truthiness: `{token: {}}` would satisfy a truthy check and then
+  // be stringified into a Bearer header, alongside a publicId logout could
   // never revoke.
-  if (!isNonEmptyString(created?.accessToken) || !isNonEmptyString(created.publicId)) {
+  if (!isNonEmptyString(created?.token) || !isNonEmptyString(created.publicId)) {
     throw new AuthError(
       'HookMyApp did not return an org credential for this machine. Run: hookmyapp doctor',
     );
   }
-  return { accessToken: created.accessToken, publicId: created.publicId };
+  return { accessToken: created.token, publicId: created.publicId };
 }
 
 /** Best-effort undo for a key we minted but are not going to keep. */

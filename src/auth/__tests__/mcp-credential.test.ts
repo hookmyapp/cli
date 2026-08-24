@@ -21,6 +21,11 @@ const workosSession = {
   expiresAt: 0,
 };
 
+/** EXACTLY what POST /agent/credentials returns. It answers `token`; the OTP
+ *  endpoint answers `accessToken`, and mocking that shape here hid a bug that
+ *  made the whole feature fail closed until it was caught against staging. */
+const mintResponse = { token: 'hmok_new', publicId: 'ac_new', scopes: [], name: 'laptop' };
+/** What we persist, keyed the way the rest of the CLI names a bearer token. */
 const minted = { accessToken: 'hmok_new', publicId: 'ac_new' };
 
 function credentialPath(): string {
@@ -47,7 +52,7 @@ describe('the token handed to MCP clients', () => {
   test('mints an org credential rather than handing over the session JWT', async () => {
     // The JWT has no `aud` claim, so /mcp rejects it — that was the bug.
     vi.mocked(readCredentials).mockResolvedValue(workosSession);
-    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(mintResponse);
 
     const token = await getMcpAccessToken();
 
@@ -60,7 +65,7 @@ describe('the token handed to MCP clients', () => {
     // A mint must never rewrite credentials.json, or a logout landing mid-mint
     // gets undone by this write.
     vi.mocked(readCredentials).mockResolvedValue(workosSession);
-    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(mintResponse);
 
     await getMcpAccessToken();
 
@@ -72,7 +77,7 @@ describe('the token handed to MCP clients', () => {
   // same platform limit, so this is the existing security model, not a new gap.
   test.skipIf(process.platform === 'win32')('stores it owner-only', async () => {
     vi.mocked(readCredentials).mockResolvedValue(workosSession);
-    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(mintResponse);
 
     await getMcpAccessToken();
 
@@ -90,7 +95,7 @@ describe('the token handed to MCP clients', () => {
   test('re-mints when the stored file is corrupt rather than serving junk', async () => {
     vi.mocked(readCredentials).mockResolvedValue(workosSession);
     writeFileSync(credentialPath(), '{ not json');
-    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(mintResponse);
 
     expect(await getMcpAccessToken()).toBe('hmok_new');
   });
@@ -115,7 +120,7 @@ describe('the token handed to MCP clients', () => {
         { publicId: 'ac_someone_else', name: 'other-laptop (HookMyApp CLI)' },
       ])
       .mockResolvedValueOnce(undefined) // delete
-      .mockResolvedValueOnce(minted);
+      .mockResolvedValueOnce(mintResponse);
 
     await getMcpAccessToken();
 
@@ -128,7 +133,7 @@ describe('the token handed to MCP clients', () => {
     // An older backend, or an offline blip on the list call, must not stop the
     // user getting the credential they asked for.
     vi.mocked(readCredentials).mockResolvedValue(workosSession);
-    vi.mocked(apiClient).mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(minted);
+    vi.mocked(apiClient).mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(mintResponse);
 
     expect(await getMcpAccessToken()).toBe('hmok_new');
   });
@@ -147,7 +152,7 @@ describe('the token handed to MCP clients', () => {
     vi.mocked(readCredentials).mockResolvedValue(workosSession);
     vi.mocked(apiClient)
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce({ accessToken: {}, publicId: {} });
+      .mockResolvedValueOnce({ token: {}, publicId: {} });
 
     await expect(getMcpAccessToken()).rejects.toThrow(/did not return an org credential/);
     expect(existsSync(credentialPath())).toBe(false);
@@ -187,7 +192,7 @@ describe('the token handed to MCP clients', () => {
     vi.mocked(readCredentials)
       .mockResolvedValueOnce(workosSession)
       .mockResolvedValueOnce(null);
-    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(minted);
+    vi.mocked(apiClient).mockResolvedValueOnce([]).mockResolvedValueOnce(mintResponse);
 
     await expect(getMcpAccessToken()).rejects.toThrow(/Logged out while setting up/);
 
