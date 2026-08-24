@@ -92,7 +92,7 @@ async function pollForTokens(opts: {
         email: u.email,
         name: fullName.length > 0 ? fullName : undefined,
       });
-      maybeSetupAgents();
+      await maybeSetupAgents();
       console.log(`\n${c.success(icon.success)} Logged in successfully\n`);
       return;
     }
@@ -446,7 +446,7 @@ export async function runBootstrapCodeExchange(
     activeWorkspaceId: data.workspace.id,
     activeWorkspaceSlug: data.workspace.name,
   });
-  maybeSetupAgents();
+  await maybeSetupAgents();
 
   // alias machineId → workosSub once per (machine, user) and
   // emit cli_logged_in. workspace publicId is already on disk above so
@@ -587,7 +587,7 @@ async function persistAgentCredential(
     email,
   });
   await revalidateActiveWorkspace(json);
-  maybeSetupAgents();
+  await maybeSetupAgents();
   if (json) {
     process.stdout.write(
       JSON.stringify({

@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Command } from 'commander';
 import { ConfigurationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { isCommandNotFound, runTool } from '../lib/spawn-tool.js';
-import { installClaudeMcp, mcpUrl, MCP_NAME } from './mcp.js';
+import { headersHelper, installClaudeMcp, mcpUrl, MCP_NAME } from './mcp.js';
 
 const TOOL_OPTIONS = { encoding: 'utf8' as const, timeout: 10_000 };
 // `npx skills add` may download the package first, so it gets its own budget.
@@ -59,18 +59,70 @@ function codexEntry(): string | null {
  * timeout always fires. Read the config back with `codex mcp get`, which is
  * instant, and let that decide whether the setup worked.
  */
+/**
+ * Codex's config lives in TOML and `codex mcp add` has no flag for a header
+ * helper, so the block is written here rather than in-place-edited: remove
+ * whatever is there, append a complete table at the end of the file, and let
+ * `codex mcp get` — Codex's own parser — say whether it worked. Appending a
+ * whole table cannot corrupt the tables above it, which matters because this
+ * file also holds the user's other MCP servers and their secrets.
+ *
+ * The helper emits X-API-Key, not Authorization: Codex treats Authorization as
+ * reserved in `http_headers_helper` and refuses to send it. `/mcp` accepts
+ * either header (mcp-auth.guard.ts) and rejects both together, so exactly one
+ * goes out.
+ */
 function configureCodex(): void {
   const url = mcpUrl();
+  const helper = headersHelper('x-api-key');
   const existing = codexEntry();
-  if (existing?.includes(url)) return;
-  // A stale entry points at another environment's URL; `add` will not replace it.
+  // Both halves must match: a stale entry may carry the right URL from before
+  // this change and still have no credential at all.
+  if (existing?.includes(url) && existing.includes('http_headers_helper: <redacted>')) return;
   if (existing) runTool('codex', ['mcp', 'remove', MCP_NAME], TOOL_OPTIONS);
 
-  runTool('codex', ['mcp', 'add', MCP_NAME, '--url', url], TOOL_OPTIONS);
+  appendCodexServerBlock(url, helper);
 
-  if (!codexEntry()?.includes(url)) {
+  const written = codexEntry();
+  if (!written?.includes(url) || !written.includes('http_headers_helper')) {
     throw new ConfigurationError(
-      `Codex MCP setup failed — run: codex mcp add ${MCP_NAME} --url ${url}`,
+      `Codex MCP setup failed — check ${codexConfigPath()} for an [mcp_servers.${MCP_NAME}] block`,
+      'MCP_INSTALL_FAILED',
+    );
+  }
+}
+
+function codexConfigPath(): string {
+  return join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'config.toml');
+}
+
+/** TOML basic strings take backslash escapes, so both must be escaped. */
+function tomlString(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function appendCodexServerBlock(url: string, helper: string): void {
+  const path = codexConfigPath();
+  const before = existsSync(path) ? readFileSync(path, 'utf8') : '';
+  if (before.includes(`[mcp_servers.${MCP_NAME}]`)) {
+    // `codex mcp remove` did not take. Appending now would define the table
+    // twice, which makes the whole file unparseable for every other server.
+    throw new ConfigurationError(
+      `Codex still has an [mcp_servers.${MCP_NAME}] block in ${path} — remove it and re-run`,
+      'MCP_INSTALL_FAILED',
+    );
+  }
+  const separator = before.length === 0 || before.endsWith('\n') ? '' : '\n';
+  const block =
+    `${separator}\n[mcp_servers.${MCP_NAME}]\n` +
+    `url = ${tomlString(url)}\n` +
+    `http_headers_helper = ${tomlString(helper)}\n`;
+  mkdirSync(dirname(path), { recursive: true });
+  try {
+    appendFileSync(path, block);
+  } catch (err) {
+    throw new ConfigurationError(
+      `Cannot write ${path}: ${(err as Error).message}`,
       'MCP_INSTALL_FAILED',
     );
   }
@@ -82,7 +134,17 @@ function configureCodex(): void {
  * `hookmyapp` key is ever touched, and unreadable/unparseable JSON aborts
  * rather than being replaced with a fresh object.
  */
-export function configureCursor(path = cursorConfigPath()): void {
+/**
+ * Cursor takes a static `headers` map and has no helper mechanism, so unlike
+ * Claude Code and Codex — which invoke the CLI per request — the token itself
+ * lands in this file. That is the same trade every other MCP server on the
+ * page makes, and the key is per-machine and revocable, so a leaked config
+ * costs one `hookmyapp credentials revoke` rather than the account.
+ *
+ * `token` is optional: without a session there is nothing to write, and a URL
+ * alone still beats no entry.
+ */
+export function configureCursor(path = cursorConfigPath(), token?: string): void {
   let config: Record<string, unknown> = {};
   if (existsSync(path)) {
     let raw: string;
@@ -121,7 +183,9 @@ export function configureCursor(path = cursorConfigPath()): void {
     );
   }
   const servers = isPlainObject(config.mcpServers) ? config.mcpServers : {};
-  config.mcpServers = { ...servers, [MCP_NAME]: { url: mcpUrl() } };
+  const entry: Record<string, unknown> = { url: mcpUrl() };
+  if (token) entry.headers = { Authorization: `Bearer ${token}` };
+  config.mcpServers = { ...servers, [MCP_NAME]: entry };
 
   mkdirSync(dirname(path), { recursive: true });
   // Write-then-rename so an interrupted run cannot leave a half-written config
@@ -148,10 +212,10 @@ export function configureCursor(path = cursorConfigPath()): void {
   }
 }
 
-function configure(client: ClientId): void {
+function configure(client: ClientId, token?: string): void {
   if (client === 'claude') return installClaudeMcp();
   if (client === 'codex') return configureCodex();
-  return configureCursor();
+  return configureCursor(cursorConfigPath(), token);
 }
 
 /**
@@ -160,17 +224,23 @@ function configure(client: ClientId): void {
  * live: Codex answered a tool call from the PREVIOUS server and reported it as
  * proof the new one worked. Each note therefore names the restart.
  */
-function postSetupNote(client: ClientId): string | undefined {
-  if (client === 'codex') return `run: codex mcp login ${MCP_NAME}, then restart Codex`;
-  if (client === 'cursor') return 'restart Cursor, then sign in from its MCP settings';
+function postSetupNote(client: ClientId, token?: string): string | undefined {
+  // No client is told to sign in any more — the credential travels with the
+  // config. Cursor is the one that cannot get one without a session, because
+  // its entry has to carry the token literally.
+  if (client === 'cursor' && !token) {
+    return 'restart Cursor — run `hookmyapp login`, then `hookmyapp agent setup` to give it access';
+  }
+  if (client === 'cursor') return 'restart Cursor';
+  if (client === 'codex') return 'restart Codex';
   return 'tools activate in your next session';
 }
 
-export function configureClients(clients: ClientId[]): ClientResult[] {
+export function configureClients(clients: ClientId[], token?: string): ClientResult[] {
   return clients.map((client) => {
     try {
-      configure(client);
-      return { client, status: 'configured' as const, detail: postSetupNote(client) };
+      configure(client, token);
+      return { client, status: 'configured' as const, detail: postSetupNote(client, token) };
     } catch (err) {
       return { client, status: 'failed' as const, detail: (err as Error).message };
     }
@@ -214,7 +284,33 @@ function noClientText(): string {
   );
 }
 
-export function runAgentSetup(opts: { client?: string; skills?: boolean; json?: boolean }): void {
+/**
+ * The credential the clients are configured with, resolved once per run.
+ *
+ * Minting happens HERE — during login or an explicit `agent setup` — rather
+ * than lazily inside a request helper, so it is a visible step of something the
+ * user ran, and a failure surfaces against that command instead of inside an
+ * agent's next tool call.
+ *
+ * Soft failure: not logged in, offline, or a mint the server refused all mean
+ * the same thing here — configure the URL anyway. Claude Code and Codex resolve
+ * their credential per request and will pick one up later; only Cursor, which
+ * needs the token written in, is left needing a re-run.
+ */
+async function resolveMcpToken(): Promise<string | undefined> {
+  try {
+    const { getMcpAccessToken } = await import('../auth/mcp-credential.js');
+    return await getMcpAccessToken();
+  } catch {
+    return undefined;
+  }
+}
+
+export async function runAgentSetup(opts: {
+  client?: string;
+  skills?: boolean;
+  json?: boolean;
+}): Promise<void> {
   let targets: ClientId[];
   if (opts.client) {
     if (!(CLIENTS as readonly string[]).includes(opts.client)) {
@@ -228,7 +324,7 @@ export function runAgentSetup(opts: { client?: string; skills?: boolean; json?: 
     targets = detectClients();
   }
 
-  const clients = configureClients(targets);
+  const clients = configureClients(targets, await resolveMcpToken());
   const skills = opts.skills === false ? null : installSkills();
 
   // Report every client before failing, so one broken agent does not hide the
@@ -250,7 +346,7 @@ export function runAgentSetup(opts: { client?: string; skills?: boolean; json?: 
  * because a sign-in has no business running an npm install. Best-effort: a
  * failure here is reported and never fails the login that succeeded.
  */
-export function maybeSetupAgents(force = false): void {
+export async function maybeSetupAgents(force = false): Promise<void> {
   if (!force && process.env.NODE_ENV === 'test') return;
   const detected = detectClients();
   if (detected.length === 0) {
@@ -259,7 +355,7 @@ export function maybeSetupAgents(force = false): void {
     if (process.stdout.isTTY) process.stderr.write(noClientText());
     return;
   }
-  for (const r of configureClients(detected)) {
+  for (const r of configureClients(detected, await resolveMcpToken())) {
     if (r.status === 'failed') {
       process.stderr.write(
         `HookMyApp login succeeded, but ${LABELS[r.client]} MCP setup failed: ${r.detail}\n` +
@@ -282,8 +378,8 @@ export function registerAgentCommand(program: Command): void {
     .description('Set up the HookMyApp MCP server and agent skills in every agent installed here')
     .option('--client <client>', `Configure only this client (${CLIENTS.join(', ')})`)
     .option('--no-skills', 'Skip installing the HookMyApp agent skills')
-    .action((opts: { client?: string; skills?: boolean }) => {
-      runAgentSetup({ ...opts, json: Boolean(program.opts().json) });
+    .action(async (opts: { client?: string; skills?: boolean }) => {
+      await runAgentSetup({ ...opts, json: Boolean(program.opts().json) });
     });
   addExamples(
     setup,

@@ -18,9 +18,10 @@ const CLAUDE_OPTIONS = { encoding: 'utf8' as const, timeout: 10_000 };
  * rejects with a 401 (AIT-460). Emitted for every environment, production
  * included, so a later `config set env` cannot separate the two either.
  */
-export function headersHelper(): string {
+export function headersHelper(header?: string): string {
   const env = resolveEnv();
-  return `${shellQuote(process.execPath)} ${shellQuote(resolve(process.argv[1]))} --env ${env} mcp-headers`;
+  const flag = header ? ` --header ${header}` : '';
+  return `${shellQuote(process.execPath)} ${shellQuote(resolve(process.argv[1]))} --env ${env} mcp-headers${flag}`;
 }
 
 export function shellQuote(value: string, platform = process.platform): string {
@@ -36,13 +37,27 @@ export function mcpUrl(): string {
   return `${getEffectiveApiUrl().replace(/\/$/, '')}/mcp`;
 }
 
-export async function printMcpHeaders(): Promise<void> {
+/**
+ * Which header carries the credential.
+ *
+ * `/mcp` accepts either `Authorization: Bearer <t>` or `X-API-Key: <t>`, and
+ * rejects a request carrying both, so exactly one is emitted. Codex needs the
+ * X-API-Key form: its `http_headers_helper` treats Authorization as reserved
+ * and refuses to send it.
+ */
+export function headerPayload(name: string, token: string): Record<string, string> {
+  return name.toLowerCase() === 'x-api-key'
+    ? { 'X-API-Key': token }
+    : { Authorization: `Bearer ${token}` };
+}
+
+export async function printMcpHeaders(opts: { header?: string } = {}): Promise<void> {
   // NOT the session token: a WorkOS JWT carries no `aud` claim and the /mcp
   // audience guard rejects it (AIT-460). This resolves to the machine's org
   // credential, minting one on first use.
   const { getMcpAccessToken } = await import('../auth/mcp-credential.js');
   const token = await getMcpAccessToken();
-  process.stdout.write(JSON.stringify({ Authorization: `Bearer ${token}` }) + '\n');
+  process.stdout.write(JSON.stringify(headerPayload(opts.header ?? 'authorization', token)) + '\n');
 }
 
 export function installClaudeMcp(): void {
@@ -103,8 +118,18 @@ export function getClaudeMcpStatus(): { ok: boolean; detail: string } {
 }
 
 export function registerMcpCommand(program: Command): void {
-  const headers = program.command('mcp-headers', { hidden: true }).action(printMcpHeaders);
-  addExamples(headers, '\nEXAMPLES:\n  $ hookmyapp mcp-headers\n  $ hookmyapp --env staging mcp-headers');
+  const headers = program
+    .command('mcp-headers', { hidden: true })
+    .option(
+      '--header <name>',
+      'Header carrying the credential: authorization (default) or x-api-key',
+      'authorization',
+    )
+    .action((opts: { header?: string }) => printMcpHeaders(opts));
+  addExamples(
+    headers,
+    '\nEXAMPLES:\n  $ hookmyapp mcp-headers\n  $ hookmyapp mcp-headers --header x-api-key\n  $ hookmyapp --env staging mcp-headers',
+  );
 
   const mcp = program.command('mcp').description('Configure HookMyApp MCP access');
   addExamples(mcp, '\nEXAMPLES:\n  $ hookmyapp mcp install --agent claude\n  $ hookmyapp doctor');

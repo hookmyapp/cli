@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -31,9 +31,19 @@ function tmpFile(name: string): string {
 }
 
 describe('agent setup', () => {
+  const originalCodexHome = process.env.CODEX_HOME;
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    // Codex configuration is a real file write now, so every test gets its own
+    // CODEX_HOME rather than editing the developer's actual Codex config.
+    process.env.CODEX_HOME = mkdtempSync(join(tmpdir(), 'hookmyapp-codex-'));
+  });
+
+  afterEach(() => {
+    if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalCodexHome;
   });
 
   test('detects only the CLIs that answer --version', () => {
@@ -47,8 +57,15 @@ describe('agent setup', () => {
     expect(found).not.toContain('codex');
   });
 
-  const codexHas = (url: string) => ({ status: 0, stdout: `url: ${url}` }) as never;
+  // `codex mcp get` is now only the read-back check: the block itself is
+  // written by us, because `codex mcp add` has no flag for a header helper.
+  const codexHas = (url: string, withHelper = true) =>
+    ({
+      status: 0,
+      stdout: `url: ${url}\n${withHelper ? 'http_headers_helper: <redacted>' : 'http_headers_helper: -'}`,
+    }) as never;
   const codexMissing = { status: 1, stderr: 'No MCP server' } as never;
+  const codexConfig = () => join(process.env.CODEX_HOME!, 'config.toml');
 
   test('finds nothing when no agent is installed', () => {
     vi.mocked(runTool).mockReturnValue(enoent);
@@ -56,56 +73,80 @@ describe('agent setup', () => {
     expect(detectClients(join(tmpdir(), 'hookmyapp-no-such-cursor-dir'))).toEqual([]);
   });
 
-  test('adds the Codex server by URL, not by static token', () => {
+  test('gives Codex the credential instead of another sign-in', async () => {
     vi.mocked(runTool)
       .mockReturnValueOnce(codexMissing) // get: nothing configured yet
-      .mockReturnValueOnce(ok) // add
       .mockReturnValueOnce(codexHas('https://api.hookmyapp.com/mcp')); // get: verify
 
-    runAgentSetup({ client: 'codex', skills: false, json: false });
+    await runAgentSetup({ client: 'codex', skills: false, json: false });
 
-    expect(vi.mocked(runTool).mock.calls[1][1]).toEqual([
-      'mcp',
-      'add',
-      'hookmyapp',
-      '--url',
-      'https://api.hookmyapp.com/mcp',
-    ]);
-    expect(JSON.stringify(vi.mocked(runTool).mock.calls)).not.toContain('Bearer');
+    const toml = readFileSync(codexConfig(), 'utf8');
+    expect(toml).toContain('[mcp_servers.hookmyapp]');
+    expect(toml).toContain('url = "https://api.hookmyapp.com/mcp"');
+    // X-API-Key, not Authorization: Codex treats Authorization as reserved in
+    // http_headers_helper and refuses to send it.
+    expect(toml).toMatch(/http_headers_helper = ".*mcp-headers --header x-api-key"/);
   });
 
-  test('trusts the Codex config over the hanging add command exit status', () => {
-    // `codex mcp add` writes and then never exits, so runTool always reports a
-    // timeout. The read-back is what decides.
+  test('never writes the token itself into the Codex config', async () => {
+    // The helper is invoked per request, so nothing secret lands on disk here.
     vi.mocked(runTool)
       .mockReturnValueOnce(codexMissing)
-      .mockReturnValueOnce({ status: null, error: Object.assign(new Error('ETIMEDOUT'), { code: 'ETIMEDOUT' }) } as never)
       .mockReturnValueOnce(codexHas('https://api.hookmyapp.com/mcp'));
-    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
-    runAgentSetup({ client: 'codex', skills: false, json: true });
+    await runAgentSetup({ client: 'codex', skills: false, json: false });
 
-    expect(JSON.parse(String(write.mock.calls.at(-1)?.[0])).clients[0].status).toBe('configured');
+    expect(readFileSync(codexConfig(), 'utf8')).not.toContain('hmok_');
   });
 
-  test('replaces a Codex entry left behind by another environment', () => {
+  test('leaves the other MCP servers in the Codex config alone', async () => {
+    writeFileSync(codexConfig(), '[mcp_servers.someone_else]\nurl = "https://other.example/mcp"\n');
     vi.mocked(runTool)
-      .mockReturnValueOnce(codexHas('https://staging-api.hookmyapp.com/mcp'))
-      .mockReturnValueOnce(ok) // remove
-      .mockReturnValueOnce(ok) // add
+      .mockReturnValueOnce(codexMissing)
       .mockReturnValueOnce(codexHas('https://api.hookmyapp.com/mcp'));
 
-    runAgentSetup({ client: 'codex', skills: false, json: false });
+    await runAgentSetup({ client: 'codex', skills: false, json: false });
 
-    expect(vi.mocked(runTool).mock.calls[1][1]).toEqual(['mcp', 'remove', 'hookmyapp']);
+    const toml = readFileSync(codexConfig(), 'utf8');
+    expect(toml).toContain('[mcp_servers.someone_else]');
+    expect(toml).toContain('[mcp_servers.hookmyapp]');
   });
 
-  test('leaves a correct Codex entry alone', () => {
+  test('refuses to append a second hookmyapp table when removal did not take', async () => {
+    // Two tables of the same name make the whole file unparseable — which
+    // would take every other server in it down, not just ours.
+    writeFileSync(codexConfig(), '[mcp_servers.hookmyapp]\nurl = "https://stale.example/mcp"\n');
+    vi.mocked(runTool)
+      .mockReturnValueOnce(codexHas('https://stale.example/mcp', false)) // get
+      .mockReturnValueOnce({ status: 0 } as never); // remove (no-op)
+
+    await runAgentSetup({ client: 'codex', skills: false, json: true });
+
+    expect(readFileSync(codexConfig(), 'utf8')).not.toMatch(/hookmyapp[\s\S]*hookmyapp/);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+  });
+
+  test('re-configures a Codex entry that has a URL but no credential', async () => {
+    // Entries written before this change carry the URL and nothing else, so a
+    // URL match alone must not count as already set up.
+    vi.mocked(runTool)
+      .mockReturnValueOnce(codexHas('https://api.hookmyapp.com/mcp', false))
+      .mockReturnValueOnce({ status: 0 } as never) // remove
+      .mockReturnValueOnce(codexHas('https://api.hookmyapp.com/mcp'));
+
+    await runAgentSetup({ client: 'codex', skills: false, json: false });
+
+    expect(readFileSync(codexConfig(), 'utf8')).toContain('http_headers_helper');
+  });
+
+  test('leaves a fully configured Codex entry alone', async () => {
     vi.mocked(runTool).mockReturnValueOnce(codexHas('https://api.hookmyapp.com/mcp'));
 
-    runAgentSetup({ client: 'codex', skills: false, json: false });
+    await runAgentSetup({ client: 'codex', skills: false, json: false });
 
     expect(runTool).toHaveBeenCalledOnce();
+    expect(existsSync(codexConfig())).toBe(false);
   });
 
   test('keeps every other Cursor MCP server when adding ours', () => {
@@ -178,50 +219,85 @@ describe('agent setup', () => {
     expect(readFileSync(path, 'utf8')).toBe('{"mcpServers":"nonsense"}');
   });
 
-  test('exits non-zero when a client could not be configured', () => {
+  test('exits non-zero when a client could not be configured', async () => {
     vi.mocked(runTool).mockReturnValue(codexMissing);
     const before = process.exitCode;
 
-    runAgentSetup({ client: 'codex', skills: false, json: true });
+    await runAgentSetup({ client: 'codex', skills: false, json: true });
 
     expect(process.exitCode).toBe(1);
     process.exitCode = before;
   });
 
-  test('reports a failed client instead of aborting the run', () => {
+  test('reports a failed client instead of aborting the run', async () => {
     vi.mocked(runTool).mockReturnValue(codexMissing);
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
-    runAgentSetup({ client: 'codex', skills: false, json: true });
+    await runAgentSetup({ client: 'codex', skills: false, json: true });
 
     const parsed = JSON.parse(String(write.mock.calls.at(-1)?.[0]));
     expect(parsed.skills).toBeNull();
     expect(parsed.clients[0]).toMatchObject({ client: 'codex', status: 'failed' });
-    expect(parsed.clients[0].detail).toContain('codex mcp add');
+    expect(parsed.clients[0].detail).toContain('config.toml');
   });
 
-  test('keeps login progress off stdout so --json stays parseable', () => {
+  test('keeps login progress off stdout so --json stays parseable', async () => {
     vi.mocked(runTool).mockReturnValue(ok);
     const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
-    maybeSetupAgents(true);
+    await maybeSetupAgents(true);
 
     expect(out).not.toHaveBeenCalled();
     expect(String(err.mock.calls[0]?.[0])).toContain('HookMyApp MCP configured for');
   });
 
-  test('tells every client it needs a restart before the new server is live', () => {
+  test('tells every client it needs a restart before the new server is live', async () => {
     vi.mocked(runTool).mockReturnValue(codexHas('https://api.hookmyapp.com/mcp'));
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
-    runAgentSetup({ client: 'codex', skills: false, json: true });
+    await runAgentSetup({ client: 'codex', skills: false, json: true });
 
     expect(JSON.parse(String(write.mock.calls.at(-1)?.[0])).clients[0].detail).toContain('restart Codex');
   });
 
-  test('rejects an unknown client', () => {
-    expect(() => runAgentSetup({ client: 'windsurf', skills: false, json: false })).toThrow(/Unsupported client/);
+  test('gives Cursor the credential, since it has no helper mechanism', async () => {
+    const path = tmpFile('mcp.json');
+
+    configureCursor(path, 'hmok_live');
+
+    expect(JSON.parse(readFileSync(path, 'utf8')).mcpServers.hookmyapp).toEqual({
+      url: 'https://api.hookmyapp.com/mcp',
+      headers: { Authorization: 'Bearer hmok_live' },
+    });
+  });
+
+  test('writes a Cursor entry without headers when there is no session', async () => {
+    // A URL alone still beats no entry; the note tells them to log in.
+    const path = tmpFile('mcp.json');
+
+    configureCursor(path);
+
+    expect(JSON.parse(readFileSync(path, 'utf8')).mcpServers.hookmyapp).toEqual({
+      url: 'https://api.hookmyapp.com/mcp',
+    });
+  });
+
+  test('never tells a configured client to go and sign in again', async () => {
+    // The whole point: one login, every tool. A second sign-in prompt here
+    // means the credential did not reach that client.
+    vi.mocked(runTool).mockReturnValue(codexHas('https://api.hookmyapp.com/mcp'));
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await runAgentSetup({ client: 'codex', skills: false, json: true });
+
+    const detail = JSON.parse(String(write.mock.calls.at(-1)?.[0])).clients[0].detail;
+    expect(detail).not.toMatch(/sign in|mcp login/i);
+    expect(detail).toContain('restart');
+  });
+
+  test('rejects an unknown client', async () => {
+    await expect(runAgentSetup({ client: 'windsurf', skills: false, json: false })).rejects.toThrow(/Unsupported client/);
   });
 
   test('treats a missing npx as skipped, not failed', () => {
