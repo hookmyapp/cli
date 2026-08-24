@@ -52,7 +52,7 @@ describe('instagram threads', () => {
 
     const p = decodeURIComponent(vi.mocked(gatewayRequest).mock.calls[0][0].path as string);
     expect(p).toContain('/aWdfXTHREAD?');
-    expect(p).toContain('messages{');
+    expect(p).toContain('messages.limit(25){');
     expect(out()).toContain('@fan\thello there');
   });
 
@@ -66,6 +66,23 @@ describe('instagram threads', () => {
     restore();
 
     expect(out()).toContain('More: --after CUR2');
+  });
+
+  it('pages the messages, not the conversation node, when --after is given', async () => {
+    vi.mocked(gatewayRequest).mockResolvedValue({ messages: { data: [] } });
+
+    await runInstagramThreads({ channel: '@acme', thread: 'aWdfXTHREAD', after: 'CUR2', limit: '5' });
+
+    const p = decodeURIComponent(vi.mocked(gatewayRequest).mock.calls[0][0].path as string);
+    expect(p).toContain('messages.limit(5).after(CUR2){');
+    expect(p).not.toMatch(/[?&](limit|after)=/);
+  });
+
+  it('rejects a cursor that could break out of the field expansion', async () => {
+    await expect(
+      runInstagramThreads({ channel: '@acme', thread: 'aWdfXTHREAD', after: 'CUR){x' }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(gatewayRequest).not.toHaveBeenCalled();
   });
 
   it('reads only the public profile when --participant is given', async () => {

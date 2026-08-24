@@ -10,8 +10,21 @@ import { ValidationError } from '../output/error.js';
 // unreserved URL alphabet instead — enough to stop a smuggled path segment.
 const IG_OPAQUE_ID_RE = /^[A-Za-z0-9_-]+$/;
 const CONVERSATION_FIELDS = 'id,updated_time,participants,unread_count';
-const MESSAGE_EXPANSION = 'messages{id,message,from,to,created_time,reply_to}';
+const MESSAGE_FIELDS = 'id,message,from,to,created_time,reply_to';
 const PARTICIPANT_FIELDS = 'id,name,username,profile_pic';
+// Cursors carry base64 padding, so they need a wider alphabet than an id.
+const IG_CURSOR_RE = /^[A-Za-z0-9_=-]+$/;
+
+/** Paging a field expansion is done with modifiers INSIDE the expansion —
+ *  `messages.limit(25).after(CUR){...}`. Top-level limit/after page the
+ *  conversation node instead, so the messages cursor would never be redeemed. */
+function messageExpansion(limit: string, after?: string): string {
+  if (after !== undefined && !IG_CURSOR_RE.test(after)) {
+    throw new ValidationError(`--after is not in the expected format (got: ${after}).`, 'BAD_CURSOR');
+  }
+  const mods = `.limit(${limit})${after !== undefined ? `.after(${after})` : ''}`;
+  return `messages${mods}{${MESSAGE_FIELDS}}`;
+}
 
 function assertOpaqueId(id: string, flag: string): void {
   if (!IG_OPAQUE_ID_RE.test(id)) {
@@ -56,9 +69,7 @@ export async function runInstagramThreads(opts: IgThreadsOpts, cmd?: Command): P
     // A conversation has no /messages edge — Meta expands them on the node and
     // nests the rows under `messages.data`.
     const params = new URLSearchParams({
-      fields: MESSAGE_EXPANSION,
-      limit: pageSize(opts.limit),
-      ...(opts.after ? { after: opts.after } : {}),
+      fields: messageExpansion(pageSize(opts.limit), opts.after),
     });
     const res = await gatewayRequest({ channel, method: 'GET', path: `/${opts.thread}?${params.toString()}` });
     const rows = (res?.messages?.data ?? []) as Array<Record<string, unknown>>;
