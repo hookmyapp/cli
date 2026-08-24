@@ -15,6 +15,7 @@ vi.mock('../../config/env-profiles.js', () => ({
 }));
 
 import {
+  clearCursorCredential,
   configureCursor,
   detectClients,
   installSkills,
@@ -259,6 +260,38 @@ describe('agent setup', () => {
     } finally {
       chmodSync(dir, 0o700);
     }
+  });
+
+  test('logout strips our stored token and nobody else\'s', () => {
+    const path = tmpFile('mcp.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        mcpServers: {
+          hookmyapp: { url: 'https://api.hookmyapp.com/mcp', headers: { Authorization: 'Bearer hmok_live' } },
+          someone_else: { url: 'https://other.example/mcp', headers: { Authorization: 'Bearer theirs' } },
+        },
+      }),
+    );
+
+    expect(clearCursorCredential(path)).toBe(true);
+
+    const after = JSON.parse(readFileSync(path, 'utf8'));
+    // Entry and URL stay, so the next login fills the header back in.
+    expect(after.mcpServers.hookmyapp).toEqual({ url: 'https://api.hookmyapp.com/mcp' });
+    expect(after.mcpServers.someone_else.headers.Authorization).toBe('Bearer theirs');
+  });
+
+  test('logout leaves an unreadable or unrelated Cursor config alone', () => {
+    // Best effort: logout must clear local credentials even when this file is
+    // missing, not JSON, or something the CLI never wrote.
+    const missing = tmpFile('mcp.json');
+    expect(clearCursorCredential(missing)).toBe(false);
+
+    const junk = tmpFile('mcp.json');
+    writeFileSync(junk, '{ not json');
+    expect(clearCursorCredential(junk)).toBe(false);
+    expect(readFileSync(junk, 'utf8')).toBe('{ not json');
   });
 
   test('refuses a Cursor config whose root is not an object', () => {

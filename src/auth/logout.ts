@@ -42,6 +42,13 @@ export function logoutCommand(program: Command): void {
 
       await deleteCredentials();
       const mcpCleanup = removeClaudeMcp();
+      // Cursor is the only client holding the token literally, so it is the
+      // only one still able to authenticate after the CLI's credentials are
+      // gone — and the revocation above is best-effort, so offline logouts
+      // leave that token live. Strip it; its entry and URL stay, so the next
+      // login fills it back in.
+      const { clearCursorCredential } = await import('../commands/agent.js');
+      clearCursorCredential();
 
       if (json) {
         process.stdout.write(

@@ -1,4 +1,4 @@
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Command } from 'commander';
@@ -137,11 +137,39 @@ function appendCodexServerBlock(url: string, helper: string): void {
     `url = ${tomlString(url)}\n` +
     `http_headers_helper = ${tomlString(helper)}\n`;
   mkdirSync(dirname(path), { recursive: true });
+  // Write-then-rename rather than append. A partial append — a full disk, a
+  // killed process — leaves half a table behind and makes the whole file
+  // unparseable, taking every other MCP server in it down with ours. A rename
+  // either happens or does not.
+  writeAtomically(path, before + block, existsSync(path) ? statSync(path).mode : 0o600);
+}
+
+/**
+ * Replace a config file's contents in one step.
+ *
+ * Both Codex's TOML and Cursor's JSON hold other people's servers and their
+ * secrets, so a half-written file is worse than no change at all.
+ */
+function writeAtomically(path: string, contents: string, mode: number): void {
+  const tmp = `${path}.hookmyapp.tmp`;
   try {
-    appendFileSync(path, block);
+    writeFileSync(tmp, contents, { mode });
+    // writeFileSync only applies `mode` when it CREATES the file; a leftover
+    // tmp from an interrupted run would otherwise keep its old permissions.
+    chmodSync(tmp, mode);
+    renameSync(tmp, path);
   } catch (err) {
+    // Windows refuses to replace a file another process holds open, where
+    // posix allows it, so a running client is the likeliest cause there.
+    // Either way the existing file is untouched — clean up and say so.
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* best effort */
+    }
     throw new ConfigurationError(
-      `Cannot write ${path}: ${(err as Error).message}`,
+      `Cannot write ${path}: ${(err as Error).message}. ` +
+        'Your existing config is unchanged. Close the client if it is running, check you can write that file, and try again.',
       'MCP_INSTALL_FAILED',
     );
   }
@@ -207,36 +235,47 @@ export function configureCursor(path = cursorConfigPath(), token?: string): void
   config.mcpServers = { ...servers, [MCP_NAME]: entry };
 
   mkdirSync(dirname(path), { recursive: true });
-  // Write-then-rename so an interrupted run cannot leave a half-written config
-  // where Cursor's other servers used to be.
-  const tmp = `${path}.hookmyapp.tmp`;
   // With a token in it this file is a credential, so it goes owner-only
   // regardless of what the existing file allowed — an inherited 0644 under a
   // 0022 umask leaves the bearer token readable by every local account.
   // Without one there is nothing secret to protect, so the existing mode is
   // preserved rather than tightened behind the user's back.
   const mode = token ? 0o600 : existsSync(path) ? statSync(path).mode : 0o600;
+  writeAtomically(path, JSON.stringify(config, null, 2) + '\n', mode);
+}
+
+/**
+ * Take the stored token out of Cursor's config, leaving the entry, the URL and
+ * everyone else's servers as they were.
+ *
+ * Claude Code and Codex resolve their credential through the CLI on every
+ * request, so deleting the CLI's credentials cuts them off. Cursor holds the
+ * token literally, and logout deliberately reports success when server-side
+ * revocation fails — offline, say — which is exactly the case where that token
+ * is still live. Leaving it on disk would mean Cursor keeps authenticating as
+ * an account the user believes they logged out of.
+ *
+ * Best effort throughout: logout must clear local credentials even when this
+ * file is missing, unreadable, or something the CLI did not write.
+ */
+export function clearCursorCredential(path = cursorConfigPath()): boolean {
+  if (!existsSync(path)) return false;
+  let config: unknown;
   try {
-    writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', { mode });
-    // writeFileSync only applies `mode` when it CREATES the file; a leftover
-    // tmp from an interrupted run would keep its old permissions.
-    chmodSync(tmp, mode);
-    renameSync(tmp, path);
-  } catch (err) {
-    // Windows refuses to replace a file another process holds open, where posix
-    // allows it, so a running Cursor is the likeliest cause there. Either way
-    // the existing config is untouched — clean up the temp file and say so.
-    try {
-      unlinkSync(tmp);
-    } catch {
-      /* best effort */
-    }
-    throw new ConfigurationError(
-      `Cannot write ${path}: ${(err as Error).message}. ` +
-        'Your existing config is unchanged. Close Cursor if it is running, check you can write that file, and try again.',
-      'MCP_INSTALL_FAILED',
-    );
+    config = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return false;
   }
+  if (!isPlainObject(config) || !isPlainObject(config.mcpServers)) return false;
+  const entry = config.mcpServers[MCP_NAME];
+  if (!isPlainObject(entry) || !('headers' in entry)) return false;
+  delete entry.headers;
+  try {
+    writeAtomically(path, JSON.stringify(config, null, 2) + '\n', statSync(path).mode);
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 function configure(client: ClientId, token?: string): void {

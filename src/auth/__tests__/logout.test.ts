@@ -8,7 +8,21 @@ import { logoutCommand } from '../logout.js';
 const removeClaudeMcpMock = vi.hoisted(() =>
   vi.fn<() => { ok: boolean; detail?: string }>(() => ({ ok: true })),
 );
-vi.mock('../../commands/mcp.js', () => ({ removeClaudeMcp: removeClaudeMcpMock }));
+// Partial: logout also reaches commands/agent.js, which imports MCP_NAME and
+// mcpUrl from here.
+vi.mock('../../commands/mcp.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../commands/mcp.js')>()),
+  removeClaudeMcp: removeClaudeMcpMock,
+}));
+
+// clearCursorCredential resolves Cursor's path from homedir(), which cannot be
+// spied on in ESM. Its behaviour is covered against an explicit path in
+// commands/__tests__/agent.test.ts; what logout owes is CALLING it.
+const clearCursorCredentialMock = vi.hoisted(() => vi.fn(() => false));
+vi.mock('../../commands/agent.js', () => ({
+  clearCursorCredential: clearCursorCredentialMock,
+  registerAgentCommand: vi.fn(),
+}));
 
 // logout against the real file-backed store in a temp HOOKMYAPP_CONFIG_DIR
 // (same seam as agent-refresh.test.ts / the storage tests).
@@ -19,6 +33,7 @@ let logSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   removeClaudeMcpMock.mockReset().mockReturnValue({ ok: true });
+  clearCursorCredentialMock.mockClear();
   DIR = mkdtempSync(join(tmpdir(), 'hma-logout-'));
   process.env.HOOKMYAPP_CONFIG_DIR = DIR;
   logSpy = vi.spyOn(console, 'log').mockReturnValue(undefined);
@@ -48,6 +63,21 @@ describe('logout', () => {
 
     expect(existsSync(credsPath)).toBe(false);
     expect(logSpy.mock.calls.flat().join('')).toMatch(/Logged out/);
+  });
+
+  test("strips Cursor's stored token, the one credential that outlives logout", async () => {
+    // Claude Code and Codex ask the CLI per request, so deleting
+    // credentials.json cuts them off. Cursor holds the token literally, and
+    // the server-side revoke is best-effort — an offline logout would leave a
+    // live credential sitting in Cursor's config.
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }),
+    );
+
+    await runLogout();
+
+    expect(clearCursorCredentialMock).toHaveBeenCalled();
   });
 
   test('already logged out → exits cleanly', async () => {
