@@ -282,7 +282,23 @@ describe('agent setup', () => {
     expect(after.mcpServers.someone_else.headers.Authorization).toBe('Bearer theirs');
   });
 
-  test('logout leaves an unreadable or unrelated Cursor config alone', () => {
+  // POSIX only: an unreadable file cannot be built on Windows this way.
+  test.skipIf(process.platform === 'win32')('logout reports a Cursor config it cannot even read', () => {
+    // The file is there and we cannot see inside it, so we cannot say whether
+    // a live token is in it — and Cursor may already have loaded one. That is
+    // a warning, not a clean logout.
+    const path = tmpFile('mcp.json');
+    writeFileSync(path, JSON.stringify({ mcpServers: {} }));
+    chmodSync(path, 0o000);
+
+    try {
+      expect(clearCursorCredential(path)).toBe('failed');
+    } finally {
+      chmodSync(path, 0o600);
+    }
+  });
+
+  test('logout leaves an unrelated Cursor config alone', () => {
     // Best effort: logout must clear local credentials even when this file is
     // missing, not JSON, or something the CLI never wrote.
     const missing = tmpFile('mcp.json');

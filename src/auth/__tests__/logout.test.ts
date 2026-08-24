@@ -137,6 +137,24 @@ describe('logout', () => {
     expect(logSpy.mock.calls.flat().join('')).toMatch(/Cursor/);
   });
 
+  test('reports BOTH cleanup failures, not just the first', async () => {
+    // The Claude failure is the less security-sensitive of the two. Letting it
+    // take the single warning slot would hide that Cursor still holds a
+    // usable bearer token, and how to remove it.
+    removeClaudeMcpMock.mockReturnValue({ ok: false, detail: 'Claude MCP cleanup timed out' });
+    clearCursorCredentialMock.mockReturnValue('failed');
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }),
+    );
+
+    await runLogout();
+
+    const out = logSpy.mock.calls.flat().join('');
+    expect(out).toMatch(/Claude MCP cleanup timed out/);
+    expect(out).toMatch(/Cursor/);
+  });
+
   test('reports MCP cleanup failure after credentials are removed', async () => {
     removeClaudeMcpMock.mockReturnValue({ ok: false, detail: 'Claude MCP cleanup timed out' });
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);

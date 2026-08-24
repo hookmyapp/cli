@@ -53,23 +53,31 @@ export function logoutCommand(program: Command): void {
       // A Cursor config we could not rewrite still holds a usable token, and
       // the revoke above is best-effort — so this is a real warning, not a
       // tidiness note.
-      const cursorWarning =
+      // Both, not one: the Claude failure is the less security-sensitive of
+      // the two, and letting it win the slot would hide the fact that Cursor
+      // still holds a usable bearer token.
+      const warnings = [
+        mcpCleanup.ok ? undefined : mcpCleanup.detail,
         cursorCleanup === 'failed'
           ? `Could not remove the HookMyApp token from Cursor's config. Delete the "headers" entry under mcpServers.hookmyapp by hand.`
-          : undefined;
-      const warning = mcpCleanup.ok ? cursorWarning : mcpCleanup.detail;
+          : undefined,
+      ].filter((w): w is string => Boolean(w));
 
       if (json) {
         process.stdout.write(
           JSON.stringify({
-            status: warning ? 'logged_out_with_warning' : 'logged_out',
+            status: warnings.length > 0 ? 'logged_out_with_warning' : 'logged_out',
             revoked,
             mcpCleanup,
             cursorCleanup,
           }) + '\n',
         );
       } else {
-        console.log(warning ? `\n✓ Logged out\n⚠ ${warning}\n` : '\n✓ Logged out\n');
+        console.log(
+          warnings.length > 0
+            ? `\n✓ Logged out\n${warnings.map((w) => `⚠ ${w}`).join('\n')}\n`
+            : '\n✓ Logged out\n',
+        );
       }
     });
 

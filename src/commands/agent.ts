@@ -262,11 +262,21 @@ export type CursorCleanup = 'cleared' | 'nothing' | 'failed';
 
 export function clearCursorCredential(path = cursorConfigPath()): CursorCleanup {
   if (!existsSync(path)) return 'nothing';
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch {
+    // The file is THERE and we cannot see inside it, so we cannot say whether
+    // a live token is in it — and Cursor, which may have read it before the
+    // permissions changed, may already be holding one. Report a failure.
+    return 'failed';
+  }
   let config: unknown;
   try {
-    config = JSON.parse(readFileSync(path, 'utf8'));
+    config = JSON.parse(raw);
   } catch {
-    // Not something the CLI wrote, or not readable — nothing of ours to clear.
+    // Unparseable: not something this CLI wrote, and not something Cursor can
+    // load either, so there is no live token in play to warn about.
     return 'nothing';
   }
   if (!isPlainObject(config) || !isPlainObject(config.mcpServers)) return 'nothing';

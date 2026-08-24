@@ -207,6 +207,7 @@ describe('the token handed to MCP clients', () => {
     // leaves the old account's key live for good: the next mint authenticates
     // as the NEW session, so its by-name sweep cannot see it.
     writeFileSync(credentialPath(), JSON.stringify(minted));
+    vi.mocked(apiClient).mockResolvedValueOnce([]); // list: nothing under this name
 
     await revokePreviousMcpCredential();
 
@@ -221,16 +222,39 @@ describe('the token handed to MCP clients', () => {
     // Offline, or an expired outgoing session. The key does not belong to the
     // session about to be written either way, and a login must not be blocked.
     writeFileSync(credentialPath(), JSON.stringify(minted));
-    vi.mocked(apiClient).mockRejectedValueOnce(new Error('offline'));
+    vi.mocked(apiClient).mockRejectedValue(new Error('offline'));
 
     await expect(revokePreviousMcpCredential()).resolves.toBeUndefined();
     expect(readMcpCredential()).toBeNull();
   });
 
-  test('does nothing when there is no previous key', async () => {
+  test('revokes nothing when this machine owns no key', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([]); // list: none
+
     await revokePreviousMcpCredential();
 
-    expect(apiClient).not.toHaveBeenCalled();
+    expect(vi.mocked(apiClient).mock.calls.filter((c) => c[1]?.method === 'DELETE')).toHaveLength(0);
+  });
+
+  test('sweeps a racing mint the file never recorded', async () => {
+    // Two first-use mints racing leave a key this machine owns under the same
+    // name but only one id in the file. Revoking just the recorded id would
+    // leave the other live in the account being left behind — and it may be
+    // the token a running Cursor already loaded.
+    const name = credentialName();
+    vi.mocked(apiClient).mockResolvedValueOnce([
+      { publicId: 'ac_unrecorded', name },
+      { publicId: 'ac_theirs', name: 'other-laptop (HookMyApp CLI)' },
+    ]);
+
+    await revokePreviousMcpCredential();
+
+    const deleted = vi
+      .mocked(apiClient)
+      .mock.calls.filter((c) => c[1]?.method === 'DELETE')
+      .map((c) => c[0]);
+    expect(deleted).toContain('/agent/credentials/ac_unrecorded');
+    expect(deleted).not.toContain('/agent/credentials/ac_theirs');
   });
 
   test('deleting the local copy leaves no file behind and is safe to repeat', () => {

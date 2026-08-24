@@ -133,15 +133,24 @@ export async function revokeKeysForThisMachine(name = credentialName()): Promise
  * not belong to the session being written.
  */
 export async function revokePreviousMcpCredential(): Promise<void> {
+  // By NAME, not just by the recorded id — the same reason logout sweeps: two
+  // first-use mints racing each other leave a key this machine owns that the
+  // file never recorded. Revoking only what we remember would leave that one
+  // live in the account being left behind, and it may well be the token a
+  // running Cursor already loaded.
+  await revokeKeysForThisMachine();
   const stored = readMcpCredential();
-  if (!stored) return;
-  try {
-    const { apiClient } = await import('../api/client.js');
-    await apiClient(`/agent/credentials/${encodeURIComponent(stored.publicId)}`, {
-      method: 'DELETE',
-    });
-  } catch {
-    // Offline, expired session, or already revoked.
+  if (stored) {
+    // Belt and braces: a key minted under an older naming scheme, or renamed
+    // from the dashboard, is not caught by the sweep above.
+    try {
+      const { apiClient } = await import('../api/client.js');
+      await apiClient(`/agent/credentials/${encodeURIComponent(stored.publicId)}`, {
+        method: 'DELETE',
+      });
+    } catch {
+      // Offline, expired session, or already revoked.
+    }
   }
   deleteMcpCredential();
 }
