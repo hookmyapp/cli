@@ -7,6 +7,9 @@ vi.mock('open', () => ({ default: vi.fn(async () => undefined) }));
 
 vi.mock('../store.js', () => ({
   saveCredentials: vi.fn(async () => undefined),
+  // A replacement login revokes the outgoing session's credential first, so
+  // the login path reads the store before it writes.
+  readCredentials: vi.fn(async () => null),
   peekIdentity: vi.fn(async () => null),
 }));
 

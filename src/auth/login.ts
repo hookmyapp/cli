@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { saveCredentials, peekIdentity } from './store.js';
+import { revokeCredentialsForReplacedSession } from './mcp-credential.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
@@ -75,6 +76,11 @@ async function pollForTokens(opts: {
 
     if (res.ok) {
       const data = await res.json();
+      // BEFORE saveCredentials: revoking authenticates as the session that
+      // minted the key, and a login replaces the session. `login --code`
+      // supports switching accounts without a logout, so without this the old
+      // account's key stays live and every client keeps using it.
+      await revokeCredentialsForReplacedSession();
       await saveCredentials({
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
@@ -92,7 +98,10 @@ async function pollForTokens(opts: {
         email: u.email,
         name: fullName.length > 0 ? fullName : undefined,
       });
-      maybeSetupAgents();
+      // Agent setup does NOT happen here. The device-code grant issues a
+      // user-scoped token with no org claim, and the mint needs one — so a
+      // setup at this point silently configures Cursor with no credential.
+      // runWizard does it after rescopeWorkspaceToken.
       console.log(`\n${c.success(icon.success)} Logged in successfully\n`);
       return;
     }
@@ -139,6 +148,10 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
         `${cliCommandPrefix()} workspace new <name>`,
       )}`,
     );
+    // No org means no credential to mint, but the server URL is still worth
+    // writing: the clients that resolve their token per request pick one up as
+    // soon as there is a workspace.
+    await maybeSetupAgents();
     return;
   }
 
@@ -195,6 +208,14 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
   } catch {
     // non-fatal: next apiClient call will surface auth errors
   }
+
+  // Configure the coding agents HERE, not at the point the session was saved.
+  // The mint needs the org claim rescopeWorkspaceToken just added; before it,
+  // a multi-workspace account cannot mint at all and Cursor — which needs the
+  // token written into its config — ends up with no credential and nothing
+  // that retries. Ahead of every early return below, so --json and --next
+  // paths configure too.
+  await maybeSetupAgents();
 
   // Step 2 — non-interactive next steps.
   //
@@ -426,6 +447,9 @@ export async function runBootstrapCodeExchange(
 
   const data = (await res.json()) as ExchangeBootstrapResponseDto;
 
+  // See the device flow above: revoke the outgoing session's key while its
+  // credentials can still authenticate the request.
+  await revokeCredentialsForReplacedSession();
   await saveCredentials({
     accessToken: data.accessToken,
     refreshToken: data.refreshToken,
@@ -446,7 +470,8 @@ export async function runBootstrapCodeExchange(
     activeWorkspaceId: data.workspace.id,
     activeWorkspaceSlug: data.workspace.name,
   });
-  maybeSetupAgents();
+  // Agent setup happens in runWizard at the end of this function, once the
+  // workspace is settled — same single point the device flow uses.
 
   // alias machineId → workosSub once per (machine, user) and
   // emit cli_logged_in. workspace publicId is already on disk above so
@@ -577,6 +602,9 @@ async function persistAgentCredential(
   email: string,
   json?: boolean,
 ): Promise<void> {
+  // This session IS an org credential, so nothing gets minted — but a key a
+  // previous WorkOS session minted must not outlive it.
+  await revokeCredentialsForReplacedSession();
   await saveCredentials({
     accessToken: cred.accessToken,
     refreshToken: '',
@@ -587,7 +615,7 @@ async function persistAgentCredential(
     email,
   });
   await revalidateActiveWorkspace(json);
-  maybeSetupAgents();
+  await maybeSetupAgents();
   if (json) {
     process.stdout.write(
       JSON.stringify({

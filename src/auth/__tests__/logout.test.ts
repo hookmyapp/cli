@@ -8,7 +8,21 @@ import { logoutCommand } from '../logout.js';
 const removeClaudeMcpMock = vi.hoisted(() =>
   vi.fn<() => { ok: boolean; detail?: string }>(() => ({ ok: true })),
 );
-vi.mock('../../commands/mcp.js', () => ({ removeClaudeMcp: removeClaudeMcpMock }));
+// Partial: logout also reaches commands/agent.js, which imports MCP_NAME and
+// mcpUrl from here.
+vi.mock('../../commands/mcp.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../commands/mcp.js')>()),
+  removeClaudeMcp: removeClaudeMcpMock,
+}));
+
+// clearCursorCredential resolves Cursor's path from homedir(), which cannot be
+// spied on in ESM. Its behaviour is covered against an explicit path in
+// commands/__tests__/agent.test.ts; what logout owes is CALLING it.
+const clearCursorCredentialMock = vi.hoisted(() => vi.fn(() => 'nothing'));
+vi.mock('../../commands/agent.js', () => ({
+  clearCursorCredential: clearCursorCredentialMock,
+  registerAgentCommand: vi.fn(),
+}));
 
 // logout against the real file-backed store in a temp HOOKMYAPP_CONFIG_DIR
 // (same seam as agent-refresh.test.ts / the storage tests).
@@ -19,6 +33,9 @@ let logSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   removeClaudeMcpMock.mockReset().mockReturnValue({ ok: true });
+  // mockReset, not mockClear: mockClear keeps a return value a previous test
+  // set, so a 'failed' would leak into every test after it.
+  clearCursorCredentialMock.mockReset().mockReturnValue('nothing');
   DIR = mkdtempSync(join(tmpdir(), 'hma-logout-'));
   process.env.HOOKMYAPP_CONFIG_DIR = DIR;
   logSpy = vi.spyOn(console, 'log').mockReturnValue(undefined);
@@ -50,6 +67,21 @@ describe('logout', () => {
     expect(logSpy.mock.calls.flat().join('')).toMatch(/Logged out/);
   });
 
+  test("strips Cursor's stored token, the one credential that outlives logout", async () => {
+    // Claude Code and Codex ask the CLI per request, so deleting
+    // credentials.json cuts them off. Cursor holds the token literally, and
+    // the server-side revoke is best-effort — an offline logout would leave a
+    // live credential sitting in Cursor's config.
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }),
+    );
+
+    await runLogout();
+
+    expect(clearCursorCredentialMock).toHaveBeenCalled();
+  });
+
   test('already logged out → exits cleanly', async () => {
     expect(existsSync(join(DIR, 'credentials.json'))).toBe(false);
 
@@ -70,9 +102,59 @@ describe('logout', () => {
       status: 'logged_out',
       revoked: false,
       mcpCleanup: { ok: true },
+      cursorCleanup: 'nothing',
     });
     // The human check line must NOT be printed in --json mode.
     expect(logSpy.mock.calls.flat().join('')).not.toMatch(/Logged out/);
+  });
+
+  test('warns when Cursor still holds a live token it could not remove', async () => {
+    // 'failed' is not 'nothing': the token IS in that file and is still there.
+    // Reporting a clean logout would tell the user they are signed out of a
+    // client that can still reach their workspace.
+    clearCursorCredentialMock.mockReturnValue('failed');
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }),
+    );
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    await runLogout(['--json']);
+
+    const written = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+    const payload = JSON.parse(written.trim());
+    expect(payload.status).toBe('logged_out_with_warning');
+    expect(payload.cursorCleanup).toBe('failed');
+  });
+
+  test('says so in human mode too', async () => {
+    clearCursorCredentialMock.mockReturnValue('failed');
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }),
+    );
+
+    await runLogout();
+
+    expect(logSpy.mock.calls.flat().join('')).toMatch(/Cursor/);
+  });
+
+  test('reports BOTH cleanup failures, not just the first', async () => {
+    // The Claude failure is the less security-sensitive of the two. Letting it
+    // take the single warning slot would hide that Cursor still holds a
+    // usable bearer token, and how to remove it.
+    removeClaudeMcpMock.mockReturnValue({ ok: false, detail: 'Claude MCP cleanup timed out' });
+    clearCursorCredentialMock.mockReturnValue('failed');
+    writeFileSync(
+      join(DIR, 'credentials.json'),
+      JSON.stringify({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }),
+    );
+
+    await runLogout();
+
+    const out = logSpy.mock.calls.flat().join('');
+    expect(out).toMatch(/Claude MCP cleanup timed out/);
+    expect(out).toMatch(/Cursor/);
   });
 
   test('reports MCP cleanup failure after credentials are removed', async () => {

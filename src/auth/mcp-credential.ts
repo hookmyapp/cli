@@ -119,6 +119,65 @@ export async function revokeKeysForThisMachine(name = credentialName()): Promise
   return revoked;
 }
 
+/**
+ * Revoke and forget the credential belonging to a session that is about to be
+ * replaced.
+ *
+ * Must run BEFORE the new session is written. The DELETE authenticates as the
+ * session that minted the key, so once the new credentials are on disk the old
+ * account's key is unreachable and stays live indefinitely — and a running
+ * Cursor holds its loaded token until it restarts, so that is not theoretical.
+ *
+ * Best effort on the network call: offline, or a key already revoked from the
+ * dashboard, must not block a login. The local copy goes either way — it does
+ * not belong to the session being written.
+ */
+/** Best-effort undo for a key we minted but are not going to keep. */
+async function revokeMinted(publicId: string): Promise<void> {
+  try {
+    const { apiClient } = await import('../api/client.js');
+    await apiClient(`/agent/credentials/${encodeURIComponent(publicId)}`, { method: 'DELETE' });
+  } catch {
+    // The credentials it would authenticate with may be the ones just deleted.
+  }
+}
+
+export async function revokePreviousMcpCredential(): Promise<void> {
+  // By NAME, not just by the recorded id — the same reason logout sweeps: two
+  // first-use mints racing each other leave a key this machine owns that the
+  // file never recorded. Revoking only what we remember would leave that one
+  // live in the account being left behind, and it may well be the token a
+  // running Cursor already loaded.
+  await revokeKeysForThisMachine();
+
+  const stored = readMcpCredential();
+  // Belt and braces: a key minted under an older naming scheme, or renamed
+  // from the dashboard, is not caught by the sweep above.
+  if (stored) await revokeMinted(stored.publicId);
+  deleteMcpCredential();
+}
+
+/**
+ * Everything above, PLUS the session's own credential when that session IS one.
+ *
+ * An OTP login (`login --email`) stores an org credential rather than a JWT, so
+ * the token handed to the MCP clients is the session itself: there is no minted
+ * key to sweep and nothing in mcp-credential.json. Logout revokes it by id, and
+ * a replacement login has to as well or it stays live with Cursor holding it.
+ *
+ * Deliberately NOT part of revokePreviousMcpCredential: a workspace switch
+ * calls that one, and there the session is staying exactly where it is.
+ * Revoking it there kills the CLI's own credential — `workspace use` would
+ * report success and leave every later command, and every agent, on a 401.
+ */
+export async function revokeCredentialsForReplacedSession(): Promise<void> {
+  const creds = await readCredentials();
+  if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
+    await revokeMinted(creds.credentialPublicId);
+  }
+  await revokePreviousMcpCredential();
+}
+
 async function mint(): Promise<StoredMcpCredential> {
   const { apiClient } = await import('../api/client.js');
   const name = credentialName();
@@ -144,16 +203,6 @@ async function mint(): Promise<StoredMcpCredential> {
   return { accessToken: created.token, publicId: created.publicId };
 }
 
-/** Best-effort undo for a key we minted but are not going to keep. */
-async function revokeMinted(publicId: string): Promise<void> {
-  try {
-    const { apiClient } = await import('../api/client.js');
-    await apiClient(`/agent/credentials/${encodeURIComponent(publicId)}`, { method: 'DELETE' });
-  } catch {
-    // The credentials it would authenticate with may be the ones just deleted.
-  }
-}
-
 /**
  * The Bearer token to give an MCP client. Mints one on first use and reuses it
  * afterwards.
@@ -164,6 +213,24 @@ async function revokeMinted(publicId: string): Promise<void> {
  * Revoking through `hookmyapp credentials revoke` DOES clear it, because that
  * path knows which key it just killed.
  */
+function sessionIdentity(creds: {
+  accessToken: string;
+  credentialPublicId?: string;
+}): string | null {
+  if (creds.credentialPublicId) return `agent:${creds.credentialPublicId}`;
+  try {
+    // `sub` + the active org, NOT the raw token: a routine refresh replaces
+    // the token without changing who the session is, and treating that as a
+    // replacement would throw away a perfectly good key.
+    const payload = JSON.parse(
+      Buffer.from(creds.accessToken.split('.')[1], 'base64').toString('utf-8'),
+    ) as { sub?: string; org_id?: string };
+    return `${payload.sub ?? ''}:${payload.org_id ?? ''}`;
+  } catch {
+    return null;
+  }
+}
+
 export async function getMcpAccessToken(): Promise<string> {
   const creds = await readCredentials();
   if (!creds) throw new AuthError('Not logged in. Run: hookmyapp login');
@@ -174,13 +241,21 @@ export async function getMcpAccessToken(): Promise<string> {
   const stored = readMcpCredential();
   if (stored) return stored.accessToken;
 
+  const before = sessionIdentity(creds);
   const minted = await mint();
-  // Re-check: a logout during the mint has already swept this machine's keys,
-  // and the one we just created came after that sweep — live, and about to be
-  // written to a machine that is supposed to be logged out.
-  if (!(await readCredentials())) {
+  // Re-check the SESSION, not merely that one exists. A logout during the mint
+  // swept this machine's keys before ours was created, so it is live on a
+  // machine meant to be logged out. A replacement login is worse: the new
+  // session is non-null, so a null check passes and this would persist — and
+  // hand Cursor — a key belonging to the account that was just replaced.
+  const after = await readCredentials();
+  if (!after || sessionIdentity(after) !== before) {
     await revokeMinted(minted.publicId);
-    throw new AuthError('Logged out while setting up MCP access. Run: hookmyapp login');
+    throw new AuthError(
+      after
+        ? 'The session changed while setting up MCP access. Run: hookmyapp agent setup'
+        : 'Logged out while setting up MCP access. Run: hookmyapp login',
+    );
   }
   const path = getMcpCredentialFile();
   safeWriteFileSync(path, JSON.stringify(minted, null, 2));

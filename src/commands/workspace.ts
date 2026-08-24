@@ -157,11 +157,21 @@ export async function switchActiveWorkspace(
   // Re-scope the token to the target org BEFORE persisting the switch, so
   // a failed refresh never leaves config pointing at a workspace the token
   // isn't valid for (previously config was written first → poisoned state).
+  // BEFORE the rescope. The MCP credential belongs to the workspace it was
+  // minted for, and revoking it authenticates as that workspace — once the JWT
+  // carries the new org, the old key can no longer be listed or deleted and
+  // would stay live for good, with a running Cursor still holding it.
+  const { revokePreviousMcpCredential } = await import('../auth/mcp-credential.js');
+  await revokePreviousMcpCredential();
+
   await rescopeWorkspaceToken(workspace.id);
   writeWorkspaceConfig({
     activeWorkspaceId: workspace.id,
     activeWorkspaceSlug: workspace.name,
   });
+  // Now that the session carries the new org, give the clients a key for it.
+  const { repointAgentsAtActiveWorkspace } = await import('./agent.js');
+  await repointAgentsAtActiveWorkspace();
   return workspace;
 }
 
@@ -239,6 +249,10 @@ export function registerWorkspaceCommand(program: Command): void {
       // Re-scope the JWT to the newly-created workspace's org (server-side,
       // AIT-182) BEFORE persisting the switch — a failed rescope must not
       // leave config pointing at a workspace the token isn't valid for.
+      // Same ordering as switchActiveWorkspace: revoke while the session still
+      // belongs to the workspace the key was minted for.
+      const { revokePreviousMcpCredential } = await import('../auth/mcp-credential.js');
+      await revokePreviousMcpCredential();
       await rescopeWorkspaceToken(result.id);
       // The create endpoint returns the public DTO where `id` IS the ws_
       // publicId (AIT-147) — safe to persist directly.
@@ -246,6 +260,8 @@ export function registerWorkspaceCommand(program: Command): void {
         activeWorkspaceId: result.id,
         activeWorkspaceSlug: result.name,
       });
+      const { repointAgentsAtActiveWorkspace } = await import('./agent.js');
+      await repointAgentsAtActiveWorkspace();
       if (!program.opts().json) {
         console.log(`Created workspace "${result.name}" and switched to it`);
       } else {
