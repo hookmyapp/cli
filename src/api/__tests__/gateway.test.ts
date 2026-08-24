@@ -10,7 +10,14 @@ vi.mock('../../config/env-profiles.js', () => ({
 }));
 
 import { gatewayRequest, substitutePath } from '../gateway.js';
-import { ConflictError, exitCodeFor } from '../../output/error.js';
+import {
+  ApiError,
+  AuthError,
+  ConflictError,
+  ForbiddenError,
+  RateLimitError,
+  exitCodeFor,
+} from '../../output/error.js';
 
 const waChannel = {
   id: 'ch_abc12345', type: 'whatsapp', workspaceId: 'ws_T0000001',
@@ -71,6 +78,82 @@ describe('gatewayRequest', () => {
     );
     await expect(gatewayRequest({ channel: waChannel, method: 'POST', path: '/{phone_number_id}/messages', body: {} }))
       .rejects.toThrow(/Invalid parameter/);
+  });
+
+  it('preserves a non-retryable HookMyApp plan-limit error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        statusCode: 403,
+        code: 'CHANNEL_USAGE_LIMIT_EXCEEDED',
+        message: 'Upgrade your plan or add a top-up to resume.',
+      }), { status: 403, headers: { 'content-type': 'application/json' } }),
+    );
+
+    const err = await gatewayRequest({ channel: waChannel, method: 'GET', path: '/me' })
+      .then(() => null, (error: unknown) => error);
+    expect(err).toBeInstanceOf(ForbiddenError);
+    expect(err).toMatchObject({
+      code: 'CHANNEL_USAGE_LIMIT_EXCEEDED',
+      statusCode: 403,
+      userMessage: 'Upgrade your plan or add a top-up to resume.',
+    });
+    expect(exitCodeFor(err)).toBe(3);
+  });
+
+  it('preserves a HookMyApp authentication code and exit tier', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        statusCode: 401,
+        code: 'ACCESS_TOKEN_INVALID',
+        message: 'Invalid access token',
+      }), { status: 401, headers: { 'content-type': 'application/json' } }),
+    );
+
+    const err = await gatewayRequest({ channel: waChannel, method: 'GET', path: '/me' })
+      .then(() => null, (error: unknown) => error);
+    expect(err).toBeInstanceOf(AuthError);
+    expect(err).toMatchObject({ code: 'ACCESS_TOKEN_INVALID', statusCode: 401 });
+    expect(exitCodeFor(err)).toBe(4);
+  });
+
+  it('preserves a retryable HookMyApp throttle code', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        statusCode: 429,
+        code: 'GATEWAY_RATE_LIMITED',
+        message: 'Rate limit exceeded. Retry shortly.',
+        retry_after_seconds: 12,
+      }), { status: 429, headers: { 'content-type': 'application/json', 'retry-after': '1' } }),
+    );
+
+    const err = await gatewayRequest({ channel: waChannel, method: 'GET', path: '/me' })
+      .then(() => null, (error: unknown) => error);
+    expect(err).toBeInstanceOf(RateLimitError);
+    expect(err).toMatchObject({
+      code: 'GATEWAY_RATE_LIMITED',
+      statusCode: 429,
+      details: { retry_after_seconds: 12 },
+    });
+  });
+
+  it('preserves a temporary Meta outage code', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        statusCode: 503,
+        code: 'META_TEMPORARILY_UNAVAILABLE',
+        message: 'Meta is temporarily unavailable. Retry shortly.',
+        retry_after_seconds: 60,
+      }), { status: 503, headers: { 'content-type': 'application/json', 'retry-after': '60' } }),
+    );
+
+    const err = await gatewayRequest({ channel: waChannel, method: 'GET', path: '/me' })
+      .then(() => null, (error: unknown) => error);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({
+      code: 'META_TEMPORARILY_UNAVAILABLE',
+      statusCode: 503,
+      details: { retry_after_seconds: 60 },
+    });
   });
 
   it('explains a Meta account restriction instead of blaming the request body', async () => {
