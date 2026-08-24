@@ -8,6 +8,8 @@ import { ValidationError } from '../output/error.js';
 import { registerInstagramComments } from './instagram-comments.js';
 import { registerInstagramPublish } from './instagram-publish.js';
 import { registerInstagramInsights } from './instagram-insights.js';
+import { registerInstagramContent } from './instagram-content.js';
+import { registerInstagramInbox } from './instagram-inbox.js';
 
 export interface IgSendOpts {
   channel?: string;
@@ -106,7 +108,7 @@ export function registerInstagramCommand(program: Command): Command {
   const instagram = program
     .command('instagram')
     .alias('ig')
-    .description('Instagram comments, direct messages, publishing, and insights');
+    .description('Instagram posts, mentions, comments, direct messages, publishing, and insights');
 
   addExamples(
     instagram,
@@ -116,6 +118,8 @@ EXAMPLES:
   $ hookmyapp ig --help
   $ hookmyapp instagram messages send --channel @acme --to <igsid> --text "hi"
   $ hookmyapp instagram comments reply --channel @acme --comment <id> --text "thanks!"
+  $ hookmyapp instagram media --channel @acme
+  $ hookmyapp instagram mentions --channel @acme
 `,
   );
 
@@ -123,6 +127,8 @@ EXAMPLES:
   registerInstagramComments(instagram);
   registerInstagramPublish(instagram);
   registerInstagramInsights(instagram);
+  registerInstagramContent(instagram);
+  registerInstagramInbox(instagram);
 
   return instagram;
 }
