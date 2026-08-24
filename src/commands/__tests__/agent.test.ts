@@ -13,10 +13,16 @@ vi.mock('../../config/env-profiles.js', () => ({
   getEffectiveApiUrl: () => 'https://api.hookmyapp.com',
   resolveEnv: () => 'production',
 }));
+const getMcpAccessTokenMock = vi.hoisted(() => vi.fn(async () => 'hmok_new_ws'));
+vi.mock('../../auth/mcp-credential.js', () => ({
+  getMcpAccessToken: getMcpAccessTokenMock,
+  revokePreviousMcpCredential: vi.fn(async () => undefined),
+}));
 
 import {
   clearCursorCredential,
   configureCursor,
+  repointAgentsAtActiveWorkspace,
   detectClients,
   installSkills,
   maybeSetupAgents,
@@ -403,6 +409,43 @@ describe('agent setup', () => {
     const detail = JSON.parse(String(write.mock.calls.at(-1)?.[0])).clients[0].detail;
     expect(detail).not.toMatch(/sign in|mcp login/i);
     expect(detail).toContain('restart');
+  });
+
+  test('a workspace switch gives Cursor a key for the new workspace', async () => {
+    const path = tmpFile('mcp.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        mcpServers: { hookmyapp: { url: 'https://api.hookmyapp.com/mcp', headers: { Authorization: 'Bearer hmok_old_ws' } } },
+      }),
+    );
+    getMcpAccessTokenMock.mockResolvedValueOnce('hmok_new_ws');
+
+    await repointAgentsAtActiveWorkspace(path);
+
+    const after = JSON.parse(readFileSync(path, 'utf8'));
+    expect(after.mcpServers.hookmyapp.headers.Authorization).toBe('Bearer hmok_new_ws');
+  });
+
+  test('a failed re-mint leaves no token rather than the old workspace\'s', async () => {
+    // The revoke before the rescope is best effort, so the old token may still
+    // be live. Keeping it would hand Cursor working access to the workspace
+    // the user just switched away from — a silent failure. No header is a
+    // visible one, and `hookmyapp agent setup` fixes it.
+    const path = tmpFile('mcp.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        mcpServers: { hookmyapp: { url: 'https://api.hookmyapp.com/mcp', headers: { Authorization: 'Bearer hmok_old_ws' } } },
+      }),
+    );
+
+    getMcpAccessTokenMock.mockRejectedValueOnce(new Error('offline'));
+
+    await repointAgentsAtActiveWorkspace(path);
+
+    const after = JSON.parse(readFileSync(path, 'utf8'));
+    expect(after.mcpServers.hookmyapp).toEqual({ url: 'https://api.hookmyapp.com/mcp' });
   });
 
   test('rejects an unknown client', async () => {

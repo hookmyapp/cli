@@ -33,7 +33,9 @@ let logSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   removeClaudeMcpMock.mockReset().mockReturnValue({ ok: true });
-  clearCursorCredentialMock.mockClear();
+  // mockReset, not mockClear: mockClear keeps a return value a previous test
+  // set, so a 'failed' would leak into every test after it.
+  clearCursorCredentialMock.mockReset().mockReturnValue('nothing');
   DIR = mkdtempSync(join(tmpdir(), 'hma-logout-'));
   process.env.HOOKMYAPP_CONFIG_DIR = DIR;
   logSpy = vi.spyOn(console, 'log').mockReturnValue(undefined);

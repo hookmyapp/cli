@@ -407,10 +407,15 @@ async function resolveMcpToken(): Promise<string | undefined> {
  *
  * Best effort: a switch that worked must not fail here.
  */
-export async function repointAgentsAtActiveWorkspace(): Promise<void> {
+export async function repointAgentsAtActiveWorkspace(path = cursorConfigPath()): Promise<void> {
+  if (!existsSync(path)) return;
+  // Strip the old header BEFORE trying to mint a replacement. The revoke that
+  // ran before the rescope is best effort, so the previous workspace's token
+  // may still be live — and if the mint below fails, leaving it in place hands
+  // Cursor working access to the workspace the user just switched away from.
+  // No header is a visible failure; the wrong header is a silent one.
+  clearCursorCredential(path);
   try {
-    const path = cursorConfigPath();
-    if (!existsSync(path)) return;
     const token = await resolveMcpToken();
     if (token) configureCursor(path, token);
   } catch {
