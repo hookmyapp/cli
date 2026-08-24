@@ -3,7 +3,7 @@ import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
 import { NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
-import { isTelemetryEnabled } from '../observability/telemetry.js';
+import { isTelemetryEnabled, maybePrintFirstRunDisclosure } from '../observability/telemetry.js';
 
 /**
  * AIT-337 — `hookmyapp support`: open and follow support tickets from the CLI
@@ -379,8 +379,8 @@ export function registerFeedbackCommand(program: Command): void {
     .option('--surface <surface>', 'Where it happened: cli, mcp, docs, dashboard, api', 'cli')
     .option('--json', 'Output machine-readable JSON')
     .action(async (message: string | undefined, opts: { surface: string; json?: boolean }) => {
-      const body = message ?? (await readStdinBody());
-      if (!body) throw new ValidationError('Provide the feedback as an argument or pipe it on stdin.');
+      // Validate and check the switch BEFORE touching stdin: otherwise a typo'd
+      // --surface blocks on a pipe instead of reporting itself.
       if (!SURFACES.includes(opts.surface)) {
         throw new ValidationError(`--surface must be one of: ${SURFACES.join(', ')}.`);
       }
@@ -390,15 +390,26 @@ export function registerFeedbackCommand(program: Command): void {
         console.log(opts.json || program.opts().json ? JSON.stringify({ sent: false, note }, null, 2) : note);
         return;
       }
+      // `feedback` has no required option, so a bare invocation is the likely
+      // typo — never silently block forever on an interactive terminal.
+      if (message === undefined && process.stdin.isTTY) {
+        throw new ValidationError('Provide the feedback as an argument or pipe it on stdin.');
+      }
+      const body = message ?? (await readStdinBody());
+      if (!body) throw new ValidationError('Provide the feedback as an argument or pipe it on stdin.');
+      // This is the moment data leaves the machine, so it is the moment the
+      // disclosure has to have been shown — it cannot depend on Sentry having
+      // initialized (no DSN in a local or self-built CLI means no banner).
+      maybePrintFirstRunDisclosure();
       const res = (await apiClient('/support/feedback', {
         method: 'POST',
         body: JSON.stringify({ message: body, surface: opts.surface }),
-      })) as { ticketId: string; note: string };
+      })) as { ticketId: string; note?: string };
       if (opts.json || program.opts().json) {
         console.log(JSON.stringify({ sent: true, ...res }, null, 2));
         return;
       }
-      console.log(`Thanks — recorded as ${res.ticketId}. ${res.note}`);
+      console.log(`Thanks — recorded as ${res.ticketId}.${res.note ? ` ${res.note}` : ''}`);
     });
 
   addExamples(

@@ -2,12 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Command } from 'commander';
 
 vi.mock('../../api/client.js', () => ({ apiClient: vi.fn() }));
-vi.mock('../../observability/telemetry.js', () => ({ isTelemetryEnabled: vi.fn().mockReturnValue(true) }));
+vi.mock('../../observability/telemetry.js', () => ({
+  isTelemetryEnabled: vi.fn().mockReturnValue(true),
+  maybePrintFirstRunDisclosure: vi.fn(),
+}));
 
 const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
 import { apiClient } from '../../api/client.js';
-import { isTelemetryEnabled } from '../../observability/telemetry.js';
+import { isTelemetryEnabled, maybePrintFirstRunDisclosure } from '../../observability/telemetry.js';
 import { registerFeedbackCommand } from '../support.js';
 
 const mockedApi = vi.mocked(apiClient);
@@ -52,6 +55,31 @@ describe('hookmyapp feedback', () => {
     await makeProgram().parseAsync(['feedback', 'confusing error'], { from: 'user' });
     expect(mockedApi).not.toHaveBeenCalled();
     expect(mockConsoleLog.mock.calls[0][0]).toContain('config set telemetry on');
+  });
+
+  it('shows the telemetry disclosure before the message leaves the machine', async () => {
+    mockedApi.mockResolvedValue({ ticketId: 'sup_9', note: 'n' });
+    await makeProgram().parseAsync(['feedback', 'confusing'], { from: 'user' });
+    // Must not depend on Sentry having initialized — a CLI built without a DSN
+    // would otherwise upload the message with no disclosure ever shown.
+    expect(maybePrintFirstRunDisclosure).toHaveBeenCalled();
+  });
+
+  it('errors instead of blocking on stdin when run bare in a terminal', async () => {
+    const wasTty = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    try {
+      await expect(makeProgram().parseAsync(['feedback'], { from: 'user' })).rejects.toThrow(/argument or pipe/);
+      expect(mockedApi).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', { value: wasTty, configurable: true });
+    }
+  });
+
+  it('prints cleanly when the backend omits the note', async () => {
+    mockedApi.mockResolvedValue({ ticketId: 'sup_10' });
+    await makeProgram().parseAsync(['feedback', 'confusing'], { from: 'user' });
+    expect(mockConsoleLog.mock.calls[0][0]).toBe('Thanks — recorded as sup_10.');
   });
 
   it('rejects an unknown surface before calling the API', async () => {
