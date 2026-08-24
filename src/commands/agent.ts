@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Command } from 'commander';
@@ -101,10 +101,29 @@ function tomlString(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
+/**
+ * Whether the file already declares our server as a TOML table.
+ *
+ * A substring search gets this wrong in both directions: `# [mcp_servers.hookmyapp]`
+ * is a comment and would block a legitimate write, while `[mcp_servers.hookmyapp ]`
+ * is a real, equivalent table header that would slip past and let the append
+ * define the table twice — which makes the whole file unparseable for every
+ * other server in it. Match the header line structurally instead. MCP_NAME is
+ * a fixed identifier with no regex metacharacters.
+ */
+function hasServerTable(toml: string): boolean {
+  const header = new RegExp(
+    `^\\s*\\[\\s*mcp_servers\\s*\\.\\s*(?:${MCP_NAME}|"${MCP_NAME}"|'${MCP_NAME}')\\s*\\]`,
+  );
+  return toml
+    .split('\n')
+    .some((line) => !/^\s*#/.test(line) && header.test(line));
+}
+
 function appendCodexServerBlock(url: string, helper: string): void {
   const path = codexConfigPath();
   const before = existsSync(path) ? readFileSync(path, 'utf8') : '';
-  if (before.includes(`[mcp_servers.${MCP_NAME}]`)) {
+  if (hasServerTable(before)) {
     // `codex mcp remove` did not take. Appending now would define the table
     // twice, which makes the whole file unparseable for every other server.
     throw new ConfigurationError(
@@ -191,9 +210,17 @@ export function configureCursor(path = cursorConfigPath(), token?: string): void
   // Write-then-rename so an interrupted run cannot leave a half-written config
   // where Cursor's other servers used to be.
   const tmp = `${path}.hookmyapp.tmp`;
-  const mode = existsSync(path) ? statSync(path).mode : 0o600;
+  // With a token in it this file is a credential, so it goes owner-only
+  // regardless of what the existing file allowed — an inherited 0644 under a
+  // 0022 umask leaves the bearer token readable by every local account.
+  // Without one there is nothing secret to protect, so the existing mode is
+  // preserved rather than tightened behind the user's back.
+  const mode = token ? 0o600 : existsSync(path) ? statSync(path).mode : 0o600;
   try {
     writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', { mode });
+    // writeFileSync only applies `mode` when it CREATES the file; a leftover
+    // tmp from an interrupted run would keep its old permissions.
+    chmodSync(tmp, mode);
     renameSync(tmp, path);
   } catch (err) {
     // Windows refuses to replace a file another process holds open, where posix

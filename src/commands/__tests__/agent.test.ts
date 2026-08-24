@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
@@ -127,6 +127,39 @@ describe('agent setup', () => {
     process.exitCode = 0;
   });
 
+  test('is not fooled by a commented-out hookmyapp table', async () => {
+    // A substring search calls this an existing table and refuses to write,
+    // leaving Codex permanently unconfigured on any machine whose config
+    // happens to carry the block as a comment.
+    writeFileSync(
+      codexConfig(),
+      '# [mcp_servers.hookmyapp]\n[mcp_servers.someone_else]\nurl = "https://other.example/mcp"\n',
+    );
+    vi.mocked(runTool)
+      .mockReturnValueOnce(codexMissing)
+      .mockReturnValueOnce(codexHas('https://api.hookmyapp.com/mcp'));
+
+    await runAgentSetup({ client: 'codex', skills: false, json: false });
+
+    expect(readFileSync(codexConfig(), 'utf8')).toContain('url = "https://api.hookmyapp.com/mcp"');
+  });
+
+  test('refuses to append beside a table header written with inner spaces', async () => {
+    // `[mcp_servers.hookmyapp ]` is the same table to a TOML parser. A
+    // substring search misses it, and the append then defines the table twice
+    // — which takes every other server in the file down with it.
+    writeFileSync(codexConfig(), '[mcp_servers.hookmyapp ]\nurl = "https://stale.example/mcp"\n');
+    vi.mocked(runTool)
+      .mockReturnValueOnce(codexHas('https://stale.example/mcp', false)) // get
+      .mockReturnValueOnce({ status: 0 } as never); // remove (no-op)
+
+    await runAgentSetup({ client: 'codex', skills: false, json: true });
+
+    expect(readFileSync(codexConfig(), 'utf8')).not.toMatch(/hookmyapp[\s\S]*hookmyapp/);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+  });
+
   test('re-configures a Codex entry that has a URL but no credential', async () => {
     // Entries written before this change carry the URL and nothing else, so a
     // URL match alone must not count as already set up.
@@ -180,6 +213,33 @@ describe('agent setup', () => {
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
       mcpServers: { hookmyapp: { url: 'https://api.hookmyapp.com/mcp' } },
     });
+  });
+
+  // POSIX only: chmod cannot express owner-only on Windows, where the mode
+  // reads back 0o666. Same platform limit credentials.json already lives with.
+  test.skipIf(process.platform === 'win32')('stores the Cursor token owner-only', () => {
+    // Cursor has no helper mechanism, so the bearer token is written into this
+    // file. Inheriting an existing 0644 under a 0022 umask would leave it
+    // readable by every other local account.
+    const path = tmpFile('mcp.json');
+    writeFileSync(path, '{"mcpServers":{}}', { mode: 0o644 });
+    chmodSync(path, 0o644);
+
+    configureCursor(path, 'hmok_secret');
+
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+
+  test.skipIf(process.platform === 'win32')('leaves the mode alone when there is no token to protect', () => {
+    // Nothing secret goes in, so tightening the file behind the user's back
+    // would be a change they did not ask for.
+    const path = tmpFile('mcp.json');
+    writeFileSync(path, '{"mcpServers":{}}');
+    chmodSync(path, 0o644);
+
+    configureCursor(path);
+
+    expect(statSync(path).mode & 0o777).toBe(0o644);
   });
 
   // POSIX only: chmod on a DIRECTORY is a no-op on Windows, so the read-only

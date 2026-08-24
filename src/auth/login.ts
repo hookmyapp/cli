@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { saveCredentials, peekIdentity } from './store.js';
+import { deleteMcpCredential } from './mcp-credential.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
@@ -80,6 +81,11 @@ async function pollForTokens(opts: {
         refreshToken: data.refresh_token,
         expiresAt: Math.floor(Date.now() / 1000) + 900,
       });
+      // A login replaces the session, so any MCP credential minted for the
+      // PREVIOUS one is not ours. `login --code` supports switching accounts
+      // without a logout, and without this the next mint is skipped and every
+      // client keeps authenticating as the account that just got replaced.
+      deleteMcpCredential();
       // alias machineId → workosSub once per (machine, user) and
       // emit cli_logged_in. Fail-open: a posthog hiccup must never block the
       // login UX. Pass email + name so the PostHog Person profile shows the
@@ -92,7 +98,10 @@ async function pollForTokens(opts: {
         email: u.email,
         name: fullName.length > 0 ? fullName : undefined,
       });
-      await maybeSetupAgents();
+      // Agent setup does NOT happen here. The device-code grant issues a
+      // user-scoped token with no org claim, and the mint needs one — so a
+      // setup at this point silently configures Cursor with no credential.
+      // runWizard does it after rescopeWorkspaceToken.
       console.log(`\n${c.success(icon.success)} Logged in successfully\n`);
       return;
     }
@@ -139,6 +148,10 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
         `${cliCommandPrefix()} workspace new <name>`,
       )}`,
     );
+    // No org means no credential to mint, but the server URL is still worth
+    // writing: the clients that resolve their token per request pick one up as
+    // soon as there is a workspace.
+    await maybeSetupAgents();
     return;
   }
 
@@ -195,6 +208,14 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
   } catch {
     // non-fatal: next apiClient call will surface auth errors
   }
+
+  // Configure the coding agents HERE, not at the point the session was saved.
+  // The mint needs the org claim rescopeWorkspaceToken just added; before it,
+  // a multi-workspace account cannot mint at all and Cursor — which needs the
+  // token written into its config — ends up with no credential and nothing
+  // that retries. Ahead of every early return below, so --json and --next
+  // paths configure too.
+  await maybeSetupAgents();
 
   // Step 2 — non-interactive next steps.
   //
@@ -431,6 +452,9 @@ export async function runBootstrapCodeExchange(
     refreshToken: data.refreshToken,
     expiresAt: data.expiresAt,
   });
+  // See the device flow above: a replaced session invalidates the key
+  // minted for the old one.
+  deleteMcpCredential();
 
   // Pin the session to the backend the code was exchanged against. The
   // exchange above ignores any persisted `config.json` env (getBootstrapApiUrl
@@ -446,7 +470,8 @@ export async function runBootstrapCodeExchange(
     activeWorkspaceId: data.workspace.id,
     activeWorkspaceSlug: data.workspace.name,
   });
-  await maybeSetupAgents();
+  // Agent setup happens in runWizard at the end of this function, once the
+  // workspace is settled — same single point the device flow uses.
 
   // alias machineId → workosSub once per (machine, user) and
   // emit cli_logged_in. workspace publicId is already on disk above so
@@ -586,6 +611,9 @@ async function persistAgentCredential(
     scopes: cred.scopes,
     email,
   });
+  // This session IS an org credential, so nothing gets minted — but a file
+  // left by a previous WorkOS session must not outlive it.
+  deleteMcpCredential();
   await revalidateActiveWorkspace(json);
   await maybeSetupAgents();
   if (json) {
