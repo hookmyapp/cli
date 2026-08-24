@@ -100,7 +100,7 @@ export function maybePrintFirstRunDisclosure(): void {
       '',
       'ℹ Telemetry: HookMyApp CLI reports crashes + usage analytics to help us fix bugs and improve UX.',
       '  No command arguments, file contents, or env var values are sent — except the',
-      '  message you pass to `hookmyapp feedback`, which is sent on purpose.',
+      '  message and --surface you pass to `hookmyapp feedback`, sent on purpose.',
       '  When logged in, your account email + user id accompany crash reports.',
       '  Disable: `hookmyapp config set telemetry off` or `HOOKMYAPP_TELEMETRY=off`',
       '',

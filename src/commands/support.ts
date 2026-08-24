@@ -373,15 +373,16 @@ export function registerFeedbackCommand(program: Command): void {
     .description(
       'Report friction you observed: the human got confused, repeated themselves, misread an error, ' +
         'abandoned a flow, or declined an upgrade after hitting a plan limit. One-way — nobody replies. ' +
-        'If something is broken or they need an answer, use `hookmyapp support new` instead.',
+        'Summarize what happened; do not include secrets, tokens, personal data, or your customers’ ' +
+        'message content. If something is broken or they need an answer, use `hookmyapp support new` instead.',
     )
     .argument('[message]', 'What they were trying to do and what confused them (a summary, never a transcript)')
-    .option('--surface <surface>', 'Where it happened: cli, mcp, docs, dashboard, api', 'cli')
+    .option('--surface <surface>', 'Where it happened: cli, mcp, docs, dashboard, api')
     .option('--json', 'Output machine-readable JSON')
-    .action(async (message: string | undefined, opts: { surface: string; json?: boolean }) => {
+    .action(async (message: string | undefined, opts: { surface?: string; json?: boolean }) => {
       // Validate and check the switch BEFORE touching stdin: otherwise a typo'd
       // --surface blocks on a pipe instead of reporting itself.
-      if (!SURFACES.includes(opts.surface)) {
+      if (opts.surface !== undefined && !SURFACES.includes(opts.surface)) {
         throw new ValidationError(`--surface must be one of: ${SURFACES.join(', ')}.`);
       }
       if (!isTelemetryEnabled()) {
@@ -400,10 +401,18 @@ export function registerFeedbackCommand(program: Command): void {
       // This is the moment data leaves the machine, so it is the moment the
       // disclosure has to have been shown — it cannot depend on Sentry having
       // initialized (no DSN in a local or self-built CLI means no banner).
-      maybePrintFirstRunDisclosure();
+      // Fail-open like the Sentry call site: on a read-only config dir the
+      // write throws, and that must not be what stops feedback being sent.
+      try {
+        maybePrintFirstRunDisclosure();
+      } catch {
+        // banner already printed; the persisted flag is the only casualty
+      }
       const res = (await apiClient('/support/feedback', {
         method: 'POST',
-        body: JSON.stringify({ message: body, surface: opts.surface }),
+        // Omit when unknown: the CLI is where the call came FROM, not
+        // necessarily where the human hit the friction (docs, dashboard, …).
+        body: JSON.stringify({ message: body, ...(opts.surface ? { surface: opts.surface } : {}) }),
       })) as { ticketId: string; note?: string };
       if (opts.json || program.opts().json) {
         console.log(JSON.stringify({ sent: true, ...res }, null, 2));

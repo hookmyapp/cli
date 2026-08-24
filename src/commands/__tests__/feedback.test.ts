@@ -44,10 +44,21 @@ describe('hookmyapp feedback', () => {
     expect(mockConsoleLog.mock.calls[0][0]).toContain('no reply is coming');
   });
 
-  it('defaults the surface to cli', async () => {
+  it('omits the surface when not given — the calling CLI is not where the friction happened', async () => {
     mockedApi.mockResolvedValue({ ticketId: 'sup_8', note: 'n' });
     await makeProgram().parseAsync(['feedback', 'confusing error'], { from: 'user' });
-    expect(JSON.parse((mockedApi.mock.calls[0][1] as { body: string }).body).surface).toBe('cli');
+    expect(JSON.parse((mockedApi.mock.calls[0][1] as { body: string }).body)).toEqual({
+      message: 'confusing error',
+    });
+  });
+
+  it('still sends when the disclosure cannot persist its flag', async () => {
+    vi.mocked(maybePrintFirstRunDisclosure).mockImplementationOnce(() => {
+      throw new Error('EROFS: read-only file system');
+    });
+    mockedApi.mockResolvedValue({ ticketId: 'sup_11', note: 'n' });
+    await makeProgram().parseAsync(['feedback', 'confusing'], { from: 'user' });
+    expect(mockedApi).toHaveBeenCalled();
   });
 
   it('sends nothing when telemetry is off', async () => {
