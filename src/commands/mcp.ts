@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
-import { getEffectiveApiUrl } from '../config/env-profiles.js';
+import { getEffectiveApiUrl, resolveEnv } from '../config/env-profiles.js';
 import { ConfigurationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { isCommandNotFound, runTool } from '../lib/spawn-tool.js';
@@ -8,8 +8,19 @@ import { isCommandNotFound, runTool } from '../lib/spawn-tool.js';
 export const MCP_NAME = 'hookmyapp';
 const CLAUDE_OPTIONS = { encoding: 'utf8' as const, timeout: 10_000 };
 
-function headersHelper(): string {
-  return `${shellQuote(process.execPath)} ${shellQuote(resolve(process.argv[1]))} mcp-headers`;
+/**
+ * Pin the helper to the same environment the URL was resolved against.
+ *
+ * The helper runs later, in its own process, with none of this invocation's
+ * flags. Without `--env` it would resolve the environment afresh from the
+ * persisted config, so `--env staging mcp install` wrote a staging URL beside a
+ * helper that mints a production credential — which staging's /mcp then
+ * rejects with a 401 (AIT-460). Emitted for every environment, production
+ * included, so a later `config set env` cannot separate the two either.
+ */
+export function headersHelper(): string {
+  const env = resolveEnv();
+  return `${shellQuote(process.execPath)} ${shellQuote(resolve(process.argv[1]))} --env ${env} mcp-headers`;
 }
 
 export function shellQuote(value: string, platform = process.platform): string {
@@ -26,8 +37,11 @@ export function mcpUrl(): string {
 }
 
 export async function printMcpHeaders(): Promise<void> {
-  const { getValidAccessToken } = await import('../api/client.js');
-  const token = await getValidAccessToken();
+  // NOT the session token: a WorkOS JWT carries no `aud` claim and the /mcp
+  // audience guard rejects it (AIT-460). This resolves to the machine's org
+  // credential, minting one on first use.
+  const { getMcpAccessToken } = await import('../auth/mcp-credential.js');
+  const token = await getMcpAccessToken();
   process.stdout.write(JSON.stringify({ Authorization: `Bearer ${token}` }) + '\n');
 }
 

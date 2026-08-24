@@ -11,17 +11,17 @@ export function logoutCommand(program: Command): void {
     .action(async () => {
       const json = !!program.opts().json;
 
-      // AIT-153: for an agent credential (org API key), also revoke it
-      // server-side so it can't keep being used after logout. Best-effort — an
-      // offline host (or an already-revoked key) must still clear local
-      // credentials. WorkOS sessions carry no CLI-side revoke, so this only
-      // fires for agent credentials.
+      // Revoke every org key this session holds, so none stays usable after
+      // logout. Best-effort — an offline host (or an already-revoked key) must
+      // still clear local credentials.
+      //   AIT-153: an OTP session IS an org key.
+      //   AIT-460: a WorkOS session also mints one for its MCP clients.
       let revoked = false;
       const creds = await readCredentials();
       if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
         try {
           const { apiClient } = await import('../api/client.js');
-          await apiClient(`/agent/credentials/${creds.credentialPublicId}`, {
+          await apiClient(`/agent/credentials/${encodeURIComponent(creds.credentialPublicId)}`, {
             method: 'DELETE',
           });
           revoked = true;
@@ -29,6 +29,16 @@ export function logoutCommand(program: Command): void {
           // Offline / already revoked — proceed to clear local credentials.
         }
       }
+
+      // The MCP key is revoked by NAME, not by the stored id: two first-use
+      // mints racing each other leave a key this machine owns but the file
+      // never recorded, and revoking only what we remember would leave it live.
+      // WorkOS sessions only — an agent credential may not revoke its peers.
+      const { deleteMcpCredential, revokeKeysForThisMachine } = await import('./mcp-credential.js');
+      if (creds && !isAgentCredential(creds)) {
+        revoked = (await revokeKeysForThisMachine()) > 0 || revoked;
+      }
+      deleteMcpCredential();
 
       await deleteCredentials();
       const mcpCleanup = removeClaudeMcp();

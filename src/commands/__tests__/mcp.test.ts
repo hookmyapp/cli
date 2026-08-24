@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { runTool } from '../../lib/spawn-tool.js';
 import { Command } from 'commander';
 import { resolve } from 'node:path';
-import { getValidAccessToken } from '../../api/client.js';
+import { getMcpAccessToken } from '../../auth/mcp-credential.js';
 
 // Mock the tool-spawn seam, not node:child_process: `runTool` adds the
 // cmd.exe /c prefix on Windows, so asserting raw runTool argv here is a
@@ -11,12 +11,14 @@ vi.mock('../../lib/spawn-tool.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/spawn-tool.js')>()),
   runTool: vi.fn(),
 }));
-vi.mock('../../api/client.js', () => ({ getValidAccessToken: vi.fn() }));
+vi.mock('../../auth/mcp-credential.js', () => ({ getMcpAccessToken: vi.fn() }));
 vi.mock('../../config/env-profiles.js', () => ({
   getEffectiveApiUrl: () => 'https://api.hookmyapp.com',
+  resolveEnv: () => 'production',
 }));
 
 import {
+  headersHelper,
   installClaudeMcp,
   printMcpHeaders,
   registerMcpCommand,
@@ -28,7 +30,7 @@ describe('MCP setup', () => {
   beforeEach(() => vi.clearAllMocks());
 
   test('prints only the dynamic Authorization header JSON', async () => {
-    vi.mocked(getValidAccessToken).mockResolvedValue('hmok_test');
+    vi.mocked(getMcpAccessToken).mockResolvedValue('hmok_test');
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
     await printMcpHeaders();
@@ -52,10 +54,17 @@ describe('MCP setup', () => {
       JSON.stringify({
         type: 'http',
         url: 'https://api.hookmyapp.com/mcp',
-        headersHelper: `${shellQuote(process.execPath)} ${shellQuote(resolve(process.argv[1]))} mcp-headers`,
+        headersHelper: `${shellQuote(process.execPath)} ${shellQuote(resolve(process.argv[1]))} --env production mcp-headers`,
       }),
     ]);
     expect(JSON.stringify(args)).not.toContain('Bearer');
+  });
+
+  test('pins the helper to the same env as the URL, so the token matches the backend', () => {
+    // `--env staging mcp install` used to write a staging URL beside a helper
+    // that resolved production afresh in its own process, and staging's /mcp
+    // rejected that credential with a 401.
+    expect(headersHelper()).toContain('--env production');
   });
 
   test('shell-quotes helper paths without expanding metacharacters', () => {
