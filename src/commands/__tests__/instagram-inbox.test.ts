@@ -56,6 +56,18 @@ describe('instagram threads', () => {
     expect(out()).toContain('@fan\thello there');
   });
 
+  it('shows how to page on from a thread, the way the conversation list does', async () => {
+    vi.mocked(gatewayRequest).mockResolvedValue({
+      messages: { data: [{ created_time: 'T', message: 'hi' }], paging: { cursors: { after: 'CUR2' } } },
+    });
+    const [out, restore] = captureStdout();
+
+    await runInstagramThreads({ channel: '@acme', thread: 'aWdfXTHREAD' });
+    restore();
+
+    expect(out()).toContain('More: --after CUR2');
+  });
+
   it('reads only the public profile when --participant is given', async () => {
     vi.mocked(gatewayRequest).mockResolvedValue({ id: 'IGSID1', username: 'fan' });
     const [, restore] = captureStdout();

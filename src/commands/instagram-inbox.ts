@@ -74,6 +74,10 @@ export async function runInstagramThreads(opts: IgThreadsOpts, cmd?: Command): P
       process.stdout.write(`${String(row.created_time ?? '')}\t@${who}\t${text}\n`);
     }
     if (rows.length === 0) process.stdout.write('No messages in this thread.\n');
+    // The thread cursor is nested under the expansion, unlike the conversation
+    // list's top-level one — without printing it, --after is undiscoverable.
+    const nextMessage = res?.messages?.paging?.cursors?.after;
+    if (nextMessage) process.stdout.write(`More: --after ${nextMessage}\n`);
     return;
   }
 
