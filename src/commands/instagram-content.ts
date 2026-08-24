@@ -16,9 +16,14 @@ const MENTIONED_MEDIA_FIELDS =
 const PROFILE_FIELDS =
   'id,username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count';
 
-// No --source for stories or tagged posts: both need a Facebook User access
-// token and pages_read_engagement, and Meta states the Instagram-Login setup
-// "cannot access ads or tagging". Every channel we connect is Instagram-Login.
+const TAGGED_FIELDS = 'id,caption,media_type,media_url,permalink,timestamp,username';
+
+// No --source for stories: its reference lists a Facebook User access token and
+// pages_read_engagement. `tagged` IS here — the Instagram-Login Mentions guide
+// documents GET /<IG_ID>/tags against graph.instagram.com, and it is how a
+// mention on a post is read back.
+const SOURCES = ['posts', 'tagged'] as const;
+type Source = (typeof SOURCES)[number];
 
 /** Meta caps a page at 100 and silently truncates a larger ask, which would read
  *  as the end of the list. */
@@ -50,6 +55,7 @@ function printMediaRows(rows: Array<Record<string, unknown>>): void {
 
 export interface IgMediaOpts {
   channel?: string;
+  source?: string;
   media?: string;
   limit?: string;
   after?: string;
@@ -71,17 +77,22 @@ export async function runInstagramMediaList(opts: IgMediaOpts, cmd?: Command): P
     return;
   }
 
+  const source = (opts.source ?? 'posts') as Source;
+  if (!SOURCES.includes(source)) {
+    throw new ValidationError(`--source must be one of ${SOURCES.join(', ')}.`, 'BAD_SOURCE');
+  }
   const params = new URLSearchParams({
-    fields: MEDIA_FIELDS,
+    fields: source === 'tagged' ? TAGGED_FIELDS : MEDIA_FIELDS,
     limit: pageSize(opts.limit),
     ...(opts.after ? { after: opts.after } : {}),
   });
-  const res = await gatewayRequest({ channel, method: 'GET', path: `/{ig_id}/media?${params.toString()}` });
+  const edge = source === 'tagged' ? 'tags' : 'media';
+  const res = await gatewayRequest({ channel, method: 'GET', path: `/{ig_id}/${edge}?${params.toString()}` });
   const rows = (res?.data ?? []) as Array<Record<string, unknown>>;
 
   if (cmd && isJsonMode(cmd)) {
     process.stdout.write(
-      JSON.stringify({ media: rows, nextCursor: res?.paging?.cursors?.after ?? null }) + '\n',
+      JSON.stringify({ source, media: rows, nextCursor: res?.paging?.cursors?.after ?? null }) + '\n',
     );
     return;
   }
@@ -92,67 +103,46 @@ export async function runInstagramMediaList(opts: IgMediaOpts, cmd?: Command): P
 
 export interface IgMentionsOpts {
   channel?: string;
-  comment?: string;
   media?: string;
+  comment?: string;
   reply?: string;
 }
 
 /**
- * Instagram has no endpoint that lists past mentions — `/{ig}/mentions` is
- * POST-only (it creates the reply). A mention arrives on the `mentions`
- * webhook carrying the comment id or media id, and that id is read back as a
- * field expansion on the IG-User node.
+ * Meta's Instagram-Login Mentions guide documents two endpoints on
+ * graph.instagram.com: GET /<IG_ID>/tags to see what you were tagged in (that
+ * is `instagram media --source tagged`), and POST /<IG_ID>/mentions to reply.
+ * There is no mention listing, and the mentioned_comment / mentioned_media
+ * expansions belong to the Facebook-Login flow.
  */
 export async function runInstagramMentions(opts: IgMentionsOpts, cmd?: Command): Promise<void> {
-  const hasComment = Boolean(opts.comment);
-  const hasMedia = Boolean(opts.media);
-  if (!hasComment && !hasMedia) {
+  if (!opts.media) {
     throw new ValidationError(
-      'Pass --comment or --media from the mentions webhook. Instagram has no endpoint that lists past mentions.',
-      'MENTION_NO_TARGET',
+      '--media is required. It comes from the mentions webhook, or from `instagram media --source tagged`.',
+      'MENTION_NO_MEDIA',
     );
   }
-  if (hasComment) assertMediaId(opts.comment!, '--comment');
-  if (hasMedia) assertMediaId(opts.media!, '--media');
-  if (opts.reply && !hasMedia) {
-    throw new ValidationError(
-      'Replying to a mention needs --media from the webhook, alongside --comment.',
-      'MENTION_REPLY_NEEDS_MEDIA',
-    );
+  assertMediaId(opts.media, '--media');
+  if (opts.comment) assertMediaId(opts.comment, '--comment');
+  if (!opts.reply) {
+    throw new ValidationError('--reply <text> is required — this command posts a reply.', 'MENTION_NO_TEXT');
   }
   const channel = await resolveChannelRefOrDefault(opts.channel, 'instagram');
 
-  const expansion = hasComment
-    ? `mentioned_comment.comment_id(${opts.comment}){id,text,timestamp,username,like_count}`
-    : `mentioned_media.media_id(${opts.media}){${MENTIONED_MEDIA_FIELDS}}`;
-  const node = await gatewayRequest({
+  const res = await gatewayRequest({
     channel,
-    method: 'GET',
-    path: `/{ig_id}?fields=${encodeURIComponent(expansion)}`,
+    method: 'POST',
+    path: '/{ig_id}/mentions',
+    body: {
+      media_id: opts.media,
+      ...(opts.comment ? { comment_id: opts.comment } : {}),
+      message: opts.reply,
+    },
   });
-  const mention = (hasComment ? node?.mentioned_comment : node?.mentioned_media) ?? null;
 
-  let replyId: string | null = null;
-  if (opts.reply) {
-    const posted = await gatewayRequest({
-      channel,
-      method: 'POST',
-      path: '/{ig_id}/mentions',
-      body: {
-        media_id: opts.media,
-        ...(hasComment ? { comment_id: opts.comment } : {}),
-        message: opts.reply,
-      },
-    });
-    replyId = posted?.id ?? null;
-  }
-
-  if (cmd && isJsonMode(cmd)) {
-    process.stdout.write(JSON.stringify({ target: hasComment ? 'comment' : 'media', mention, replyId }) + '\n');
-    return;
-  }
-  process.stdout.write(JSON.stringify(mention, null, 2) + '\n');
-  if (replyId) process.stdout.write(`Replied. id=${replyId}\n`);
+  process.stdout.write(
+    (cmd && isJsonMode(cmd) ? JSON.stringify(res) : `Replied. id=${res?.id ?? '(unknown)'}`) + '\n',
+  );
 }
 
 export interface IgProfileOpts {
@@ -195,8 +185,9 @@ export async function runInstagramProfile(opts: IgProfileOpts, cmd?: Command): P
 export function registerInstagramContent(instagram: Command): void {
   const media = instagram
     .command('media')
-    .description('List your published posts, and get the media ids other commands need')
+    .description('List your published posts, or the posts that tagged you')
     .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--source <what>', `One of ${SOURCES.join(', ')} (default posts)`)
     .option('--media <id>', 'Read one post instead of a list, including carousel items')
     .option('--limit <n>', 'Page size, 1-100 (default 25)')
     .option('--after <cursor>', 'Continue from a previous page')
@@ -209,6 +200,7 @@ export function registerInstagramContent(instagram: Command): void {
     `
 EXAMPLES:
   $ hookmyapp instagram media --channel @acme
+  $ hookmyapp instagram media --channel @acme --source tagged
   $ hookmyapp instagram media --channel @acme --media <ig-media-id>
   $ hookmyapp instagram media --channel @acme --json
 `,
@@ -216,11 +208,11 @@ EXAMPLES:
 
   const mentions = instagram
     .command('mentions')
-    .description('Read a post or comment you were @mentioned in, and optionally reply')
+    .description('Reply to a post or comment that @mentioned you')
     .option('--channel <ref>', 'Channel: @handle or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
-    .option('--comment <id>', 'Comment id from the mentions webhook')
-    .option('--media <id>', 'Media id from the mentions webhook (required to reply)')
-    .option('--reply <text>', 'Post this reply as a comment from your account')
+    .option('--media <id>', 'Media id carrying the mention (required)')
+    .option('--comment <id>', 'Comment id, when the mention was in a comment')
+    .option('--reply <text>', 'The reply to post (required)')
     .action(async function (this: Command, opts: IgMentionsOpts) {
       await runInstagramMentions(opts, this);
     });
@@ -229,12 +221,11 @@ EXAMPLES:
     mentions,
     `
 EXAMPLES:
-  $ hookmyapp instagram mentions --channel @acme --media <media-id>
-  $ hookmyapp instagram mentions --channel @acme --comment <comment-id> --media <media-id>
-  $ hookmyapp instagram mentions --channel @acme --media <media-id> --reply "thanks for the shout-out"
+  $ hookmyapp instagram mentions --channel @acme --media <media-id> --reply "thanks!"
+  $ hookmyapp instagram mentions --channel @acme --media <media-id> --comment <comment-id> --reply "thanks!"
 
-Instagram has no endpoint that lists past mentions. The ids come from the
-mentions webhook — subscribe to it to catch them as they happen.
+Instagram has no mention listing. See what tagged you with:
+  $ hookmyapp instagram media --channel @acme --source tagged
 `,
   );
 

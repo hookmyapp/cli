@@ -10,7 +10,7 @@ import { ValidationError } from '../output/error.js';
 // unreserved URL alphabet instead — enough to stop a smuggled path segment.
 const IG_OPAQUE_ID_RE = /^[A-Za-z0-9_-]+$/;
 const CONVERSATION_FIELDS = 'id,updated_time,participants,unread_count';
-const MESSAGE_FIELDS = 'id,message,from,to,created_time,reply_to';
+const MESSAGE_EXPANSION = 'messages{id,message,from,to,created_time,reply_to}';
 const PARTICIPANT_FIELDS = 'id,name,username,profile_pic';
 
 function assertOpaqueId(id: string, flag: string): void {
@@ -53,18 +53,18 @@ export async function runInstagramThreads(opts: IgThreadsOpts, cmd?: Command): P
 
   if (opts.thread) {
     assertOpaqueId(opts.thread, '--thread');
+    // A conversation has no /messages edge — Meta expands them on the node and
+    // nests the rows under `messages.data`.
     const params = new URLSearchParams({
-      fields: MESSAGE_FIELDS,
+      fields: MESSAGE_EXPANSION,
       limit: pageSize(opts.limit),
       ...(opts.after ? { after: opts.after } : {}),
     });
-    const res = await gatewayRequest({
-      channel, method: 'GET', path: `/${opts.thread}/messages?${params.toString()}`,
-    });
-    const rows = (res?.data ?? []) as Array<Record<string, unknown>>;
+    const res = await gatewayRequest({ channel, method: 'GET', path: `/${opts.thread}?${params.toString()}` });
+    const rows = (res?.messages?.data ?? []) as Array<Record<string, unknown>>;
     if (json) {
       process.stdout.write(
-        JSON.stringify({ messages: rows, nextCursor: res?.paging?.cursors?.after ?? null }) + '\n',
+        JSON.stringify({ messages: rows, nextCursor: res?.messages?.paging?.cursors?.after ?? null }) + '\n',
       );
       return;
     }

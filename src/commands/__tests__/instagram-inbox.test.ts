@@ -41,16 +41,18 @@ describe('instagram threads', () => {
     expect(out()).toContain('aWdfX\tT\t@fan');
   });
 
-  it('reads one thread messages when --thread is given', async () => {
+  it('expands messages on the conversation node and unwraps messages.data', async () => {
     vi.mocked(gatewayRequest).mockResolvedValue({
-      data: [{ created_time: 'T', from: { username: 'fan' }, message: 'hello there' }],
+      messages: { data: [{ created_time: 'T', from: { username: 'fan' }, message: 'hello there' }] },
     });
     const [out, restore] = captureStdout();
 
     await runInstagramThreads({ channel: '@acme', thread: 'aWdfXTHREAD' });
     restore();
 
-    expect(vi.mocked(gatewayRequest).mock.calls[0][0].path).toContain('/aWdfXTHREAD/messages?');
+    const p = decodeURIComponent(vi.mocked(gatewayRequest).mock.calls[0][0].path as string);
+    expect(p).toContain('/aWdfXTHREAD?');
+    expect(p).toContain('messages{');
     expect(out()).toContain('@fan\thello there');
   });
 

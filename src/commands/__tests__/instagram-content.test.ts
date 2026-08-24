@@ -52,6 +52,23 @@ describe('instagram media', () => {
     expect(vi.mocked(gatewayRequest).mock.calls[0][0].path).toContain('limit=100');
   });
 
+  it('reads tagged posts from the tags edge, the Instagram-Login mention read', async () => {
+    vi.mocked(gatewayRequest).mockResolvedValue({ data: [] });
+    const [, restore] = captureStdout();
+
+    await runInstagramMediaList({ channel: '@acme', source: 'tagged' });
+    restore();
+
+    const path = vi.mocked(gatewayRequest).mock.calls[0][0].path as string;
+    expect(path).toContain('/{ig_id}/tags?');
+    expect(decodeURIComponent(path)).toContain('username');
+  });
+
+  it('rejects an unknown source before any gateway call', async () => {
+    await expect(runInstagramMediaList({ channel: '@acme', source: 'stories' })).rejects.toBeInstanceOf(ValidationError);
+    expect(gatewayRequest).not.toHaveBeenCalled();
+  });
+
   it('rejects a non-numeric media id before any gateway call', async () => {
     await expect(runInstagramMediaList({ channel: '@acme', media: '../17999' })).rejects.toBeInstanceOf(ValidationError);
     expect(gatewayRequest).not.toHaveBeenCalled();
@@ -74,51 +91,35 @@ describe('instagram mentions', () => {
     vi.mocked(isJsonMode).mockReturnValue(false);
   });
 
-  it('expands mentioned_comment on the IG-User node, since /mentions cannot be listed', async () => {
-    vi.mocked(gatewayRequest).mockResolvedValue({ mentioned_comment: { id: '17888', text: 'love @acme' } });
-    const [out, restore] = captureStdout();
-
-    await runInstagramMentions({ channel: '@acme', comment: '17888' });
-    restore();
-
-    const path = decodeURIComponent(vi.mocked(gatewayRequest).mock.calls[0][0].path as string);
-    expect(path).toContain('mentioned_comment.comment_id(17888)');
-    expect(out()).toContain('love @acme');
-  });
-
-  it('expands mentioned_media when only a media id is given', async () => {
-    vi.mocked(gatewayRequest).mockResolvedValue({ mentioned_media: { id: '17999' } });
-    const [, restore] = captureStdout();
-
-    await runInstagramMentions({ channel: '@acme', media: '17999' });
-    restore();
-
-    expect(decodeURIComponent(vi.mocked(gatewayRequest).mock.calls[0][0].path as string))
-      .toContain('mentioned_media.media_id(17999)');
-  });
-
-  it('posts the reply to the mentions edge and reports its id', async () => {
-    vi.mocked(gatewayRequest)
-      .mockResolvedValueOnce({ mentioned_media: { id: '17999' } })
-      .mockResolvedValueOnce({ id: '17846' });
+  it('POSTs the reply to the mentions edge, the only mention write Instagram Login has', async () => {
+    vi.mocked(gatewayRequest).mockResolvedValue({ id: '17846' });
     const [out, restore] = captureStdout();
 
     await runInstagramMentions({ channel: '@acme', media: '17999', reply: 'thanks!' });
     restore();
 
-    expect(vi.mocked(gatewayRequest).mock.calls[1][0].method).toBe('POST');
+    const call = vi.mocked(gatewayRequest).mock.calls[0][0];
+    expect(call.path).toBe('/{ig_id}/mentions');
     expect(out()).toContain('Replied. id=17846');
   });
 
-  it('says where the ids come from when neither is given', async () => {
-    await expect(runInstagramMentions({ channel: '@acme' })).rejects.toBeInstanceOf(ValidationError);
+  it('includes comment_id when the mention was in a comment', async () => {
+    vi.mocked(gatewayRequest).mockResolvedValue({ id: '17847' });
+    const [, restore] = captureStdout();
+
+    await runInstagramMentions({ channel: '@acme', media: '17999', comment: '17888', reply: 'hi' });
+    restore();
+
+    expect((vi.mocked(gatewayRequest).mock.calls[0][0].body as Record<string, unknown>).comment_id).toBe('17888');
+  });
+
+  it('points at the tagged list when --media is missing', async () => {
+    await expect(runInstagramMentions({ channel: '@acme', reply: 'hi' })).rejects.toBeInstanceOf(ValidationError);
     expect(gatewayRequest).not.toHaveBeenCalled();
   });
 
-  it('refuses to reply without the media id Meta keys the reply on', async () => {
-    await expect(
-      runInstagramMentions({ channel: '@acme', comment: '17888', reply: 'hi' }),
-    ).rejects.toBeInstanceOf(ValidationError);
+  it('refuses without reply text, since this command only posts', async () => {
+    await expect(runInstagramMentions({ channel: '@acme', media: '17999' })).rejects.toBeInstanceOf(ValidationError);
     expect(gatewayRequest).not.toHaveBeenCalled();
   });
 });
