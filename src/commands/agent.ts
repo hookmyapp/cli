@@ -414,12 +414,28 @@ export async function repointAgentsAtActiveWorkspace(path = cursorConfigPath()):
   // may still be live — and if the mint below fails, leaving it in place hands
   // Cursor working access to the workspace the user just switched away from.
   // No header is a visible failure; the wrong header is a silent one.
-  clearCursorCredential(path);
+  if (clearCursorCredential(path) === 'failed') {
+    // The old header is still on disk and the revoke before the rescope is
+    // best effort, so it may still work against the workspace just left. The
+    // switch itself succeeded — say what did not rather than fail it.
+    process.stderr.write(
+      `Warning: could not update ${path}. Cursor may still be pointed at the previous workspace — ` +
+        'close Cursor and run `hookmyapp agent setup`.\n',
+    );
+    return;
+  }
   try {
     const token = await resolveMcpToken();
     if (token) configureCursor(path, token);
-  } catch {
-    // Offline, or a config we cannot write. `hookmyapp agent setup` fixes it.
+    else {
+      process.stderr.write(
+        'Warning: could not get a credential for the new workspace. Run: hookmyapp agent setup\n',
+      );
+    }
+  } catch (err) {
+    process.stderr.write(
+      `Warning: could not update ${path}: ${(err as Error).message}. Run: hookmyapp agent setup\n`,
+    );
   }
 }
 

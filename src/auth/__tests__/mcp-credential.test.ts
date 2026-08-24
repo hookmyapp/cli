@@ -289,6 +289,49 @@ describe('the token handed to MCP clients', () => {
     expect(await getMcpAccessToken()).toBe('hmok_new');
   });
 
+  test('revokes an OTP session, which IS the org credential', async () => {
+    // login --email stores the org credential as the session itself, so there
+    // is no minted key to sweep and nothing in mcp-credential.json. Logout
+    // revokes it by id; a replacement login has to as well, or it stays live
+    // with a running Cursor still holding it.
+    vi.mocked(readCredentials).mockResolvedValue({
+      ...workosSession,
+      accessToken: 'hmok_from_otp',
+      kind: 'agent',
+      credentialPublicId: 'ac_otp_session',
+    });
+    vi.mocked(apiClient).mockResolvedValueOnce([]); // list: no machine-named keys
+
+    await revokePreviousMcpCredential();
+
+    const deleted = vi
+      .mocked(apiClient)
+      .mock.calls.filter((c) => c[1]?.method === 'DELETE')
+      .map((c) => c[0]);
+    expect(deleted).toContain('/agent/credentials/ac_otp_session');
+  });
+
+  test("revokes an OTP session's own credential when it is replaced", async () => {
+    // An OTP session IS the org credential handed to the clients — there is no
+    // minted key to sweep and nothing in mcp-credential.json, so without this
+    // a replacement login leaves it live with Cursor still holding it.
+    vi.mocked(readCredentials).mockResolvedValue({
+      ...workosSession,
+      accessToken: 'hmok_from_otp',
+      kind: 'agent',
+      credentialPublicId: 'ac_otp',
+    });
+    vi.mocked(apiClient).mockResolvedValueOnce([]); // list: no machine-named keys
+
+    await revokePreviousMcpCredential();
+
+    const deleted = vi
+      .mocked(apiClient)
+      .mock.calls.filter((c) => c[1]?.method === 'DELETE')
+      .map((c) => c[0]);
+    expect(deleted).toContain('/agent/credentials/ac_otp');
+  });
+
   test('deleting the local copy leaves no file behind and is safe to repeat', () => {
     writeFileSync(credentialPath(), JSON.stringify(minted));
 

@@ -132,6 +132,16 @@ export async function revokeKeysForThisMachine(name = credentialName()): Promise
  * dashboard, must not block a login. The local copy goes either way — it does
  * not belong to the session being written.
  */
+/** Best-effort undo for a key we minted but are not going to keep. */
+async function revokeMinted(publicId: string): Promise<void> {
+  try {
+    const { apiClient } = await import('../api/client.js');
+    await apiClient(`/agent/credentials/${encodeURIComponent(publicId)}`, { method: 'DELETE' });
+  } catch {
+    // The credentials it would authenticate with may be the ones just deleted.
+  }
+}
+
 export async function revokePreviousMcpCredential(): Promise<void> {
   // By NAME, not just by the recorded id — the same reason logout sweeps: two
   // first-use mints racing each other leave a key this machine owns that the
@@ -139,19 +149,20 @@ export async function revokePreviousMcpCredential(): Promise<void> {
   // live in the account being left behind, and it may well be the token a
   // running Cursor already loaded.
   await revokeKeysForThisMachine();
-  const stored = readMcpCredential();
-  if (stored) {
-    // Belt and braces: a key minted under an older naming scheme, or renamed
-    // from the dashboard, is not caught by the sweep above.
-    try {
-      const { apiClient } = await import('../api/client.js');
-      await apiClient(`/agent/credentials/${encodeURIComponent(stored.publicId)}`, {
-        method: 'DELETE',
-      });
-    } catch {
-      // Offline, expired session, or already revoked.
-    }
+
+  // An OTP session IS an org credential (AIT-153) — the token handed to the
+  // MCP clients is the session itself, so there is no minted key to sweep and
+  // nothing in mcp-credential.json. Logout revokes it by id; a replacement
+  // login must too, or it stays live with Cursor still holding it.
+  const creds = await readCredentials();
+  if (creds && isAgentCredential(creds) && creds.credentialPublicId) {
+    await revokeMinted(creds.credentialPublicId);
   }
+
+  const stored = readMcpCredential();
+  // Belt and braces: a key minted under an older naming scheme, or renamed
+  // from the dashboard, is not caught by the sweep above.
+  if (stored) await revokeMinted(stored.publicId);
   deleteMcpCredential();
 }
 
@@ -178,16 +189,6 @@ async function mint(): Promise<StoredMcpCredential> {
     );
   }
   return { accessToken: created.token, publicId: created.publicId };
-}
-
-/** Best-effort undo for a key we minted but are not going to keep. */
-async function revokeMinted(publicId: string): Promise<void> {
-  try {
-    const { apiClient } = await import('../api/client.js');
-    await apiClient(`/agent/credentials/${encodeURIComponent(publicId)}`, { method: 'DELETE' });
-  } catch {
-    // The credentials it would authenticate with may be the ones just deleted.
-  }
 }
 
 /**

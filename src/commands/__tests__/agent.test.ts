@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Command } from 'commander';
 import { runTool } from '../../lib/spawn-tool.js';
 
@@ -446,6 +446,36 @@ describe('agent setup', () => {
 
     const after = JSON.parse(readFileSync(path, 'utf8'));
     expect(after.mcpServers.hookmyapp).toEqual({ url: 'https://api.hookmyapp.com/mcp' });
+  });
+
+  // POSIX only: the read-only file this needs cannot be built on Windows.
+  test.skipIf(process.platform === 'win32')('says so when it cannot re-point Cursor at all', async () => {
+    // The switch itself worked, so this must not fail it — but reporting a
+    // clean switch while the previous workspace's header is still on disk is
+    // exactly the silent handover the strip is there to prevent.
+    const path = tmpFile('mcp.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        mcpServers: { hookmyapp: { url: 'https://api.hookmyapp.com/mcp', headers: { Authorization: 'Bearer hmok_old_ws' } } },
+      }),
+    );
+    // The DIRECTORY, not the file: the write goes to a tmp path and renames
+    // over the target, and posix rename cares about the directory's write bit,
+    // not the mode of the file being replaced.
+    const dir = dirname(path);
+    chmodSync(dir, 0o500);
+    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    try {
+      await repointAgentsAtActiveWorkspace(path);
+      expect(errSpy.mock.calls.flat().join('')).toMatch(/previous workspace/i);
+      // And the old header is still there — which is precisely why it warns.
+      expect(readFileSync(path, 'utf8')).toContain('hmok_old_ws');
+    } finally {
+      chmodSync(dir, 0o700);
+      errSpy.mockRestore();
+    }
   });
 
   test('rejects an unknown client', async () => {
