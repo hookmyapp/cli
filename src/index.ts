@@ -15,7 +15,7 @@ import { registerAlertsCommand } from './commands/alerts.js';
 import { registerBillingCommand } from './commands/billing.js';
 import { registerWorkspaceCommand } from './commands/workspace.js';
 import { registerCustomersCommand } from './commands/customers.js';
-import { registerSupportCommand } from './commands/support.js';
+import { registerSupportCommand, registerFeedbackCommand } from './commands/support.js';
 import { registerNotificationsCommand } from './commands/notifications.js';
 import { registerOrgProfileCommand } from './commands/org-profile.js';
 import { registerSandboxCommand } from './commands/sandbox/index.js';
@@ -198,6 +198,7 @@ registerWorkspaceCommand(program);
 // Customers (customer workspaces)
 registerCustomersCommand(program);
 registerSupportCommand(program);
+registerFeedbackCommand(program);
 registerNotificationsCommand(program);
 registerOrgProfileCommand(program);
 
