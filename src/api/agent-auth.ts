@@ -16,6 +16,10 @@ export interface AgentCredentialResponse {
   credentialPublicId: string;
   expiresAt?: string;
   orgId?: string;
+  /** The org this credential is locked to. It cannot be re-scoped later. */
+  organizationPublicId?: string;
+  /** Every org the user belongs to, so a multi-org user can re-claim elsewhere. */
+  organizations?: Array<{ publicId: string; name: string }>;
 }
 
 // Auth requests must not hang an agent or CI job forever; bound every call.
@@ -60,6 +64,10 @@ export async function initiateClaim(input: { email: string; scopes: string[] }):
   return { registrationId: data.registrationId, expiresAt: data.expiresAt };
 }
 
-export async function completeClaim(input: { registrationId: string; otp: string }): Promise<AgentCredentialResponse> {
+export async function completeClaim(input: {
+  registrationId: string;
+  otp: string;
+  organizationPublicId?: string;
+}): Promise<AgentCredentialResponse> {
   return (await postJson('/agent/auth/claim/complete', input)) as AgentCredentialResponse;
 }

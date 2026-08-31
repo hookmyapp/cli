@@ -6,6 +6,7 @@ import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
 import { displayEmail } from '../output/mask.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
+import { isValidPublicId } from '../lib/publicId.js';
 import {
   getEffectiveApiUrl,
   getBootstrapApiUrl,
@@ -519,6 +520,12 @@ export async function runAgentClaimLogin(opts: {
   otp?: string;
   registrationId?: string;
   scopes?: string[];
+  /**
+   * AIT-525: bind the credential to this org. Without it the server picks the
+   * account's oldest org, which for a multi-org user is rarely the one they
+   * came to work in — and the credential can never be re-scoped afterwards.
+   */
+  organizationPublicId?: string;
   json?: boolean;
 }): Promise<void> {
   const { fetchSupportedScopes, initiateClaim, completeClaim } = await import(
@@ -543,7 +550,11 @@ export async function runAgentClaimLogin(opts: {
     }
     const otp = opts.otp ?? (await promptOtp());
     await persistAgentCredential(
-      await completeClaim({ registrationId: opts.registrationId, otp }),
+      await completeClaim({
+        registrationId: opts.registrationId,
+        otp,
+        organizationPublicId: opts.organizationPublicId,
+      }),
       opts.email,
       opts.json,
     );
@@ -581,7 +592,11 @@ export async function runAgentClaimLogin(opts: {
   );
   const otp = await promptOtp();
   await persistAgentCredential(
-    await completeClaim({ registrationId: claim.registrationId, otp }),
+    await completeClaim({
+      registrationId: claim.registrationId,
+      otp,
+      organizationPublicId: opts.organizationPublicId,
+    }),
     opts.email,
     opts.json,
   );
@@ -598,7 +613,13 @@ async function promptOtp(): Promise<string> {
 }
 
 async function persistAgentCredential(
-  cred: { accessToken: string; scopes: string[]; credentialPublicId: string },
+  cred: {
+    accessToken: string;
+    scopes: string[];
+    credentialPublicId: string;
+    organizationPublicId?: string;
+    organizations?: Array<{ publicId: string; name: string }>;
+  },
   email: string,
   json?: boolean,
 ): Promise<void> {
@@ -613,6 +634,7 @@ async function persistAgentCredential(
     credentialPublicId: cred.credentialPublicId,
     scopes: cred.scopes,
     email,
+    orgPublicId: cred.organizationPublicId,
   });
   await revalidateActiveWorkspace(json);
   await maybeSetupAgents();
@@ -622,14 +644,41 @@ async function persistAgentCredential(
         ok: true,
         credentialPublicId: cred.credentialPublicId,
         scopes: cred.scopes,
+        organizationPublicId: cred.organizationPublicId,
+        organizations: cred.organizations,
       }) + '\n',
     );
     return;
   }
   const n = cred.scopes.length;
-  console.log(
-    `${c.success(icon.success)} Logged in as ${displayEmail(email)} (${n} scope${n === 1 ? '' : 's'})`,
+  const bound = cred.organizations?.find(
+    (o) => o.publicId === cred.organizationPublicId,
   );
+  // AIT-525: name the org. This credential is locked to it for good, and a
+  // multi-org user who isn't told which one they got only finds out through a
+  // permission error three commands later.
+  const orgLabel = bound
+    ? `, organization "${bound.name}"`
+    : cred.organizationPublicId
+      ? `, organization ${cred.organizationPublicId}`
+      : '';
+  console.log(
+    `${c.success(icon.success)} Logged in as ${displayEmail(email)}${orgLabel} (${n} scope${n === 1 ? '' : 's'})`,
+  );
+  const others = (cred.organizations ?? []).filter(
+    (o) => o.publicId !== cred.organizationPublicId,
+  );
+  if (others.length > 0) {
+    console.log(
+      `\n${c.dim('This credential only works in that organization. Others on your account:')}`,
+    );
+    for (const o of others) console.log(`  ${o.name} ${c.dim(o.publicId)}`);
+    console.log(
+      c.dim(
+        `\nTo use one of them: ${cliCommandPrefix()} login --email ${email} --org <org_id>`,
+      ),
+    );
+  }
 }
 
 /**
@@ -709,6 +758,10 @@ export function loginCommand(program: Command): void {
       '--scope <scope...>',
       'Request specific scopes instead of the full set (repeatable)',
     )
+    .option(
+      '--org <org_id>',
+      'Bind the credential to this organization (org_ id from `workspace list`)',
+    )
     .action(
       async (opts: {
         phone?: string;
@@ -719,6 +772,7 @@ export function loginCommand(program: Command): void {
         otp?: string;
         registrationId?: string;
         scope?: string[];
+        org?: string;
       }) => {
         // Reject an invalid --next locally (exit 2) instead of silently
         // coercing it to undefined — `login --next bogus` previously ran the
@@ -744,10 +798,16 @@ export function loginCommand(program: Command): void {
         // up front instead of silently falling through to the browser flow.
         if (
           !opts.email &&
-          (opts.otp || opts.registrationId || (opts.scope?.length ?? 0) > 0)
+          (opts.otp || opts.registrationId || (opts.scope?.length ?? 0) > 0 || opts.org)
         ) {
           throw new ValidationError(
-            '--otp, --registration-id, and --scope require --email.',
+            '--otp, --registration-id, --scope, and --org require --email.',
+          );
+        }
+        // Shape-check locally: a typo'd org id should not cost an OTP round-trip.
+        if (opts.org && !isValidPublicId(opts.org, 'org')) {
+          throw new ValidationError(
+            `--org "${opts.org}" is not an org publicId (org_ followed by 8 characters). Run: ${cliCommandPrefix()} workspace list --json`,
           );
         }
 
@@ -764,6 +824,7 @@ export function loginCommand(program: Command): void {
             otp: opts.otp,
             registrationId: opts.registrationId,
             scopes: opts.scope,
+            organizationPublicId: opts.org,
             json,
           });
           return;
@@ -868,9 +929,14 @@ EXAMPLES:
   $ hookmyapp login --email you@example.com                # browser-free (prompts for a code)
   $ hookmyapp login --email you@example.com --json         # step 1: prints registrationId
   $ hookmyapp login --email you@example.com --registration-id <id> --otp 123456 --json  # step 2
+  $ hookmyapp login --email you@example.com --org org_1a2b3c4d  # pick the organization
   $ hookmyapp login --code hma_boot_xxx                    # zero-browser AI paste
   $ hookmyapp login --workspace acme-corp                  # preselect workspace
   $ hookmyapp login --next sandbox --phone +15551234567    # scripts / CI
+
+An --email login is locked to one organization for the life of the credential
+(workspace use cannot move it). Pass --org to pick; org ids come from
+hookmyapp workspace list --json. The browser login below can switch freely.
 
 This runs the post-login wizard:
   1. Browser sign-in (or --code <bootstrap-code> to skip the browser)
