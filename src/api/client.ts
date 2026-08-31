@@ -1,5 +1,6 @@
 import { readCredentials, saveCredentials } from '../auth/store.js';
 import { isAgentCredential } from '../storage/secrets.js';
+import { cliCommandPrefix } from '../output/cli-self.js';
 import {
   AuthError,
   ApiError,
@@ -211,6 +212,17 @@ export async function mapApiError(res: Response): Promise<CliError> {
     // wrong guidance for a feature the server has turned off.
     if (code === 'INSTAGRAM_DISABLED') {
       return new FeatureDisabledError(msg, code);
+    }
+    // AIT-525: the workspace is in an org this session isn't scoped to. Append
+    // the CLI's own remedy — the server message is client-neutral, and without
+    // the next command this reads as an unfixable wall.
+    if (code === 'WORKSPACE_ORG_MISMATCH') {
+      const creds = await readCredentials();
+      const remedy =
+        creds && isAgentCredential(creds)
+          ? `This login is locked to one organization. Sign in again for the other one: ${cliCommandPrefix()} login --email ${creds.email ?? '<your-email>'} --org <org_id>`
+          : `Switch to it: ${cliCommandPrefix()} workspace use <name-or-ws_id>`;
+      return new ForbiddenError(`${msg}\n\n${remedy}`, code);
     }
     // AIT-151: any other 403 that carries a server code + message is a specific
     // denial (e.g. AGENT_KEY_REVOKE_SELF_ONLY) — surface the server's own

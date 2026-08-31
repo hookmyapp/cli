@@ -18,7 +18,7 @@ export const PUBLIC_ID_LENGTH = 8;
  * Locked set of prefixes used across the product. Mirrors
  * PUBLIC_ID_PREFIXES in @hookmyapp/shared.
  */
-export const PUBLIC_ID_PREFIXES = ['ws', 'ch', 'usr', 'inv', 'ssn', 'mem'] as const;
+export const PUBLIC_ID_PREFIXES = ['ws', 'ch', 'usr', 'inv', 'ssn', 'mem', 'org'] as const;
 export type PublicIdPrefix = (typeof PUBLIC_ID_PREFIXES)[number];
 
 /**
