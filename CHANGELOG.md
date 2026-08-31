@@ -2,6 +2,17 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.21 — 2026-08-31
+
+### Added
+
+- `hookmyapp login --email` accepts `--org <org_id>` to choose which organization the credential binds to. Without it the server keeps the old default (the account's oldest organization). The success line now names the organization the credential is bound to and lists the account's other organizations; `--json` output adds `organizationPublicId` and `organizations` (AIT-525).
+
+### Fixed
+
+- `hookmyapp workspace use` no longer reports success for a switch it cannot make. A credential from `login --email` is fixed to one organization; switching to a workspace in another organization used to print "Active workspace: …" while the session stayed in the old organization, and every later command failed with "Only workspace admins can do this." The switch is now refused with both organizations named and the login command that fixes it, and the previous selection is kept (AIT-525).
+- Cross-organization 403s now explain themselves. The backend's new `WORKSPACE_ORG_MISMATCH` denial is shown with the CLI command to run next, instead of the misleading workspace-admin message (AIT-525).
+
 ## 0.14.19 — 2026-08-21
 
 ### Added
