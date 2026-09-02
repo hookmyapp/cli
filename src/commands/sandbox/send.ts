@@ -9,7 +9,7 @@
 
 import { input } from '@inquirer/prompts';
 import { apiClient } from '../../api/client.js';
-import { readBody } from '../../api/timed-fetch.js';
+import { isNetworkFailure, readBody } from '../../api/timed-fetch.js';
 import {
   parseSandboxSessions,
 } from '../../api/sandbox-session.js';
@@ -57,14 +57,22 @@ export async function runSandboxSend(opts: {
 
   const { url, body } = buildSandboxSendRequest(session, message);
 
-  const res = await timedFetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await timedFetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    // Without this the deadline surfaces as UNKNOWN_ERROR and the send looks
+    // like a bug rather than an unreachable proxy (AIT-540).
+    if (isNetworkFailure(err)) throw new NetworkError();
+    throw err;
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   // A stalled body must not be reported as a delivered message (AIT-540).

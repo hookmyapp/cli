@@ -2,10 +2,11 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   timedFetch,
   connectTimedFetch,
+  readBody,
+  isNetworkFailure,
   DEFAULT_FETCH_TIMEOUT_MS,
   TRANSFER_TIMEOUT_MS,
 } from '../timed-fetch.js';
-import { isNetworkFailure } from '../client.js';
 
 function okResponse(): Response {
   return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
@@ -44,6 +45,17 @@ describe('timedFetch', () => {
     // The whole timeout story: catch blocks already map network failures to
     // NetworkError, so recognising the abort here is all that is needed.
     expect(isNetworkFailure(err)).toBe(true);
+  });
+
+  it("a caller's own abort mid-body is a failure, not an empty success", async () => {
+    // Node rejects a body read with AbortError, not TimeoutError, when the
+    // caller's controller fires. Treating only the latter as a failure let a
+    // dead exchange read as an empty 2xx body.
+    const err = Object.assign(new Error('This operation was aborted'), { name: 'AbortError' });
+    expect(isNetworkFailure(err)).toBe(true);
+    await expect(readBody(Promise.reject(err))).rejects.toMatchObject({
+      code: 'NETWORK_ERROR',
+    });
   });
 
   it('budgets are ordered: a byte transfer gets more room than a JSON call', () => {

@@ -36,10 +36,15 @@ import { NetworkError } from '../output/error.js';
  *  api/client.ts re-exports it for every existing caller. */
 export function isNetworkFailure(err: unknown): boolean {
   if (err instanceof TypeError) return true;
-  // AbortSignal.timeout and connectTimedFetch both abort with a DOMException
-  // named TimeoutError.
+  // AbortSignal.timeout and connectTimedFetch abort with a DOMException named
+  // TimeoutError; a caller's own controller aborts with AbortError. Both end
+  // the exchange without an answer, and treating only the first as a failure
+  // let the second read as an empty success (AIT-540). Nothing in this CLI
+  // aborts a request deliberately except these helpers, so there is no
+  // user-cancellation case to mislabel.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if ((err as any)?.name === 'TimeoutError') return true;
+  const name = (err as any)?.name;
+  if (name === 'TimeoutError' || name === 'AbortError') return true;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const code = (err as any)?.code;
   if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ECONNRESET' || code === 'ETIMEDOUT') {

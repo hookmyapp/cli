@@ -17,7 +17,7 @@ import {
 import { posthogAliasAndIdentify } from '../observability/posthog.js';
 import { parseSandboxSessions, type WhatsAppSandboxSession } from '../api/sandbox-session.js';
 import { maybeSetupAgents } from '../commands/agent.js';
-import { timedFetch, readBody } from '../api/timed-fetch.js';
+import { isNetworkFailure, timedFetch, readBody } from '../api/timed-fetch.js';
 
 // --- bootstrap-code exchange DTO ---
 // Mirrors backend/src/auth/bootstrap/dto/exchange-bootstrap.dto.ts (Wave 1
@@ -68,15 +68,26 @@ async function pollForTokens(opts: {
 
     // Bounded per poll: the loop's own deadline only advances between
     // requests, so one wedged request would outlive it (AIT-540).
-    const res = await timedFetch('https://api.workos.com/user_management/authenticate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        device_code: opts.deviceCode,
-        client_id: opts.clientId,
-      }),
-    });
+    let res: Response;
+    try {
+      res = await timedFetch('https://api.workos.com/user_management/authenticate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+          device_code: opts.deviceCode,
+          client_id: opts.clientId,
+        }),
+      });
+    } catch (err) {
+      if (isNetworkFailure(err)) {
+        const { describeFetchError } = await import('../api/client.js');
+        throw new NetworkError(
+          `Could not reach the sign-in service (api.workos.com): ${describeFetchError(err)}. Check your internet connection or try again later.`,
+        );
+      }
+      throw err;
+    }
 
     if (res.ok) {
       const data = await readBody(res.json(), 'Lost the connection to the sign-in service. Try again.');
