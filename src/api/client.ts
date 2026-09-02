@@ -43,6 +43,26 @@ function decodeJwtExp(token: string): number {
   }
 }
 
+/**
+ * `res.json()` where a transport failure mid-body stays a transport failure.
+ *
+ * Headers can arrive 2xx and the bytes never follow — a stalled proxy, a
+ * dropped connection, our own request timeout firing during the read. That
+ * abort surfaces from `res.json()`, well after the `catch` around `fetch`, so
+ * every blanket `.catch(() => empty)` in this file was quietly relabelling a
+ * failed request: as an empty success, as a malformed response, as an expired
+ * session. All three told the user something untrue about a network stall
+ * (AIT-540). A genuinely empty or non-JSON body still reads as `null`.
+ */
+async function readJsonBody(res: Response, networkMessage: string): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch (err) {
+    if (isNetworkFailure(err)) throw new NetworkError(networkMessage);
+    return null;
+  }
+}
+
 async function refreshToken(
   refreshTokenValue: string,
 ): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> {
@@ -78,15 +98,10 @@ async function refreshToken(
     throw new UnexpectedError('refresh failed', 'WORKOS_REFRESH_FAILED');
   }
 
-  // Same body-read hazard as apiClient: a stalled body here would fall into
-  // the shape guard below and report a malformed response, which the caller
-  // reads as "session gone" and tells the user to log in again.
-  const data = await res.json().catch((err: unknown) => {
-    if (isNetworkFailure(err)) {
-      throw new NetworkError('Lost the connection to the sign-in service. Try again.');
-    }
-    return null;
-  });
+  const data = (await readJsonBody(
+    res,
+    'Lost the connection to the sign-in service while reading its response. Try again.',
+  )) as { access_token?: unknown; refresh_token?: unknown } | null;
   // Shape guard — a 200 with missing/empty tokens must NOT be persisted, or
   // saveCredentials would corrupt the store (JSON.stringify drops undefined
   // fields, leaving a credentials.json with no tokens at all).
@@ -141,7 +156,12 @@ export async function forceTokenRefresh(): Promise<void> {
   try {
     const refreshed = await refreshToken(creds.refreshToken);
     await saveCredentials(refreshed);
-  } catch {
+  } catch (err) {
+    // Same rule as validAccessToken: only a refresh WorkOS actually rejected
+    // means the session is gone. A transport failure kept its identity there
+    // and was losing it here, so `channels connect` on a stalled network told
+    // the user to log in again (AIT-540).
+    if (err instanceof NetworkError) throw err;
     throw new AuthError('Session expired. Run: hookmyapp login');
   }
 }
@@ -179,7 +199,10 @@ export async function rescopeWorkspaceToken(workspaceId: string): Promise<void> 
   if (!res.ok) {
     throw await mapApiError(res);
   }
-  const data = await res.json().catch(() => null);
+  const data = (await readJsonBody(
+    res,
+    `Lost the connection to HookMyApp API (${new URL(getEffectiveApiUrl()).host}) while reading the response. Try again.`,
+  )) as { accessToken?: unknown; refreshToken?: unknown } | null;
   // Shape guard — never persist a 200 with missing/empty tokens (same rule as
   // refreshToken above; a corrupt credentials.json is worse than a hard error).
   if (
@@ -418,23 +441,15 @@ export async function apiClient(
   if (res.status === 204) {
     return undefined;
   }
-  try {
-    return await res.json();
-  } catch (err) {
-    // A stalled body aborts HERE, not in the fetch catch above: headers came
-    // back 2xx and the bytes never did. Without this guard the blanket catch
-    // launders a failed request into a successful `undefined`, and a caller
-    // like `workspace new` dereferences result.id on a resource the server
-    // may well have created (AIT-540).
-    if (isNetworkFailure(err)) {
-      throw new NetworkError(
-        `Lost the connection to HookMyApp API (${new URL(baseUrl).host}) while reading the response. Try again.`,
-      );
-    }
-    // Empty or non-JSON 2xx body — treat as void rather than crashing with
-    // "Unexpected end of JSON input" for callers that don't consume the return.
-    return undefined;
-  }
+  // `?? undefined`: an empty or non-JSON 2xx body reads as void rather than
+  // crashing with "Unexpected end of JSON input" for callers that don't
+  // consume the return.
+  return (
+    (await readJsonBody(
+      res,
+      `Lost the connection to HookMyApp API (${new URL(baseUrl).host}) while reading the response. Try again.`,
+    )) ?? undefined
+  );
 }
 
 // --- money model v2 billing contract (Plan 05 Task 1) ---

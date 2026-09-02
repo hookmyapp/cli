@@ -311,4 +311,22 @@ describe('apiClient bounds every request', () => {
     });
     fetchSpy.mockRestore();
   });
+
+  it('forceTokenRefresh reports a network stall as such, not as an expired session', async () => {
+    const { forceTokenRefresh } = await import('../client.js');
+    // WorkOS answers 2xx headers, then the body stalls. Relabelling that as
+    // "Session expired" sends the user to re-login over a network blip.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+      json: async () => {
+        throw Object.assign(new Error('terminated'), { name: 'TimeoutError' });
+      },
+    } as unknown as Response);
+
+    await expect(forceTokenRefresh()).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+    fetchSpy.mockRestore();
+  });
 });
