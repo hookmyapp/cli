@@ -65,6 +65,7 @@ async function readJsonBody(res: Response, networkMessage: string): Promise<unkn
 
 async function refreshToken(
   refreshTokenValue: string,
+  signal?: AbortSignal | null,
 ): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> {
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
@@ -77,6 +78,9 @@ async function refreshToken(
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
+      // A caller's deadline has to cover the refresh too, or it bounds only
+      // the request it can see and the call still runs long (AIT-540).
+      ...(signal ? { signal } : {}),
     });
   } catch (err) {
     // Transport failure — the refresh never reached WorkOS. This is NOT an
@@ -120,12 +124,13 @@ async function refreshToken(
 
 async function validAccessToken(
   creds: NonNullable<Awaited<ReturnType<typeof readCredentials>>>,
+  signal?: AbortSignal | null,
 ): Promise<string> {
   if (isAgentCredential(creds)) return creds.accessToken;
   const exp = decodeJwtExp(creds.accessToken);
   if (exp === 0 || Date.now() / 1000 <= exp - 60) return creds.accessToken;
   try {
-    const refreshed = await refreshToken(creds.refreshToken);
+    const refreshed = await refreshToken(creds.refreshToken, signal);
     await saveCredentials(refreshed);
     return refreshed.accessToken;
   } catch (err) {
@@ -366,7 +371,9 @@ export async function apiClient(
     }
   })();
 
-  const accessToken = await validAccessToken(creds);
+  // Pass the caller's signal down: the refresh runs inside this call, so a
+  // deadline that skips it bounds only part of what the caller asked for.
+  const accessToken = await validAccessToken(creds, (options ?? {}).signal);
 
   const baseUrl = getEffectiveApiUrl();
 

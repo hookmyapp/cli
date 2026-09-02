@@ -144,7 +144,19 @@ export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise
     throw err;
   }
 
-  const buf = Buffer.from(await readBody(res.arrayBuffer()));
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(await readBody(res.arrayBuffer()));
+  } catch (cause) {
+    // Same shape as the connect failure above: a body that stalls halfway is
+    // still a failed download, not a generic network error.
+    const err = new CliError(
+      `Failed to download cloudflared from ${asset.url}: ${(cause as Error).message}`,
+      'BINARY_DOWNLOAD_FAILED',
+    );
+    err.exitCode = 4;
+    throw err;
+  }
   const computedSha = createHash('sha256').update(buf).digest('hex');
   if (computedSha !== expectedSha) {
     const err = new CliError(

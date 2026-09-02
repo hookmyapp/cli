@@ -329,4 +329,34 @@ describe('apiClient bounds every request', () => {
     await expect(forceTokenRefresh()).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
     fetchSpy.mockRestore();
   });
+
+  it("a caller's deadline covers the token refresh, not just the request it wraps", async () => {
+    const { readCredentials } = await import('../../auth/store.js');
+    const { apiClient } = await import('../client.js');
+    // A JWT whose exp is in the past, so apiClient must refresh before it can
+    // send anything. A deadline that skips the refresh bounds only part of the
+    // call — doctor's 10s probe could still run 40s.
+    const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const expired = `${b64({ alg: 'RS256' })}.${b64({ exp: Math.floor(Date.now() / 1000) - 3600 })}.sig`;
+    vi.mocked(readCredentials).mockResolvedValueOnce({
+      accessToken: expired,
+      refreshToken: 'rt',
+      expiresAt: 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+      json: async () => ({ access_token: expired, refresh_token: 'r' }),
+    } as unknown as Response);
+
+    const mine = new AbortController().signal;
+    await apiClient('/workspaces', { signal: mine }).catch(() => undefined);
+
+    expect(fetchSpy.mock.calls[0][0]).toContain('api.workos.com');
+    expect((fetchSpy.mock.calls[0][1] as RequestInit).signal).toBe(mine);
+    fetchSpy.mockRestore();
+  });
 });
