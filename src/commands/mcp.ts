@@ -51,13 +51,36 @@ export function headerPayload(name: string, token: string): Record<string, strin
     : { Authorization: `Bearer ${token}` };
 }
 
+/**
+ * Deadline for the whole helper invocation.
+ *
+ * An MCP client spawns this command per connection attempt and cannot reap
+ * what it spawned, so a helper that never exits is never cleaned up: a
+ * customer ended up with 8 hung `mcp-headers` processes holding 21 GB
+ * (AIT-540). The requests themselves are bounded in api/client.ts; this is
+ * the backstop for a hang that is not a request, and sits above that timeout
+ * so a real network failure still reports itself rather than being cut off.
+ */
+const HEADERS_DEADLINE_MS = 45_000;
+
 export async function printMcpHeaders(opts: { header?: string } = {}): Promise<void> {
-  // NOT the session token: a WorkOS JWT carries no `aud` claim and the /mcp
-  // audience guard rejects it (AIT-460). This resolves to the machine's org
-  // credential, minting one on first use.
-  const { getMcpAccessToken } = await import('../auth/mcp-credential.js');
-  const token = await getMcpAccessToken();
-  process.stdout.write(JSON.stringify(headerPayload(opts.header ?? 'authorization', token)) + '\n');
+  // Unref'd: it cannot hold the process open on the happy path, and it can
+  // only fire when something else already is.
+  const deadline = setTimeout(() => {
+    process.stderr.write('Timed out resolving MCP credentials. Run: hookmyapp login\n');
+    process.exit(5);
+  }, HEADERS_DEADLINE_MS);
+  deadline.unref();
+  try {
+    // NOT the session token: a WorkOS JWT carries no `aud` claim and the /mcp
+    // audience guard rejects it (AIT-460). This resolves to the machine's org
+    // credential, minting one on first use.
+    const { getMcpAccessToken } = await import('../auth/mcp-credential.js');
+    const token = await getMcpAccessToken();
+    process.stdout.write(JSON.stringify(headerPayload(opts.header ?? 'authorization', token)) + '\n');
+  } finally {
+    clearTimeout(deadline);
+  }
 }
 
 export function installClaudeMcp(): void {

@@ -32,6 +32,14 @@ export function setWorkspaceContext(ctx: { workspaceId: string | null }): void {
   workspaceCtx = ctx;
 }
 
+// Every outbound request is bounded. Node's fetch has no default timeout, so
+// a server that accepts the connection and never answers (blackholing proxy,
+// VPN, captive portal) pins the process forever — which is how `mcp-headers`
+// helpers spawned by an MCP client survived for hours and ate 21 GB of RAM
+// (AIT-540). `agent-auth.ts` and `gateway.ts` already bound their fetches;
+// this file is the one every command routes through.
+const API_FETCH_TIMEOUT_MS = 30_000;
+
 function decodeJwtExp(token: string): number {
   try {
     const payload = token.split('.')[1];
@@ -56,6 +64,7 @@ async function refreshToken(
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
+      signal: AbortSignal.timeout(API_FETCH_TIMEOUT_MS),
     });
   } catch (err) {
     // Transport failure — the refresh never reached WorkOS. This is NOT an
@@ -158,6 +167,7 @@ export async function rescopeWorkspaceToken(workspaceId: string): Promise<void> 
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...buildVersionHeaders() },
       body: JSON.stringify({ refreshToken: creds.refreshToken, workspaceId }),
+      signal: AbortSignal.timeout(API_FETCH_TIMEOUT_MS),
     });
   } catch (err) {
     if (isNetworkFailure(err)) {
@@ -302,6 +312,11 @@ export async function mapApiError(res: Response): Promise<CliError> {
 
 export function isNetworkFailure(err: unknown): boolean {
   if (err instanceof TypeError) return true;
+  // AbortSignal.timeout aborts with a DOMException named TimeoutError. Every
+  // catch block in this file already maps a network failure to NetworkError
+  // (exit 5), so recognising it here is the whole of the timeout handling.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((err as any)?.name === 'TimeoutError') return true;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const code = (err as any)?.code;
   if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ECONNRESET' || code === 'ETIMEDOUT') {
@@ -370,6 +385,8 @@ export async function apiClient(
     res = await fetch(`${baseUrl}${path}`, {
       ...fetchOptions,
       headers,
+      // After the spread: a caller that brought its own signal keeps it.
+      signal: fetchOptions.signal ?? AbortSignal.timeout(API_FETCH_TIMEOUT_MS),
     });
   } catch (err) {
     if (isNetworkFailure(err)) {
