@@ -17,6 +17,7 @@ import {
 import { posthogAliasAndIdentify } from '../observability/posthog.js';
 import { parseSandboxSessions, type WhatsAppSandboxSession } from '../api/sandbox-session.js';
 import { maybeSetupAgents } from '../commands/agent.js';
+import { isNetworkFailure, timedFetch, readBody } from '../api/timed-fetch.js';
 
 // --- bootstrap-code exchange DTO ---
 // Mirrors backend/src/auth/bootstrap/dto/exchange-bootstrap.dto.ts (Wave 1
@@ -65,18 +66,31 @@ async function pollForTokens(opts: {
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, opts.interval * 1000));
 
-    const res = await fetch('https://api.workos.com/user_management/authenticate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        device_code: opts.deviceCode,
-        client_id: opts.clientId,
-      }),
-    });
+    // Bounded per poll: the loop's own deadline only advances between
+    // requests, so one wedged request would outlive it (AIT-540).
+    let res: Response;
+    try {
+      res = await timedFetch('https://api.workos.com/user_management/authenticate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+          device_code: opts.deviceCode,
+          client_id: opts.clientId,
+        }),
+      });
+    } catch (err) {
+      if (isNetworkFailure(err)) {
+        const { describeFetchError } = await import('../api/client.js');
+        throw new NetworkError(
+          `Could not reach the sign-in service (api.workos.com): ${describeFetchError(err)}. Check your internet connection or try again later.`,
+        );
+      }
+      throw err;
+    }
 
     if (res.ok) {
-      const data = await res.json();
+      const data = await readBody(res.json(), 'Lost the connection to the sign-in service. Try again.');
       // BEFORE saveCredentials: revoking authenticates as the session that
       // minted the key, and a login replaces the session. `login --code`
       // supports switching accounts without a logout, so without this the old
@@ -107,7 +121,17 @@ async function pollForTokens(opts: {
       return;
     }
 
-    const err = await res.json().catch(() => ({}));
+    // The fallback is for a non-JSON error body only. A dropped connection
+    // must keep its identity: swallowing it here reported "Login failed:
+    // unknown error" for what was a network problem (AIT-540). The success
+    // read above already propagates transport failures, so this matches it.
+    const err = await readBody(
+      res.json(),
+      'Lost the connection to the sign-in service. Try again.',
+    ).catch((e: unknown) => {
+      if (e instanceof NetworkError) throw e;
+      return {} as { error?: string; error_description?: string };
+    });
     if (err.error === 'authorization_pending') {
       continue;
     }
@@ -430,7 +454,7 @@ export async function runBootstrapCodeExchange(
   const baseUrl = getBootstrapApiUrl();
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}/auth/bootstrap/exchange`, {
+    res = await timedFetch(`${baseUrl}/auth/bootstrap/exchange`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
@@ -446,7 +470,12 @@ export async function runBootstrapCodeExchange(
   }
   if (!res.ok) throw await mapApiError(res);
 
-  const data = (await res.json()) as ExchangeBootstrapResponseDto;
+  // The bootstrap code is one-time and may already be spent, so a stalled
+  // body must read as retryable network trouble, not UNKNOWN_ERROR.
+  const data = (await readBody(
+    res.json(),
+    `Lost the connection to HookMyApp API (${new URL(baseUrl).host}) while reading the response. Try again.`,
+  )) as ExchangeBootstrapResponseDto;
 
   // See the device flow above: revoke the outgoing session's key while its
   // credentials can still authenticate the request.
@@ -857,7 +886,7 @@ export function loginCommand(program: Command): void {
 
         let res: Response;
         try {
-          res = await fetch('https://api.workos.com/user_management/authorize/device', {
+          res = await timedFetch('https://api.workos.com/user_management/authorize/device', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ client_id: getEffectiveWorkosClientId() }),
@@ -883,7 +912,7 @@ export function loginCommand(program: Command): void {
           verification_uri_complete,
           interval,
           expires_in,
-        } = await res.json();
+        } = await readBody(res.json(), 'Lost the connection to the sign-in service (api.workos.com). Try again.');
 
         console.log(`\nOpening browser to authenticate...\nCode: ${user_code}\n`);
 

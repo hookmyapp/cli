@@ -144,11 +144,14 @@ function resolveInvocationApiUrl(argv: string[]): string | null {
 
 // Runs under `node -e` (CJS): fetch /notifications with the stored bearer token and
 // atomically rewrite the cache, preserving unrelated fields (lastNudgedAt).
-// Every failure path is a silent no-op — the next 24h window retries.
+// Every failure path is a silent no-op — the next 24h window retries. The
+// fetch is bounded: nothing watches this child, so an unbounded request would
+// leave an orphan node process alive forever (AIT-540).
 const REFRESH_SCRIPT = `
 (async () => {
   const res = await fetch(process.env.HOOKMYAPP_NOTIFICATIONS_URL, {
     headers: { Authorization: 'Bearer ' + process.env.HOOKMYAPP_NOTICES_TOKEN },
+    signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) return;
   const data = await res.json();

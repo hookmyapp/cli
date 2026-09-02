@@ -241,3 +241,122 @@ describe('apiClient — soft-warn banner via X-HookMyApp-Client-Outdated', () =>
     expect(printed).toBe('');
   });
 });
+
+// AIT-540 — an unbounded request pinned `mcp-headers` helpers forever.
+describe('apiClient bounds every request', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('sends an AbortSignal so a server that never answers cannot hang the CLI', async () => {
+    const { apiClient } = await import('../client.js');
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(mkOk(200, { ok: true }));
+    await apiClient('/workspaces');
+
+    const sent = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect(sent.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('a caller that brings its own signal keeps it', async () => {
+    const { apiClient } = await import('../client.js');
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(mkOk(200, { ok: true }));
+    const mine = new AbortController().signal;
+    await apiClient('/workspaces', { signal: mine });
+
+    const sent = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect(sent.signal).toBe(mine);
+  });
+
+  it('the timeout abort surfaces as NetworkError, not an unhandled DOMException', async () => {
+    const { apiClient } = await import('../client.js');
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(
+        Object.assign(new Error('The operation was aborted due to timeout'), {
+          name: 'TimeoutError',
+        }),
+      );
+    // Shape, not `instanceof`: an earlier test in this file calls
+    // vi.resetModules(), so error.js has two class identities by the time
+    // this runs (see the note at the top).
+    await expect(apiClient('/workspaces')).rejects.toMatchObject({
+      code: 'NETWORK_ERROR',
+      exitCode: 5,
+    });
+    fetchSpy.mockRestore();
+  });
+
+  it('a body that stalls after 2xx headers fails, it does not read as an empty success', async () => {
+    const { apiClient } = await import('../client.js');
+    // Headers arrive, the bytes never do: the abort lands inside res.json(),
+    // outside the fetch catch. Returning undefined here would let a caller
+    // dereference a result for a request that never completed.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+      json: async () => {
+        throw Object.assign(new Error('terminated'), { name: 'TimeoutError' });
+      },
+    } as unknown as Response);
+
+    await expect(apiClient('/workspaces')).rejects.toMatchObject({
+      code: 'NETWORK_ERROR',
+      exitCode: 5,
+    });
+    fetchSpy.mockRestore();
+  });
+
+  it('forceTokenRefresh reports a network stall as such, not as an expired session', async () => {
+    const { forceTokenRefresh } = await import('../client.js');
+    // WorkOS answers 2xx headers, then the body stalls. Relabelling that as
+    // "Session expired" sends the user to re-login over a network blip.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+      json: async () => {
+        throw Object.assign(new Error('terminated'), { name: 'TimeoutError' });
+      },
+    } as unknown as Response);
+
+    await expect(forceTokenRefresh()).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+    fetchSpy.mockRestore();
+  });
+
+  it("a caller's deadline covers the token refresh, not just the request it wraps", async () => {
+    const { readCredentials } = await import('../../auth/store.js');
+    const { apiClient } = await import('../client.js');
+    // A JWT whose exp is in the past, so apiClient must refresh before it can
+    // send anything. A deadline that skips the refresh bounds only part of the
+    // call — doctor's 10s probe could still run 40s.
+    const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const expired = `${b64({ alg: 'RS256' })}.${b64({ exp: Math.floor(Date.now() / 1000) - 3600 })}.sig`;
+    vi.mocked(readCredentials).mockResolvedValueOnce({
+      accessToken: expired,
+      refreshToken: 'rt',
+      expiresAt: 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+      json: async () => ({ access_token: expired, refresh_token: 'r' }),
+    } as unknown as Response);
+
+    const mine = new AbortController().signal;
+    await apiClient('/workspaces', { signal: mine }).catch(() => undefined);
+
+    expect(fetchSpy.mock.calls[0][0]).toContain('api.workos.com');
+    expect((fetchSpy.mock.calls[0][1] as RequestInit).signal).toBe(mine);
+    fetchSpy.mockRestore();
+  });
+});

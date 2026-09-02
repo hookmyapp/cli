@@ -1,5 +1,6 @@
 import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import { NetworkError } from '../output/error.js';
+import { timedFetch, readBody } from './timed-fetch.js';
 import { mapApiError, isNetworkFailure } from './client.js';
 
 // Re-declared wire DTOs (the backend is never imported). Keep field names in
@@ -23,39 +24,35 @@ export interface AgentCredentialResponse {
 }
 
 // Auth requests must not hang an agent or CI job forever; bound every call.
-const AUTH_FETCH_TIMEOUT_MS = 30_000;
-
-async function timedFetch(url: string, init: RequestInit): Promise<Response> {
+async function boundedFetch(url: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetch(url, { ...init, signal: AbortSignal.timeout(AUTH_FETCH_TIMEOUT_MS) });
+    return await timedFetch(url, init);
   } catch (err) {
-    // AbortSignal.timeout aborts with a TimeoutError; treat it, and any
-    // transport failure, as a NetworkError so the CLI exits cleanly (exit 5).
-    if (isNetworkFailure(err) || (err instanceof Error && err.name === 'TimeoutError')) {
-      throw new NetworkError();
-    }
+    // A timeout abort and any transport failure both mean the same thing to
+    // the user: NetworkError, exit 5.
+    if (isNetworkFailure(err)) throw new NetworkError();
     throw err;
   }
 }
 
 async function postJson(path: string, body: unknown): Promise<unknown> {
-  const res = await timedFetch(`${getEffectiveApiUrl()}${path}`, {
+  const res = await boundedFetch(`${getEffectiveApiUrl()}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw await mapApiError(res);
-  return res.json();
+  return readBody(res.json());
 }
 
 /** Full scope vocabulary advertised by the backend (drift-free default). */
 export async function fetchSupportedScopes(): Promise<string[]> {
-  const res = await timedFetch(
+  const res = await boundedFetch(
     `${getEffectiveApiUrl()}/.well-known/oauth-protected-resource`,
     { method: 'GET' },
   );
   if (!res.ok) throw await mapApiError(res);
-  const body = (await res.json()) as { scopes_supported?: string[] };
+  const body = (await readBody(res.json())) as { scopes_supported?: string[] };
   return Array.isArray(body.scopes_supported) ? body.scopes_supported : [];
 }
 

@@ -20,6 +20,7 @@ import {
   getEffectiveApiUrl,
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
+import { timedFetch, isNetworkFailure, readBody } from './timed-fetch.js';
 import { buildVersionHeaders } from './version-headers.js';
 
 // Module-level workspace context populated by the top-level CLI entry after
@@ -42,8 +43,29 @@ function decodeJwtExp(token: string): number {
   }
 }
 
+/**
+ * `res.json()` where a transport failure mid-body stays a transport failure.
+ *
+ * Headers can arrive 2xx and the bytes never follow — a stalled proxy, a
+ * dropped connection, our own request timeout firing during the read. That
+ * abort surfaces from `res.json()`, well after the `catch` around `fetch`, so
+ * every blanket `.catch(() => empty)` in this file was quietly relabelling a
+ * failed request: as an empty success, as a malformed response, as an expired
+ * session. All three told the user something untrue about a network stall
+ * (AIT-540). A genuinely empty or non-JSON body still reads as `null`.
+ */
+async function readJsonBody(res: Response, networkMessage: string): Promise<unknown> {
+  // A genuinely empty or non-JSON body still reads as `null`; only transport
+  // failures are promoted, which is what readBody does.
+  return readBody(res.json(), networkMessage).catch((err: unknown) => {
+    if (err instanceof NetworkError) throw err;
+    return null;
+  });
+}
+
 async function refreshToken(
   refreshTokenValue: string,
+  signal?: AbortSignal | null,
 ): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> {
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
@@ -52,10 +74,13 @@ async function refreshToken(
   });
   let res: Response;
   try {
-    res = await fetch('https://api.workos.com/user_management/authenticate', {
+    res = await timedFetch('https://api.workos.com/user_management/authenticate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
+      // A caller's deadline has to cover the refresh too, or it bounds only
+      // the request it can see and the call still runs long (AIT-540).
+      ...(signal ? { signal } : {}),
     });
   } catch (err) {
     // Transport failure — the refresh never reached WorkOS. This is NOT an
@@ -77,7 +102,10 @@ async function refreshToken(
     throw new UnexpectedError('refresh failed', 'WORKOS_REFRESH_FAILED');
   }
 
-  const data = await res.json().catch(() => null);
+  const data = (await readJsonBody(
+    res,
+    'Lost the connection to the sign-in service while reading its response. Try again.',
+  )) as { access_token?: unknown; refresh_token?: unknown } | null;
   // Shape guard — a 200 with missing/empty tokens must NOT be persisted, or
   // saveCredentials would corrupt the store (JSON.stringify drops undefined
   // fields, leaving a credentials.json with no tokens at all).
@@ -96,12 +124,13 @@ async function refreshToken(
 
 async function validAccessToken(
   creds: NonNullable<Awaited<ReturnType<typeof readCredentials>>>,
+  signal?: AbortSignal | null,
 ): Promise<string> {
   if (isAgentCredential(creds)) return creds.accessToken;
   const exp = decodeJwtExp(creds.accessToken);
   if (exp === 0 || Date.now() / 1000 <= exp - 60) return creds.accessToken;
   try {
-    const refreshed = await refreshToken(creds.refreshToken);
+    const refreshed = await refreshToken(creds.refreshToken, signal);
     await saveCredentials(refreshed);
     return refreshed.accessToken;
   } catch (err) {
@@ -132,7 +161,12 @@ export async function forceTokenRefresh(): Promise<void> {
   try {
     const refreshed = await refreshToken(creds.refreshToken);
     await saveCredentials(refreshed);
-  } catch {
+  } catch (err) {
+    // Same rule as validAccessToken: only a refresh WorkOS actually rejected
+    // means the session is gone. A transport failure kept its identity there
+    // and was losing it here, so `channels connect` on a stalled network told
+    // the user to log in again (AIT-540).
+    if (err instanceof NetworkError) throw err;
     throw new AuthError('Session expired. Run: hookmyapp login');
   }
 }
@@ -154,7 +188,7 @@ export async function rescopeWorkspaceToken(workspaceId: string): Promise<void> 
   }
   let res: Response;
   try {
-    res = await fetch(`${getEffectiveApiUrl()}/auth/rescope`, {
+    res = await timedFetch(`${getEffectiveApiUrl()}/auth/rescope`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...buildVersionHeaders() },
       body: JSON.stringify({ refreshToken: creds.refreshToken, workspaceId }),
@@ -170,7 +204,10 @@ export async function rescopeWorkspaceToken(workspaceId: string): Promise<void> 
   if (!res.ok) {
     throw await mapApiError(res);
   }
-  const data = await res.json().catch(() => null);
+  const data = (await readJsonBody(
+    res,
+    `Lost the connection to HookMyApp API (${new URL(getEffectiveApiUrl()).host}) while reading the response. Try again.`,
+  )) as { accessToken?: unknown; refreshToken?: unknown } | null;
   // Shape guard — never persist a 200 with missing/empty tokens (same rule as
   // refreshToken above; a corrupt credentials.json is worse than a hard error).
   if (
@@ -300,18 +337,9 @@ export async function mapApiError(res: Response): Promise<CliError> {
   return new ApiError(msg, res.status, code);
 }
 
-export function isNetworkFailure(err: unknown): boolean {
-  if (err instanceof TypeError) return true;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const code = (err as any)?.code;
-  if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ECONNRESET' || code === 'ETIMEDOUT') {
-    return true;
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const message = (err as any)?.message;
-  if (typeof message === 'string' && /fetch failed/i.test(message)) return true;
-  return false;
-}
+// Re-exported from the fetch layer, which owns it — every existing caller
+// imports it from here.
+export { isNetworkFailure } from './timed-fetch.js';
 
 /** Undici wraps the real failure ("getaddrinfo ENOTFOUND …", cert errors) in
  * `err.cause` behind a generic "fetch failed" — surface the inner message. */
@@ -343,7 +371,9 @@ export async function apiClient(
     }
   })();
 
-  const accessToken = await validAccessToken(creds);
+  // Pass the caller's signal down: the refresh runs inside this call, so a
+  // deadline that skips it bounds only part of what the caller asked for.
+  const accessToken = await validAccessToken(creds, (options ?? {}).signal);
 
   const baseUrl = getEffectiveApiUrl();
 
@@ -367,7 +397,7 @@ export async function apiClient(
 
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}${path}`, {
+    res = await timedFetch(`${baseUrl}${path}`, {
       ...fetchOptions,
       headers,
     });
@@ -404,13 +434,15 @@ export async function apiClient(
   if (res.status === 204) {
     return undefined;
   }
-  try {
-    return await res.json();
-  } catch {
-    // Empty or non-JSON 2xx body — treat as void rather than crashing with
-    // "Unexpected end of JSON input" for callers that don't consume the return.
-    return undefined;
-  }
+  // `?? undefined`: an empty or non-JSON 2xx body reads as void rather than
+  // crashing with "Unexpected end of JSON input" for callers that don't
+  // consume the return.
+  return (
+    (await readJsonBody(
+      res,
+      `Lost the connection to HookMyApp API (${new URL(baseUrl).host}) while reading the response. Try again.`,
+    )) ?? undefined
+  );
 }
 
 // --- money model v2 billing contract (Plan 05 Task 1) ---

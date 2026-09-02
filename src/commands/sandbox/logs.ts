@@ -20,6 +20,7 @@ import { getEffectiveApiUrl } from '../../config/env-profiles.js';
 import { readCredentials } from '../../auth/store.js';
 import { pickSession } from './picker.js';
 import { sessionIdentifier } from './helpers.js';
+import { connectTimedFetch } from '../../api/timed-fetch.js';
 
 interface DeliveriesListResponse {
   logs: DeliveryLog[];
@@ -356,7 +357,9 @@ async function runFollow(args: {
 
   let res: Response;
   try {
-    res = await fetch(url, {
+    // connectTimedFetch, NOT timedFetch: an SSE body is long-lived by design,
+    // so only the wait for headers is bounded (AIT-540).
+    res = await connectTimedFetch(url, {
       headers: {
         Authorization: `Bearer ${creds.accessToken}`,
         'X-Workspace-Id': workspaceId,
