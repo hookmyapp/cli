@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -19,6 +19,11 @@ const SRC = join(fileURLToPath(new URL('../../', import.meta.url)));
  *  `node -e` in another process and cannot import anything. */
 const ALLOWED = new Set(['api/timed-fetch.ts', 'notifications-nudge.ts']);
 
+/** Windows hands back `api\\timed-fetch.ts`; the allowlist is written in POSIX. */
+function relPath(file: string): string {
+  return relative(SRC, file).split(sep).join('/');
+}
+
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const full = join(dir, entry);
@@ -35,11 +40,11 @@ function sourceFiles(dir: string): string[] {
 describe('every outbound request is bounded (AIT-540)', () => {
   it('no source file calls fetch() directly', () => {
     const offenders = sourceFiles(SRC)
-      .filter((file) => !ALLOWED.has(relative(SRC, file)))
+      .filter((file) => !ALLOWED.has(relPath(file)))
       // `await fetch(` / `= fetch(` / `return fetch(` — a call, not the word in
       // a comment or an identifier like `timedFetch(`.
       .filter((file) => /(?:await|=|return|[^a-zA-Z])\s*\bfetch\(/.test(stripComments(readFileSync(file, 'utf-8'))))
-      .map((file) => relative(SRC, file));
+      .map(relPath);
 
     expect(
       offenders,
