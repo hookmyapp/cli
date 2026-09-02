@@ -57,11 +57,16 @@ export function headerPayload(name: string, token: string): Record<string, strin
  * An MCP client spawns this command per connection attempt and cannot reap
  * what it spawned, so a helper that never exits is never cleaned up: a
  * customer ended up with 8 hung `mcp-headers` processes holding 21 GB
- * (AIT-540). The requests themselves are bounded in api/client.ts; this is
- * the backstop for a hang that is not a request, and sits above that timeout
- * so a real network failure still reports itself rather than being cut off.
+ * (AIT-540).
+ *
+ * Deliberately BELOW the 30s per-request budget rather than above it. First
+ * use mints a credential over two sequential requests, so a per-request bound
+ * alone allows 60s — longer than any MCP client waits, and long enough that
+ * the helper is answering a question nobody is still asking. 15s covers a
+ * cold handshake plus both round trips on a slow link; a genuinely
+ * unreachable host fails fast and still reports its own NetworkError.
  */
-const HEADERS_DEADLINE_MS = 45_000;
+const HEADERS_DEADLINE_MS = 15_000;
 
 export async function printMcpHeaders(opts: { header?: string } = {}): Promise<void> {
   // Unref'd: it cannot hold the process open on the happy path, and it can

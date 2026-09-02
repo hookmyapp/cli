@@ -20,6 +20,7 @@ import {
   getEffectiveApiUrl,
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
+import { timedFetch } from './timed-fetch.js';
 import { buildVersionHeaders } from './version-headers.js';
 
 // Module-level workspace context populated by the top-level CLI entry after
@@ -31,14 +32,6 @@ let workspaceCtx: { workspaceId: string | null } = { workspaceId: null };
 export function setWorkspaceContext(ctx: { workspaceId: string | null }): void {
   workspaceCtx = ctx;
 }
-
-// Every outbound request is bounded. Node's fetch has no default timeout, so
-// a server that accepts the connection and never answers (blackholing proxy,
-// VPN, captive portal) pins the process forever — which is how `mcp-headers`
-// helpers spawned by an MCP client survived for hours and ate 21 GB of RAM
-// (AIT-540). `agent-auth.ts` and `gateway.ts` already bound their fetches;
-// this file is the one every command routes through.
-const API_FETCH_TIMEOUT_MS = 30_000;
 
 function decodeJwtExp(token: string): number {
   try {
@@ -60,11 +53,10 @@ async function refreshToken(
   });
   let res: Response;
   try {
-    res = await fetch('https://api.workos.com/user_management/authenticate', {
+    res = await timedFetch('https://api.workos.com/user_management/authenticate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
-      signal: AbortSignal.timeout(API_FETCH_TIMEOUT_MS),
     });
   } catch (err) {
     // Transport failure — the refresh never reached WorkOS. This is NOT an
@@ -163,11 +155,10 @@ export async function rescopeWorkspaceToken(workspaceId: string): Promise<void> 
   }
   let res: Response;
   try {
-    res = await fetch(`${getEffectiveApiUrl()}/auth/rescope`, {
+    res = await timedFetch(`${getEffectiveApiUrl()}/auth/rescope`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...buildVersionHeaders() },
       body: JSON.stringify({ refreshToken: creds.refreshToken, workspaceId }),
-      signal: AbortSignal.timeout(API_FETCH_TIMEOUT_MS),
     });
   } catch (err) {
     if (isNetworkFailure(err)) {
@@ -382,11 +373,9 @@ export async function apiClient(
 
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}${path}`, {
+    res = await timedFetch(`${baseUrl}${path}`, {
       ...fetchOptions,
       headers,
-      // After the spread: a caller that brought its own signal keeps it.
-      signal: fetchOptions.signal ?? AbortSignal.timeout(API_FETCH_TIMEOUT_MS),
     });
   } catch (err) {
     if (isNetworkFailure(err)) {

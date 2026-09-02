@@ -42,7 +42,11 @@ describe('doctor — auth probe uses the real authenticated request path', () =>
 
     const report = await collectDoctorReport({ checkTools: false });
 
-    expect(apiClient).toHaveBeenCalledWith('/workspaces');
+    // Bounded probe (AIT-540): doctor diagnoses a broken network, so it must
+    // not sit on one waiting for the default request budget.
+    expect(apiClient).toHaveBeenCalledWith('/workspaces', {
+      signal: expect.any(AbortSignal),
+    });
     expect(report.loggedIn).toBe(true);
     expect(report.checks.find((c) => c.id === 'auth')!.detail).toBe(
       'credentials valid for this env',

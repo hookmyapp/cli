@@ -8,6 +8,10 @@ import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import { readWorkspaceConfig } from './workspace.js';
 import { addExamples } from '../output/help.js';
 import { getClaudeMcpStatus } from './mcp.js';
+import { timedFetch } from '../api/timed-fetch.js';
+
+/** The network check reports a broken network; it must not hang on one. */
+const HEALTH_TIMEOUT_MS = 10_000;
 
 // `hard` checks gate the prereq (a FAIL → non-zero exit). Informational checks
 // (auth/workspace/default-channel) are reported, never a crash or exit failure.
@@ -48,7 +52,9 @@ export async function collectDoctorReport(
     const apiUrl = getEffectiveApiUrl();
     let netOk = false; let detail = `${apiUrl} reachable`;
     try {
-      const r = await fetch(`${apiUrl}/health`, { method: 'GET' });
+      // Short on purpose: this check exists to REPORT a broken network, so
+      // it must not sit on one for 30s before saying so.
+      const r = await timedFetch(`${apiUrl}/health`, { method: 'GET' }, HEALTH_TIMEOUT_MS);
       netOk = r.ok || r.status < 500;
     } catch { detail = `no outbound HTTPS to ${apiUrl}`; }
     checks.push({ id: 'network', label: 'Outbound HTTPS', ok: netOk, hard: true, detail });
@@ -72,7 +78,11 @@ export async function collectDoctorReport(
   let workspaces: Array<{ id?: string }> | null = null;
   if (loggedIn && opts.checkNetwork !== false) {
     try {
-      const res = await apiClient('/workspaces');
+      // Same short budget as the health probe: doctor exists to diagnose a
+      // broken network quickly, so every probe it makes must fail fast.
+      const res = await apiClient('/workspaces', {
+        signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+      });
       if (Array.isArray(res)) workspaces = res;
       authDetail = 'credentials valid for this env';
     } catch (err) {

@@ -17,6 +17,7 @@ import {
 import { posthogAliasAndIdentify } from '../observability/posthog.js';
 import { parseSandboxSessions, type WhatsAppSandboxSession } from '../api/sandbox-session.js';
 import { maybeSetupAgents } from '../commands/agent.js';
+import { timedFetch } from '../api/timed-fetch.js';
 
 // --- bootstrap-code exchange DTO ---
 // Mirrors backend/src/auth/bootstrap/dto/exchange-bootstrap.dto.ts (Wave 1
@@ -65,7 +66,9 @@ async function pollForTokens(opts: {
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, opts.interval * 1000));
 
-    const res = await fetch('https://api.workos.com/user_management/authenticate', {
+    // Bounded per poll: the loop's own deadline only advances between
+    // requests, so one wedged request would outlive it (AIT-540).
+    const res = await timedFetch('https://api.workos.com/user_management/authenticate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -430,7 +433,7 @@ export async function runBootstrapCodeExchange(
   const baseUrl = getBootstrapApiUrl();
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}/auth/bootstrap/exchange`, {
+    res = await timedFetch(`${baseUrl}/auth/bootstrap/exchange`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
@@ -857,7 +860,7 @@ export function loginCommand(program: Command): void {
 
         let res: Response;
         try {
-          res = await fetch('https://api.workos.com/user_management/authorize/device', {
+          res = await timedFetch('https://api.workos.com/user_management/authorize/device', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ client_id: getEffectiveWorkosClientId() }),

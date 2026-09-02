@@ -21,6 +21,7 @@ import { output } from '../../output/format.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
 import { buildSandboxSendRequest, sessionIdentifier } from './helpers.js';
 import { pickSession } from './picker.js';
+import { timedFetch } from '../../api/timed-fetch.js';
 
 export async function runSandboxSend(opts: {
   identifierArg?: string;
@@ -54,7 +55,7 @@ export async function runSandboxSend(opts: {
 
   const { url, body } = buildSandboxSendRequest(session, message);
 
-  const res = await fetch(url, {
+  const res = await timedFetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${session.accessToken}`,

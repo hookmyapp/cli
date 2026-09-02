@@ -16,6 +16,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { x as tarExtract } from 'tar';
 import { CliError } from '../../output/error.js';
+import { timedFetch, TRANSFER_TIMEOUT_MS } from '../../api/timed-fetch.js';
 
 export const CLOUDFLARED_VERSION = '2026.3.0';
 
@@ -122,7 +123,8 @@ export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise
     throw err;
   }
 
-  const res = await fetch(asset.url);
+  // ~40 MB of binary: the transfer budget, not the JSON one.
+  const res = await timedFetch(asset.url, {}, TRANSFER_TIMEOUT_MS);
   if (!res.ok) {
     const err = new CliError(
       `Failed to download cloudflared from ${asset.url}: HTTP ${res.status}`,
