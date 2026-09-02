@@ -20,7 +20,7 @@ import {
   getEffectiveApiUrl,
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
-import { timedFetch } from './timed-fetch.js';
+import { timedFetch, isNetworkFailure, readBody } from './timed-fetch.js';
 import { buildVersionHeaders } from './version-headers.js';
 
 // Module-level workspace context populated by the top-level CLI entry after
@@ -55,12 +55,12 @@ function decodeJwtExp(token: string): number {
  * (AIT-540). A genuinely empty or non-JSON body still reads as `null`.
  */
 async function readJsonBody(res: Response, networkMessage: string): Promise<unknown> {
-  try {
-    return await res.json();
-  } catch (err) {
-    if (isNetworkFailure(err)) throw new NetworkError(networkMessage);
+  // A genuinely empty or non-JSON body still reads as `null`; only transport
+  // failures are promoted, which is what readBody does.
+  return readBody(res.json(), networkMessage).catch((err: unknown) => {
+    if (err instanceof NetworkError) throw err;
     return null;
-  }
+  });
 }
 
 async function refreshToken(
@@ -332,23 +332,9 @@ export async function mapApiError(res: Response): Promise<CliError> {
   return new ApiError(msg, res.status, code);
 }
 
-export function isNetworkFailure(err: unknown): boolean {
-  if (err instanceof TypeError) return true;
-  // AbortSignal.timeout aborts with a DOMException named TimeoutError. Every
-  // catch block in this file already maps a network failure to NetworkError
-  // (exit 5), so recognising it here is the whole of the timeout handling.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if ((err as any)?.name === 'TimeoutError') return true;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const code = (err as any)?.code;
-  if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ECONNRESET' || code === 'ETIMEDOUT') {
-    return true;
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const message = (err as any)?.message;
-  if (typeof message === 'string' && /fetch failed/i.test(message)) return true;
-  return false;
-}
+// Re-exported from the fetch layer, which owns it — every existing caller
+// imports it from here.
+export { isNetworkFailure } from './timed-fetch.js';
 
 /** Undici wraps the real failure ("getaddrinfo ENOTFOUND …", cert errors) in
  * `err.cause` behind a generic "fetch failed" — surface the inner message. */

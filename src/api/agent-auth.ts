@@ -1,6 +1,6 @@
 import { getEffectiveApiUrl } from '../config/env-profiles.js';
 import { NetworkError } from '../output/error.js';
-import { timedFetch } from './timed-fetch.js';
+import { timedFetch, readBody } from './timed-fetch.js';
 import { mapApiError, isNetworkFailure } from './client.js';
 
 // Re-declared wire DTOs (the backend is never imported). Keep field names in
@@ -42,7 +42,7 @@ async function postJson(path: string, body: unknown): Promise<unknown> {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw await mapApiError(res);
-  return res.json();
+  return readBody(res.json());
 }
 
 /** Full scope vocabulary advertised by the backend (drift-free default). */
@@ -52,7 +52,7 @@ export async function fetchSupportedScopes(): Promise<string[]> {
     { method: 'GET' },
   );
   if (!res.ok) throw await mapApiError(res);
-  const body = (await res.json()) as { scopes_supported?: string[] };
+  const body = (await readBody(res.json())) as { scopes_supported?: string[] };
   return Array.isArray(body.scopes_supported) ? body.scopes_supported : [];
 }
 

@@ -17,7 +17,7 @@ import {
 import { posthogAliasAndIdentify } from '../observability/posthog.js';
 import { parseSandboxSessions, type WhatsAppSandboxSession } from '../api/sandbox-session.js';
 import { maybeSetupAgents } from '../commands/agent.js';
-import { timedFetch } from '../api/timed-fetch.js';
+import { timedFetch, readBody } from '../api/timed-fetch.js';
 
 // --- bootstrap-code exchange DTO ---
 // Mirrors backend/src/auth/bootstrap/dto/exchange-bootstrap.dto.ts (Wave 1
@@ -79,7 +79,7 @@ async function pollForTokens(opts: {
     });
 
     if (res.ok) {
-      const data = await res.json();
+      const data = await readBody(res.json(), 'Lost the connection to the sign-in service. Try again.');
       // BEFORE saveCredentials: revoking authenticates as the session that
       // minted the key, and a login replaces the session. `login --code`
       // supports switching accounts without a logout, so without this the old
@@ -110,7 +110,7 @@ async function pollForTokens(opts: {
       return;
     }
 
-    const err = await res.json().catch(() => ({}));
+    const err = await readBody(res.json(), 'Lost the connection to the sign-in service. Try again.').catch(() => ({}));
     if (err.error === 'authorization_pending') {
       continue;
     }
@@ -449,7 +449,12 @@ export async function runBootstrapCodeExchange(
   }
   if (!res.ok) throw await mapApiError(res);
 
-  const data = (await res.json()) as ExchangeBootstrapResponseDto;
+  // The bootstrap code is one-time and may already be spent, so a stalled
+  // body must read as retryable network trouble, not UNKNOWN_ERROR.
+  const data = (await readBody(
+    res.json(),
+    `Lost the connection to HookMyApp API (${new URL(baseUrl).host}) while reading the response. Try again.`,
+  )) as ExchangeBootstrapResponseDto;
 
   // See the device flow above: revoke the outgoing session's key while its
   // credentials can still authenticate the request.
@@ -886,7 +891,7 @@ export function loginCommand(program: Command): void {
           verification_uri_complete,
           interval,
           expires_in,
-        } = await res.json();
+        } = await readBody(res.json(), 'Lost the connection to the sign-in service (api.workos.com). Try again.');
 
         console.log(`\nOpening browser to authenticate...\nCode: ${user_code}\n`);
 

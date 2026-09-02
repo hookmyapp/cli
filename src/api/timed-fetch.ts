@@ -23,10 +23,55 @@
  * A caller that brings its own `signal` keeps it — its lifecycle wins over
  * ours, and Ctrl+C handling must not be silently replaced by a deadline.
  *
- * Aborts surface as a `TimeoutError`, which `isNetworkFailure` (api/client.ts)
+ * Aborts surface as a `TimeoutError`, which `isNetworkFailure` below
  * recognises, so every existing catch block maps them to `NetworkError`
- * (exit 5) without a new error path.
+ * (exit 5) without a new error path. Body reads need `readBody` for the same
+ * reason: bounding a request moves some failures past the fetch `catch`.
  */
+
+import { NetworkError } from '../output/error.js';
+
+/** Was this a transport failure rather than a real answer from the server?
+ *  Lives here, with the fetch helpers, because `readBody` needs it and
+ *  api/client.ts re-exports it for every existing caller. */
+export function isNetworkFailure(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  // AbortSignal.timeout and connectTimedFetch both abort with a DOMException
+  // named TimeoutError.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((err as any)?.name === 'TimeoutError') return true;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const code = (err as any)?.code;
+  if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ECONNRESET' || code === 'ETIMEDOUT') {
+    return true;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const message = (err as any)?.message;
+  if (typeof message === 'string' && /fetch failed/i.test(message)) return true;
+  return false;
+}
+
+/**
+ * A response body read whose transport failures stay transport failures.
+ *
+ * Bounding the request moved the failure: headers can arrive 2xx and the bytes
+ * never follow, and that abort surfaces from `res.json()` / `res.text()` /
+ * `arrayBuffer()` — after the `catch` around `fetch` has already been passed.
+ * Every unguarded body read therefore turned a network stall into something
+ * else: an empty success, a malformed response, an expired session, a bare
+ * UNKNOWN_ERROR (AIT-540).
+ *
+ * Non-transport errors (a JSON parse failure on a genuinely non-JSON body)
+ * pass through untouched, so callers keep their own fallbacks.
+ */
+export async function readBody<T>(read: Promise<T>, networkMessage?: string): Promise<T> {
+  try {
+    return await read;
+  } catch (err) {
+    if (isNetworkFailure(err)) throw new NetworkError(networkMessage);
+    throw err;
+  }
+}
 
 /** Request/response JSON calls. Long enough for a cold TLS handshake on a bad
  *  link, short enough that a wedged connection is not a hang. */

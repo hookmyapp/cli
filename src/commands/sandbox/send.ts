@@ -8,7 +8,8 @@
 // if absent). Per spec E8.
 
 import { input } from '@inquirer/prompts';
-import { apiClient, isNetworkFailure } from '../../api/client.js';
+import { apiClient } from '../../api/client.js';
+import { readBody } from '../../api/timed-fetch.js';
 import {
   parseSandboxSessions,
 } from '../../api/sandbox-session.js';
@@ -66,9 +67,9 @@ export async function runSandboxSend(opts: {
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const resBody: any = await res.json().catch((err: unknown) => {
-    // A stalled body must not be reported as a delivered message (AIT-540).
-    if (isNetworkFailure(err)) throw new NetworkError();
+  // A stalled body must not be reported as a delivered message (AIT-540).
+  const resBody: any = await readBody(res.json()).catch((err: unknown) => {
+    if (err instanceof NetworkError) throw err;
     return {};
   });
   if (!res.ok) {

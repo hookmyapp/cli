@@ -21,7 +21,7 @@ export interface GatewayConfig { token: string; baseUrl: string; }
 // stuck in createContainer). 60s is far above Meta's normal response time;
 // binary uploads keep their own path without this cap. Shared by the backend
 // config lookup below — every leg of a gateway command is bounded.
-import { timedFetch, TRANSFER_TIMEOUT_MS } from './timed-fetch.js';
+import { timedFetch, readBody, TRANSFER_TIMEOUT_MS } from './timed-fetch.js';
 
 const GATEWAY_JSON_TIMEOUT_MS = 60_000;
 
@@ -180,7 +180,7 @@ export async function gatewayRequest(call: GatewayCall): Promise<any> {
       body: call.body !== undefined ? JSON.stringify(call.body) : undefined,
     }, GATEWAY_JSON_TIMEOUT_MS);
     // The timeout signal can also fire mid-body-read — same NetworkError mapping.
-    text = await res.text();
+    text = await readBody(res.text());
   } catch (err) {
     if (
       isNetworkFailure(err) ||
@@ -233,7 +233,8 @@ export async function gatewayUpload(up: GatewayUpload): Promise<any> {
     if (isNetworkFailure(err)) throw new NetworkError();
     throw err;
   }
-  const text = await res.text();
+  // Outside the try above, so the abort needs its own mapping (AIT-540).
+  const text = await readBody(res.text());
   let json: unknown; try { json = text ? JSON.parse(text) : undefined; } catch { json = undefined; }
   if (!res.ok) mapGatewayError(res.status, json);
   return json;
@@ -257,9 +258,11 @@ export async function gatewayDownloadToStream(signedUrl: string, sink: Writable)
     throw new ApiError(`Media download failed (HTTP ${res.status}).`, res.status || 502);
   }
   let bytes = 0;
+  // A transfer that stalls mid-stream aborts inside the read loop below, past
+  // every catch above it (AIT-540).
   const reader = res.body.getReader();
   for (;;) {
-    const { done, value } = await reader.read();
+    const { done, value } = await readBody(reader.read());
     if (done) break;
     bytes += value.byteLength;
     await new Promise<void>((resolve, reject) => sink.write(value, (e) => (e ? reject(e) : resolve())));

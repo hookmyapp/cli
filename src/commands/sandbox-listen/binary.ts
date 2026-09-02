@@ -16,7 +16,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { x as tarExtract } from 'tar';
 import { CliError } from '../../output/error.js';
-import { timedFetch, TRANSFER_TIMEOUT_MS } from '../../api/timed-fetch.js';
+import { timedFetch, readBody, TRANSFER_TIMEOUT_MS } from '../../api/timed-fetch.js';
 
 export const CLOUDFLARED_VERSION = '2026.3.0';
 
@@ -134,7 +134,7 @@ export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise
     throw err;
   }
 
-  const buf = Buffer.from(await res.arrayBuffer());
+  const buf = Buffer.from(await readBody(res.arrayBuffer()));
   const computedSha = createHash('sha256').update(buf).digest('hex');
   if (computedSha !== expectedSha) {
     const err = new CliError(

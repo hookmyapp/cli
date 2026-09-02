@@ -37,6 +37,21 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+/**
+ * Files whose body reads are deliberately unguarded.
+ *
+ * `api/client.ts` — mapApiError and parseClientOutdated read the body of an
+ * ALREADY-failed response. A stall there loses the detail but keeps the HTTP
+ * status, which is the more useful thing to report; promoting it to
+ * NetworkError would throw the status away.
+ * `notifications-nudge.ts` — the read lives in a string run by `node -e` in a
+ * detached child that swallows everything by design.
+ */
+const BODY_READ_ALLOWED = new Set(['api/client.ts', 'notifications-nudge.ts']);
+
+/** `res.json()` / `res.text()` / `res.arrayBuffer()`, wrapped or not. */
+const BODY_READ = /\b(?:res|response)\.(?:json|text|arrayBuffer)\(\)/g;
+
 describe('every outbound request is bounded (AIT-540)', () => {
   it('no source file calls fetch() directly', () => {
     const offenders = sourceFiles(SRC)
@@ -49,6 +64,27 @@ describe('every outbound request is bounded (AIT-540)', () => {
     expect(
       offenders,
       'Use timedFetch / connectTimedFetch from api/timed-fetch.ts — a raw fetch has no timeout and can hang the CLI forever.',
+    ).toEqual([]);
+  });
+
+  it('no source file reads a response body without readBody', () => {
+    // Bounding the request moved some failures past the fetch catch: headers
+    // arrive 2xx and the bytes never do. Codex found four of these one at a
+    // time during review, which is what this pins.
+    const offenders = sourceFiles(SRC)
+      .filter((file) => !BODY_READ_ALLOWED.has(relPath(file)))
+      .filter((file) => {
+        // Collapse whitespace so a `readBody(` split across lines still counts.
+        const flat = stripComments(readFileSync(file, 'utf-8')).replace(/\s+/g, ' ');
+        return [...flat.matchAll(BODY_READ)].some(
+          (m) => !flat.slice(Math.max(0, m.index - 40), m.index).includes('readBody('),
+        );
+      })
+      .map(relPath);
+
+    expect(
+      offenders,
+      'Wrap the read in readBody() from api/timed-fetch.ts — a body that stalls after 2xx headers otherwise surfaces as an empty success or a bare UNKNOWN_ERROR.',
     ).toEqual([]);
   });
 });
