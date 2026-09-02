@@ -87,6 +87,27 @@ describe('every outbound request is bounded (AIT-540)', () => {
       'Wrap the read in readBody() from api/timed-fetch.ts — a body that stalls after 2xx headers otherwise surfaces as an empty success or a bare UNKNOWN_ERROR.',
     ).toEqual([]);
   });
+
+  it('no readBody has its NetworkError swallowed by the next catch', () => {
+    // The third way this bug hid: wrap the read correctly, then discard the
+    // error you just raised with a blanket `.catch(() => fallback)`.
+    const offenders = sourceFiles(SRC)
+      .filter((file) => {
+        const flat = stripComments(readFileSync(file, 'utf-8')).replace(/\s+/g, ' ');
+        return [...flat.matchAll(/readBody\(/g)].some((m) => {
+          const after = flat.slice(m.index, m.index + 260);
+          const swallow = after.match(/\)\s*\.catch\(/);
+          if (swallow?.index === undefined) return false;
+          return !after.slice(swallow.index, swallow.index + 160).includes('NetworkError');
+        });
+      })
+      .map(relPath);
+
+    expect(
+      offenders,
+      'A .catch() after readBody() must re-throw NetworkError — the fallback is for a non-JSON body, not for a dead connection.',
+    ).toEqual([]);
+  });
 });
 
 /** Comments legitimately mention fetch(); only real calls count. */

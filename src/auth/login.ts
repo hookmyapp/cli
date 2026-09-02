@@ -110,7 +110,17 @@ async function pollForTokens(opts: {
       return;
     }
 
-    const err = await readBody(res.json(), 'Lost the connection to the sign-in service. Try again.').catch(() => ({}));
+    // The fallback is for a non-JSON error body only. A dropped connection
+    // must keep its identity: swallowing it here reported "Login failed:
+    // unknown error" for what was a network problem (AIT-540). The success
+    // read above already propagates transport failures, so this matches it.
+    const err = await readBody(
+      res.json(),
+      'Lost the connection to the sign-in service. Try again.',
+    ).catch((e: unknown) => {
+      if (e instanceof NetworkError) throw e;
+      return {} as { error?: string; error_description?: string };
+    });
     if (err.error === 'authorization_pending') {
       continue;
     }
