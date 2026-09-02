@@ -2,6 +2,12 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.22 — 2026-09-02
+
+### Fixed
+
+- Every outbound request the CLI makes is now bounded by a timeout. Node's `fetch` has none, so a server that accepted the connection and then never answered pinned the process indefinitely: an `mcp-headers` helper spawned by an MCP client survived for hours and consumed 21 GB of a machine's memory. Request/response calls bound the whole exchange; `text/event-stream` connections bound only the wait for response headers, so a working stream is never cut off mid-flight. A caller that supplies its own signal keeps it, so Ctrl+C still works. Timeouts surface as network failures and exit 5 (AIT-540).
+
 ## 0.14.21 — 2026-08-31
 
 ### Added
