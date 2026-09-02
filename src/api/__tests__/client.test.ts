@@ -289,4 +289,26 @@ describe('apiClient bounds every request', () => {
     });
     fetchSpy.mockRestore();
   });
+
+  it('a body that stalls after 2xx headers fails, it does not read as an empty success', async () => {
+    const { apiClient } = await import('../client.js');
+    // Headers arrive, the bytes never do: the abort lands inside res.json(),
+    // outside the fetch catch. Returning undefined here would let a caller
+    // dereference a result for a request that never completed.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+      json: async () => {
+        throw Object.assign(new Error('terminated'), { name: 'TimeoutError' });
+      },
+    } as unknown as Response);
+
+    await expect(apiClient('/workspaces')).rejects.toMatchObject({
+      code: 'NETWORK_ERROR',
+      exitCode: 5,
+    });
+    fetchSpy.mockRestore();
+  });
 });

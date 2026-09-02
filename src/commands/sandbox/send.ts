@@ -8,12 +8,13 @@
 // if absent). Per spec E8.
 
 import { input } from '@inquirer/prompts';
-import { apiClient } from '../../api/client.js';
+import { apiClient, isNetworkFailure } from '../../api/client.js';
 import {
   parseSandboxSessions,
 } from '../../api/sandbox-session.js';
 import {
   ApiError,
+  NetworkError,
   SessionWindowError,
 } from '../../output/error.js';
 import { c, icon } from '../../output/color.js';
@@ -65,7 +66,11 @@ export async function runSandboxSend(opts: {
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const resBody: any = await res.json().catch(() => ({}));
+  const resBody: any = await res.json().catch((err: unknown) => {
+    // A stalled body must not be reported as a delivered message (AIT-540).
+    if (isNetworkFailure(err)) throw new NetworkError();
+    return {};
+  });
   if (!res.ok) {
     if (res.status === 403 && resBody?.code === 'SESSION_WINDOW_CLOSED') {
       throw new SessionWindowError(

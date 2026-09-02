@@ -78,7 +78,15 @@ async function refreshToken(
     throw new UnexpectedError('refresh failed', 'WORKOS_REFRESH_FAILED');
   }
 
-  const data = await res.json().catch(() => null);
+  // Same body-read hazard as apiClient: a stalled body here would fall into
+  // the shape guard below and report a malformed response, which the caller
+  // reads as "session gone" and tells the user to log in again.
+  const data = await res.json().catch((err: unknown) => {
+    if (isNetworkFailure(err)) {
+      throw new NetworkError('Lost the connection to the sign-in service. Try again.');
+    }
+    return null;
+  });
   // Shape guard — a 200 with missing/empty tokens must NOT be persisted, or
   // saveCredentials would corrupt the store (JSON.stringify drops undefined
   // fields, leaving a credentials.json with no tokens at all).
@@ -412,7 +420,17 @@ export async function apiClient(
   }
   try {
     return await res.json();
-  } catch {
+  } catch (err) {
+    // A stalled body aborts HERE, not in the fetch catch above: headers came
+    // back 2xx and the bytes never did. Without this guard the blanket catch
+    // launders a failed request into a successful `undefined`, and a caller
+    // like `workspace new` dereferences result.id on a resource the server
+    // may well have created (AIT-540).
+    if (isNetworkFailure(err)) {
+      throw new NetworkError(
+        `Lost the connection to HookMyApp API (${new URL(baseUrl).host}) while reading the response. Try again.`,
+      );
+    }
     // Empty or non-JSON 2xx body — treat as void rather than crashing with
     // "Unexpected end of JSON input" for callers that don't consume the return.
     return undefined;
