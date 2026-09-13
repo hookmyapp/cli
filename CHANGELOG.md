@@ -2,6 +2,16 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.23 — 2026-09-13
+
+### Added
+
+- `HOOKMYAPP_API_KEY` authenticates the CLI. A key minted headlessly, for example through `/agent/auth/claim`, used to be ignored, so agents, CI jobs and apps that embed the CLI had to complete a second login before any command would run. `HOOKMYAPP_WORKSPACE_ID` selects the workspace for such a key, which has no stored configuration to fall back on (AIT-438).
+
+### Changed
+
+- When `HOOKMYAPP_API_KEY` is set it takes precedence over a stored login. `hookmyapp doctor` names which credential is in use, `hookmyapp logout` warns that the variable keeps commands authenticated and does not revoke a stored key that the variable also holds, and `hookmyapp login` refuses while the variable is set, since signing in would have no effect. A malformed value fails with an error naming the variable, and the key is never printed, logged or sent with telemetry (AIT-438).
+
 ## 0.14.22 — 2026-09-02
 
 ### Fixed
