@@ -83,6 +83,27 @@ test('revoking the currently stored credential clears it from disk', async () =>
   expect(existsSync(join(DIR, 'credentials.json'))).toBe(false);
 });
 
+// AIT-438: with the same key also in HOOKMYAPP_API_KEY, reading the resolved
+// credential returns the synthesized env one, which has no credentialPublicId
+// — the match fails and a revoked token stays on disk, 401ing the moment the
+// variable is unset.
+test('clears the stored credential even when the env holds the same key', async () => {
+  const original = process.env.HOOKMYAPP_API_KEY;
+  process.env.HOOKMYAPP_API_KEY = 'hmok_same';
+  writeFileSync(
+    join(DIR, 'credentials.json'),
+    JSON.stringify({ accessToken: 'hmok_same', refreshToken: '', expiresAt: 0, kind: 'agent', credentialPublicId: 'ac_pub1', scopes: [] }),
+  );
+  apiClientMock.mockResolvedValue(undefined);
+  try {
+    await run(['credentials', 'revoke', 'ac_pub1', '-y', '--json']);
+    expect(existsSync(join(DIR, 'credentials.json'))).toBe(false);
+  } finally {
+    if (original === undefined) delete process.env.HOOKMYAPP_API_KEY;
+    else process.env.HOOKMYAPP_API_KEY = original;
+  }
+});
+
 test('revoking a different credential leaves the stored one intact', async () => {
   writeFileSync(
     join(DIR, 'credentials.json'),

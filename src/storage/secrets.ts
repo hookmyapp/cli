@@ -41,6 +41,9 @@ export interface Secrets {
    * server's WORKSPACE_ORG_MISMATCH is the fallback for those.
    */
   orgPublicId?: string;
+  /** Where the credential came from. Undefined = read from credentials.json.
+   * 'env' = synthesized from HOOKMYAPP_API_KEY and never persisted (AIT-438). */
+  source?: 'env';
 }
 
 /** True for an auth.md-issued org-scoped agent credential (no refresh token). */

@@ -43,6 +43,7 @@ import {
   readActiveWorkspacePublicId,
 } from '../config/index.js';
 import { resolveEnv } from '../config/env-profiles.js';
+import { envApiKey, keyFingerprint } from '../config/env-vars.js';
 import { nanoid } from 'nanoid';
 import type { EventName, EventProperties } from '../analytics/events.js';
 
@@ -149,6 +150,11 @@ export function getOrCreateMachineId(): string {
  * captures.
  */
 export function getDistinctId(): string {
+  // An environment key is a different principal from whoever last logged in on
+  // this machine. Without this, CI and agent activity merges into that human's
+  // PostHog profile, because lastWorkosSub outlives their session (AIT-438).
+  const envKey = envApiKey();
+  if (envKey) return `key_${keyFingerprint(envKey)}`;
   const cfg = readPosthogConfig();
   return cfg.lastWorkosSub ?? getOrCreateMachineId();
 }

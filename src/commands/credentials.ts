@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { apiClient } from '../api/client.js';
-import { readCredentials, deleteCredentials } from '../auth/store.js';
-import { isAgentCredential } from '../storage/secrets.js';
+import { deleteCredentials } from '../auth/store.js';
+import { isAgentCredential, readSecrets } from '../storage/secrets.js';
 import { addExamples } from '../output/help.js';
 
 interface AgentCredentialRow {
@@ -60,7 +60,12 @@ export function registerCredentialsCommand(program: Command): void {
       });
       // If this is the credential we're currently authenticated with, drop the
       // now-dead token from disk so the next command doesn't send a 401.
-      const creds = await readCredentials();
+      // Read the STORED credential, not the resolved one: with the same key
+      // also in HOOKMYAPP_API_KEY, the synthesized env credential carries no
+      // credentialPublicId, the comparison never matches, and credentials.json
+      // keeps a revoked token that 401s as soon as the variable is unset
+      // (AIT-438).
+      const creds = await readSecrets();
       if (creds && isAgentCredential(creds) && creds.credentialPublicId === publicId) {
         await deleteCredentials();
       }
