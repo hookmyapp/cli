@@ -1,11 +1,13 @@
 import { Command } from 'commander';
 import { saveCredentials, peekIdentity } from './store.js';
+import { revokeCredentialsForReplacedSession } from './mcp-credential.js';
 import { API_KEY_ENV_VAR, envApiKey } from '../config/env-vars.js';
 import { AuthError, NetworkError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
 import { displayEmail } from '../output/mask.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
+import { isValidPublicId } from '../lib/publicId.js';
 import {
   getEffectiveApiUrl,
   getBootstrapApiUrl,
@@ -15,7 +17,8 @@ import {
 } from '../config/env-profiles.js';
 import { posthogAliasAndIdentify } from '../observability/posthog.js';
 import { parseSandboxSessions, type WhatsAppSandboxSession } from '../api/sandbox-session.js';
-import { maybeInstallClaudeMcp } from '../commands/mcp.js';
+import { maybeSetupAgents } from '../commands/agent.js';
+import { isNetworkFailure, timedFetch, readBody } from '../api/timed-fetch.js';
 
 // --- bootstrap-code exchange DTO ---
 // Mirrors backend/src/auth/bootstrap/dto/exchange-bootstrap.dto.ts (Wave 1
@@ -64,18 +67,36 @@ async function pollForTokens(opts: {
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, opts.interval * 1000));
 
-    const res = await fetch('https://api.workos.com/user_management/authenticate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        device_code: opts.deviceCode,
-        client_id: opts.clientId,
-      }),
-    });
+    // Bounded per poll: the loop's own deadline only advances between
+    // requests, so one wedged request would outlive it (AIT-540).
+    let res: Response;
+    try {
+      res = await timedFetch('https://api.workos.com/user_management/authenticate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+          device_code: opts.deviceCode,
+          client_id: opts.clientId,
+        }),
+      });
+    } catch (err) {
+      if (isNetworkFailure(err)) {
+        const { describeFetchError } = await import('../api/client.js');
+        throw new NetworkError(
+          `Could not reach the sign-in service (api.workos.com): ${describeFetchError(err)}. Check your internet connection or try again later.`,
+        );
+      }
+      throw err;
+    }
 
     if (res.ok) {
-      const data = await res.json();
+      const data = await readBody(res.json(), 'Lost the connection to the sign-in service. Try again.');
+      // BEFORE saveCredentials: revoking authenticates as the session that
+      // minted the key, and a login replaces the session. `login --code`
+      // supports switching accounts without a logout, so without this the old
+      // account's key stays live and every client keeps using it.
+      await revokeCredentialsForReplacedSession();
       await saveCredentials({
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
@@ -93,12 +114,25 @@ async function pollForTokens(opts: {
         email: u.email,
         name: fullName.length > 0 ? fullName : undefined,
       });
-      maybeInstallClaudeMcp();
+      // Agent setup does NOT happen here. The device-code grant issues a
+      // user-scoped token with no org claim, and the mint needs one — so a
+      // setup at this point silently configures Cursor with no credential.
+      // runWizard does it after rescopeWorkspaceToken.
       console.log(`\n${c.success(icon.success)} Logged in successfully\n`);
       return;
     }
 
-    const err = await res.json().catch(() => ({}));
+    // The fallback is for a non-JSON error body only. A dropped connection
+    // must keep its identity: swallowing it here reported "Login failed:
+    // unknown error" for what was a network problem (AIT-540). The success
+    // read above already propagates transport failures, so this matches it.
+    const err = await readBody(
+      res.json(),
+      'Lost the connection to the sign-in service. Try again.',
+    ).catch((e: unknown) => {
+      if (e instanceof NetworkError) throw e;
+      return {} as { error?: string; error_description?: string };
+    });
     if (err.error === 'authorization_pending') {
       continue;
     }
@@ -140,6 +174,10 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
         `${cliCommandPrefix()} workspace new <name>`,
       )}`,
     );
+    // No org means no credential to mint, but the server URL is still worth
+    // writing: the clients that resolve their token per request pick one up as
+    // soon as there is a workspace.
+    await maybeSetupAgents();
     return;
   }
 
@@ -196,6 +234,14 @@ export async function runWizard(opts: WizardOpts = {}): Promise<void> {
   } catch {
     // non-fatal: next apiClient call will surface auth errors
   }
+
+  // Configure the coding agents HERE, not at the point the session was saved.
+  // The mint needs the org claim rescopeWorkspaceToken just added; before it,
+  // a multi-workspace account cannot mint at all and Cursor — which needs the
+  // token written into its config — ends up with no credential and nothing
+  // that retries. Ahead of every early return below, so --json and --next
+  // paths configure too.
+  await maybeSetupAgents();
 
   // Step 2 — non-interactive next steps.
   //
@@ -409,7 +455,7 @@ export async function runBootstrapCodeExchange(
   const baseUrl = getBootstrapApiUrl();
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}/auth/bootstrap/exchange`, {
+    res = await timedFetch(`${baseUrl}/auth/bootstrap/exchange`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
@@ -425,8 +471,16 @@ export async function runBootstrapCodeExchange(
   }
   if (!res.ok) throw await mapApiError(res);
 
-  const data = (await res.json()) as ExchangeBootstrapResponseDto;
+  // The bootstrap code is one-time and may already be spent, so a stalled
+  // body must read as retryable network trouble, not UNKNOWN_ERROR.
+  const data = (await readBody(
+    res.json(),
+    `Lost the connection to HookMyApp API (${new URL(baseUrl).host}) while reading the response. Try again.`,
+  )) as ExchangeBootstrapResponseDto;
 
+  // See the device flow above: revoke the outgoing session's key while its
+  // credentials can still authenticate the request.
+  await revokeCredentialsForReplacedSession();
   await saveCredentials({
     accessToken: data.accessToken,
     refreshToken: data.refreshToken,
@@ -447,7 +501,8 @@ export async function runBootstrapCodeExchange(
     activeWorkspaceId: data.workspace.id,
     activeWorkspaceSlug: data.workspace.name,
   });
-  maybeInstallClaudeMcp();
+  // Agent setup happens in runWizard at the end of this function, once the
+  // workspace is settled — same single point the device flow uses.
 
   // alias machineId → workosSub once per (machine, user) and
   // emit cli_logged_in. workspace publicId is already on disk above so
@@ -495,6 +550,12 @@ export async function runAgentClaimLogin(opts: {
   otp?: string;
   registrationId?: string;
   scopes?: string[];
+  /**
+   * AIT-525: bind the credential to this org. Without it the server picks the
+   * account's oldest org, which for a multi-org user is rarely the one they
+   * came to work in — and the credential can never be re-scoped afterwards.
+   */
+  organizationPublicId?: string;
   json?: boolean;
 }): Promise<void> {
   const { fetchSupportedScopes, initiateClaim, completeClaim } = await import(
@@ -519,7 +580,11 @@ export async function runAgentClaimLogin(opts: {
     }
     const otp = opts.otp ?? (await promptOtp());
     await persistAgentCredential(
-      await completeClaim({ registrationId: opts.registrationId, otp }),
+      await completeClaim({
+        registrationId: opts.registrationId,
+        otp,
+        organizationPublicId: opts.organizationPublicId,
+      }),
       opts.email,
       opts.json,
     );
@@ -557,7 +622,11 @@ export async function runAgentClaimLogin(opts: {
   );
   const otp = await promptOtp();
   await persistAgentCredential(
-    await completeClaim({ registrationId: claim.registrationId, otp }),
+    await completeClaim({
+      registrationId: claim.registrationId,
+      otp,
+      organizationPublicId: opts.organizationPublicId,
+    }),
     opts.email,
     opts.json,
   );
@@ -574,10 +643,19 @@ async function promptOtp(): Promise<string> {
 }
 
 async function persistAgentCredential(
-  cred: { accessToken: string; scopes: string[]; credentialPublicId: string },
+  cred: {
+    accessToken: string;
+    scopes: string[];
+    credentialPublicId: string;
+    organizationPublicId?: string;
+    organizations?: Array<{ publicId: string; name: string }>;
+  },
   email: string,
   json?: boolean,
 ): Promise<void> {
+  // This session IS an org credential, so nothing gets minted — but a key a
+  // previous WorkOS session minted must not outlive it.
+  await revokeCredentialsForReplacedSession();
   await saveCredentials({
     accessToken: cred.accessToken,
     refreshToken: '',
@@ -586,23 +664,51 @@ async function persistAgentCredential(
     credentialPublicId: cred.credentialPublicId,
     scopes: cred.scopes,
     email,
+    orgPublicId: cred.organizationPublicId,
   });
   await revalidateActiveWorkspace(json);
-  maybeInstallClaudeMcp();
+  await maybeSetupAgents();
   if (json) {
     process.stdout.write(
       JSON.stringify({
         ok: true,
         credentialPublicId: cred.credentialPublicId,
         scopes: cred.scopes,
+        organizationPublicId: cred.organizationPublicId,
+        organizations: cred.organizations,
       }) + '\n',
     );
     return;
   }
   const n = cred.scopes.length;
-  console.log(
-    `${c.success(icon.success)} Logged in as ${displayEmail(email)} (${n} scope${n === 1 ? '' : 's'})`,
+  const bound = cred.organizations?.find(
+    (o) => o.publicId === cred.organizationPublicId,
   );
+  // AIT-525: name the org. This credential is locked to it for good, and a
+  // multi-org user who isn't told which one they got only finds out through a
+  // permission error three commands later.
+  const orgLabel = bound
+    ? `, organization "${bound.name}"`
+    : cred.organizationPublicId
+      ? `, organization ${cred.organizationPublicId}`
+      : '';
+  console.log(
+    `${c.success(icon.success)} Logged in as ${displayEmail(email)}${orgLabel} (${n} scope${n === 1 ? '' : 's'})`,
+  );
+  const others = (cred.organizations ?? []).filter(
+    (o) => o.publicId !== cred.organizationPublicId,
+  );
+  if (others.length > 0) {
+    console.log(
+      `\n${c.dim('This credential only works in that organization. Others on your account:')}`,
+    );
+    for (const o of others) console.log(`  ${o.name} ${c.dim(o.publicId)}`);
+    console.log(
+      c.dim(
+        `\nTo use one of them: ${cliCommandPrefix()} login --email ${email} --org <org_id>`,
+      ),
+    );
+  }
 }
 
 /**
@@ -682,6 +788,10 @@ export function loginCommand(program: Command): void {
       '--scope <scope...>',
       'Request specific scopes instead of the full set (repeatable)',
     )
+    .option(
+      '--org <org_id>',
+      'Bind the credential to this organization (org_ id from `workspace list`)',
+    )
     .action(
       async (opts: {
         phone?: string;
@@ -692,6 +802,7 @@ export function loginCommand(program: Command): void {
         otp?: string;
         registrationId?: string;
         scope?: string[];
+        org?: string;
       }) => {
         // AIT-438: HOOKMYAPP_API_KEY outranks the stored credential, so a
         // login completed now would be authenticated over and have no effect.
@@ -727,10 +838,16 @@ export function loginCommand(program: Command): void {
         // up front instead of silently falling through to the browser flow.
         if (
           !opts.email &&
-          (opts.otp || opts.registrationId || (opts.scope?.length ?? 0) > 0)
+          (opts.otp || opts.registrationId || (opts.scope?.length ?? 0) > 0 || opts.org)
         ) {
           throw new ValidationError(
-            '--otp, --registration-id, and --scope require --email.',
+            '--otp, --registration-id, --scope, and --org require --email.',
+          );
+        }
+        // Shape-check locally: a typo'd org id should not cost an OTP round-trip.
+        if (opts.org && !isValidPublicId(opts.org, 'org')) {
+          throw new ValidationError(
+            `--org "${opts.org}" is not an org publicId (org_ followed by 8 characters). Run: ${cliCommandPrefix()} workspace list --json`,
           );
         }
 
@@ -747,6 +864,7 @@ export function loginCommand(program: Command): void {
             otp: opts.otp,
             registrationId: opts.registrationId,
             scopes: opts.scope,
+            organizationPublicId: opts.org,
             json,
           });
           return;
@@ -779,7 +897,7 @@ export function loginCommand(program: Command): void {
 
         let res: Response;
         try {
-          res = await fetch('https://api.workos.com/user_management/authorize/device', {
+          res = await timedFetch('https://api.workos.com/user_management/authorize/device', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ client_id: getEffectiveWorkosClientId() }),
@@ -805,7 +923,7 @@ export function loginCommand(program: Command): void {
           verification_uri_complete,
           interval,
           expires_in,
-        } = await res.json();
+        } = await readBody(res.json(), 'Lost the connection to the sign-in service (api.workos.com). Try again.');
 
         console.log(`\nOpening browser to authenticate...\nCode: ${user_code}\n`);
 
@@ -851,9 +969,14 @@ EXAMPLES:
   $ hookmyapp login --email you@example.com                # browser-free (prompts for a code)
   $ hookmyapp login --email you@example.com --json         # step 1: prints registrationId
   $ hookmyapp login --email you@example.com --registration-id <id> --otp 123456 --json  # step 2
+  $ hookmyapp login --email you@example.com --org org_1a2b3c4d  # pick the organization
   $ hookmyapp login --code hma_boot_xxx                    # zero-browser AI paste
   $ hookmyapp login --workspace acme-corp                  # preselect workspace
   $ hookmyapp login --next sandbox --phone +15551234567    # scripts / CI
+
+An --email login is locked to one organization for the life of the credential
+(workspace use cannot move it). Pass --org to pick; org ids come from
+hookmyapp workspace list --json. The browser login below can switch freely.
 
 This runs the post-login wizard:
   1. Browser sign-in (or --code <bootstrap-code> to skip the browser)

@@ -2,6 +2,38 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.22 — 2026-09-02
+
+### Fixed
+
+- Every outbound request the CLI makes is now bounded by a timeout. Node's `fetch` has none, so a server that accepted the connection and then never answered pinned the process indefinitely: an `mcp-headers` helper spawned by an MCP client survived for hours and consumed 21 GB of a machine's memory. Request/response calls bound the whole exchange; `text/event-stream` connections bound only the wait for response headers, so a working stream is never cut off mid-flight. A caller that supplies its own signal keeps it, so Ctrl+C still works. Timeouts surface as network failures and exit 5 (AIT-540).
+
+## 0.14.21 — 2026-08-31
+
+### Added
+
+- `hookmyapp login --email` accepts `--org <org_id>` to choose which organization the credential binds to. Without it the server keeps the old default (the account's oldest organization). The success line now names the organization the credential is bound to and lists the account's other organizations; `--json` output adds `organizationPublicId` and `organizations` (AIT-525).
+
+### Fixed
+
+- `hookmyapp workspace use` no longer reports success for a switch it cannot make. A credential from `login --email` is fixed to one organization; switching to a workspace in another organization used to print "Active workspace: …" while the session stayed in the old organization, and every later command failed with "Only workspace admins can do this." The switch is now refused with both organizations named and the login command that fixes it, and the previous selection is kept (AIT-525).
+- Cross-organization 403s now explain themselves. The backend's new `WORKSPACE_ORG_MISMATCH` denial is shown with the CLI command to run next, instead of the misleading workspace-admin message (AIT-525).
+
+## 0.14.19 — 2026-08-21
+
+### Added
+
+- `hookmyapp agent setup` configures the HookMyApp MCP server in every coding agent installed on the machine — Claude Code, Codex, and Cursor — and installs the HookMyApp agent skills. `--client <claude|codex|cursor>` configures one of them; `--no-skills` skips the skills install (AIT-457).
+
+- An unknown command now says the CLI may be older than the guide that named it, and how to update. `hookmyapp agent setup` on 0.14.18 printed a bare `unknown command 'agent'`, which reads like the feature does not exist (AIT-457).
+
+### Changed
+
+- `hookmyapp login` now configures MCP for Codex and Cursor as well as Claude Code, and says what to do next when it finds no agent at all. It previously configured Claude Code and returned in silence for everyone else (AIT-457).
+- The per-client note after setup names the restart each agent needs. An agent loads its MCP servers at startup, so a running session keeps using the server it launched with — observed live, where Codex answered a tool call from the previous server and reported it as proof the new one worked (AIT-457).
+- A Cursor config that cannot be written now reports that the existing config is untouched and names the likely cause, instead of surfacing a raw filesystem error. Windows refuses to replace a file a running Cursor holds open, where macOS and Linux allow it (AIT-457).
+- `hookmyapp mcp install --agent claude` still works and still configures Claude Code only. Use `hookmyapp agent setup` for the rest (AIT-457).
+
 ## 0.14.18 — 2026-08-18
 
 ### Changed

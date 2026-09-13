@@ -36,6 +36,12 @@ vi.mock('../../commands/workspace.js', () => ({
   readWorkspaceConfig: () => workspaceConfigState,
 }));
 
+const maybeSetupAgentsMock = vi.fn();
+vi.mock('../../commands/agent.js', () => ({
+  maybeSetupAgents: maybeSetupAgentsMock,
+  registerAgentCommand: vi.fn(),
+}));
+
 const runSandboxListenFlowMock = vi.fn();
 vi.mock('../../commands/sandbox-listen/index.js', () => ({
   runSandboxListenFlow: runSandboxListenFlowMock,
@@ -67,6 +73,8 @@ beforeEach(async () => {
   runSandboxListenFlowMock.mockReset();
   runSandboxStartMock.mockReset();
   runChannelsConnectMock.mockReset();
+  rescopeWorkspaceTokenMock.mockReset();
+  maybeSetupAgentsMock.mockReset();
   workspaceConfigState = {};
   vi.resetModules();
   const mod = await import('../login.js');
@@ -291,5 +299,51 @@ describe('login --next validation', () => {
     await expect(parseLogin(['--next', 'bogus'])).rejects.toThrow(
       /--next must be one of: sandbox, channels, exit \(got "bogus"\)/,
     );
+  });
+});
+
+describe('agent setup during login', () => {
+  it('configures the agents only after the token carries the org', async () => {
+    // The device-code grant issues a user-scoped token. Setting the agents up
+    // before rescopeWorkspaceToken means the mint has no org to mint against,
+    // resolveMcpToken swallows the failure, and Cursor — which needs the token
+    // written into its config — is left with no credential and nothing that
+    // retries.
+    const order: string[] = [];
+    rescopeWorkspaceTokenMock.mockImplementation(async () => {
+      order.push('rescope');
+    });
+    maybeSetupAgentsMock.mockImplementation(async () => {
+      order.push('setup');
+    });
+    apiClientMock.mockResolvedValueOnce([{ id: 'ws_TEST0001', name: 'acme-corp', role: 'admin' }]);
+
+    await runWizard({ next: 'exit' });
+
+    expect(order).toEqual(['rescope', 'setup']);
+  });
+
+  it('configures the agents on the --json path too', async () => {
+    // --json returns early. Setup has to happen ahead of every escape hatch,
+    // not at the end of the happy path, or scripted logins get no MCP config.
+    apiClientMock.mockResolvedValueOnce([{ id: 'ws_TEST0001', name: 'acme-corp', role: 'admin' }]);
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await runWizard({ json: true });
+
+    expect(maybeSetupAgentsMock).toHaveBeenCalled();
+    writeSpy.mockRestore();
+  });
+
+  it('still writes the server URL when the account has no workspace yet', async () => {
+    // Nothing to mint against, but the clients that resolve their token per
+    // request pick one up as soon as there is a workspace.
+    apiClientMock.mockResolvedValueOnce([]);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runWizard();
+
+    expect(maybeSetupAgentsMock).toHaveBeenCalled();
+    logSpy.mockRestore();
   });
 });

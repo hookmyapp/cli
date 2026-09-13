@@ -33,6 +33,14 @@ export interface Secrets {
   /** Agent credentials only: login email — the hmok_ token is opaque, so this
    * is the only human identity available for crash attribution (AIT-278). */
   email?: string;
+  /**
+   * Agent credentials only: the org this credential is locked to (AIT-525).
+   * There is no refresh token to re-scope, so `workspace use` checks a target
+   * workspace against this instead of switching to a workspace the credential
+   * can never reach. Undefined on credentials minted before AIT-525 — the
+   * server's WORKSPACE_ORG_MISMATCH is the fallback for those.
+   */
+  orgPublicId?: string;
   /** Where the credential came from. Undefined = read from credentials.json.
    * 'env' = synthesized from HOOKMYAPP_API_KEY and never persisted (AIT-438). */
   source?: 'env';

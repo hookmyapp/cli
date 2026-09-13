@@ -8,6 +8,7 @@ import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import fs from 'node:fs';
 import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 import { resolveEnv } from '../config/env-profiles.js';
+import { cliCommandPrefix } from '../output/cli-self.js';
 
 export interface WorkspaceConfig {
   activeWorkspaceId?: string;
@@ -157,12 +158,59 @@ export async function switchActiveWorkspace(
   // Re-scope the token to the target org BEFORE persisting the switch, so
   // a failed refresh never leaves config pointing at a workspace the token
   // isn't valid for (previously config was written first → poisoned state).
+  // BEFORE the rescope. The MCP credential belongs to the workspace it was
+  // minted for, and revoking it authenticates as that workspace — once the JWT
+  // carries the new org, the old key can no longer be listed or deleted and
+  // would stay live for good, with a running Cursor still holding it.
+  const { revokePreviousMcpCredential } = await import('../auth/mcp-credential.js');
+  await revokePreviousMcpCredential();
+
+  await assertCredentialCanReach(workspace);
   await rescopeWorkspaceToken(workspace.id);
   writeWorkspaceConfig({
     activeWorkspaceId: workspace.id,
     activeWorkspaceSlug: workspace.name,
   });
+  // Now that the session carries the new org, give the clients a key for it.
+  const { repointAgentsAtActiveWorkspace } = await import('./agent.js');
+  await repointAgentsAtActiveWorkspace();
   return workspace;
+}
+
+/**
+ * AIT-525: refuse a switch the credential can never make.
+ *
+ * An `--email` login mints an org-scoped credential with no refresh token, so
+ * `rescopeWorkspaceToken` is a no-op for it — the switch would print success
+ * and leave the token in its original org, and every later command would 403
+ * claiming the user lacks admin. Catch it here, before the config is written.
+ *
+ * Only fires when both org ids are known. A credential minted before AIT-525
+ * has no stored org, and there the server's WORKSPACE_ORG_MISMATCH is the
+ * backstop.
+ */
+async function assertCredentialCanReach(workspace: Workspace): Promise<void> {
+  const { readCredentials } = await import('../auth/store.js');
+  const { isAgentCredential } = await import('../storage/secrets.js');
+  const creds = await readCredentials();
+  if (!creds || !isAgentCredential(creds)) return;
+  const target = workspace.organizationPublicId;
+  const held = creds.orgPublicId;
+  if (!target || !held || target === held) return;
+  throw new ValidationError(
+    [
+      `This login is locked to one organization, and "${workspace.name}" is not in it.`,
+      '',
+      `  workspace organization: ${workspace.organizationName ?? target} (${target})`,
+      `  your credential:        ${held}`,
+      '',
+      'Email logins cannot switch organization. Sign in again for that one:',
+      `  ${cliCommandPrefix()} login --email ${creds.email ?? '<your-email>'} --org ${target}`,
+      '',
+      `Or use the browser login (${cliCommandPrefix()} login), whose session can switch.`,
+    ].join('\n'),
+    'CREDENTIAL_ORG_LOCKED',
+  );
 }
 
 const VALID_ASSIGNABLE_ROLES = ['admin', 'member'];
@@ -239,6 +287,10 @@ export function registerWorkspaceCommand(program: Command): void {
       // Re-scope the JWT to the newly-created workspace's org (server-side,
       // AIT-182) BEFORE persisting the switch — a failed rescope must not
       // leave config pointing at a workspace the token isn't valid for.
+      // Same ordering as switchActiveWorkspace: revoke while the session still
+      // belongs to the workspace the key was minted for.
+      const { revokePreviousMcpCredential } = await import('../auth/mcp-credential.js');
+      await revokePreviousMcpCredential();
       await rescopeWorkspaceToken(result.id);
       // The create endpoint returns the public DTO where `id` IS the ws_
       // publicId (AIT-147) — safe to persist directly.
@@ -246,6 +298,8 @@ export function registerWorkspaceCommand(program: Command): void {
         activeWorkspaceId: result.id,
         activeWorkspaceSlug: result.name,
       });
+      const { repointAgentsAtActiveWorkspace } = await import('./agent.js');
+      await repointAgentsAtActiveWorkspace();
       if (!program.opts().json) {
         console.log(`Created workspace "${result.name}" and switched to it`);
       } else {

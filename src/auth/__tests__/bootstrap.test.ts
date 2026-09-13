@@ -252,6 +252,34 @@ describe('hookmyapp login --code', () => {
     logSpy.mockRestore();
   });
 
+  test('replacing the session discards the previous account\'s MCP credential', async () => {
+    // `login --code` switches accounts without a logout. The MCP credential is
+    // cached in its own file, so without clearing it here every coding agent
+    // keeps authenticating as the account that was just replaced — silently,
+    // because a cached key is served without any network call.
+    mkdirSync(CONFIG_DIR, { recursive: true });
+    writeFileSync(
+      join(CONFIG_DIR, 'mcp-credential.json'),
+      JSON.stringify({ accessToken: 'hmok_old_account', publicId: 'ac_old' }),
+    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okJson(makeExchangeResponse())));
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const mod = await import('../login.js');
+    await mod.runBootstrapCodeExchange('hma_boot_abc123', { next: 'exit' });
+
+    expect(existsSync(join(CONFIG_DIR, 'mcp-credential.json'))).toBe(false);
+    // Deleting the local copy is not enough: the key stays live on the old
+    // account, and a running Cursor holds its loaded token until restart. The
+    // revoke has to go out while the OUTGOING session can still authenticate
+    // it — after the swap, that key is unreachable.
+    expect(apiClientMock).toHaveBeenCalledWith(
+      '/agent/credentials/ac_old',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+    logSpy.mockRestore();
+  });
+
   test('--code with a stale `config set env staging` persisted → exchange still hits PRODUCTION (config.json env is ignored for bootstrap)', async () => {
     // The regression Codex caught: dropping `--env production` from the
     // customer instruction is only safe if a persisted config.json env can't

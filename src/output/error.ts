@@ -66,8 +66,13 @@ export class CliError extends AppError {
   static override readonly severity: 'sev1' | 'sev2' | 'sev3' = 'sev3';
   public exitCode: number = 1;
 
-  constructor(userMessage: string, code: string, statusCode?: number) {
-    super({ message: userMessage, code });
+  constructor(
+    userMessage: string,
+    code: string,
+    statusCode?: number,
+    details?: Record<string, unknown>,
+  ) {
+    super({ message: userMessage, code, details });
     if (statusCode !== undefined) {
       Object.defineProperty(this, 'statusCode', {
         value: statusCode,
@@ -123,8 +128,11 @@ export class ValidationError extends CliError {
 export class AuthError extends CliError {
   static readonly severity = 'sev3' as const;
   static readonly httpStatus = 401;
-  constructor(message: string = `Session expired. Run: ${cliCommandPrefix()} login`) {
-    super(message, 'AUTH_REQUIRED', 401);
+  constructor(
+    message: string = `Session expired. Run: ${cliCommandPrefix()} login`,
+    code = 'AUTH_REQUIRED',
+  ) {
+    super(message, code, 401);
     this.exitCode = 4;
   }
 }
@@ -175,8 +183,9 @@ export class RateLimitError extends CliError {
   constructor(
     message: string = 'Rate limit exceeded. Wait a minute and retry.',
     code = 'RATE_LIMITED',
+    details?: Record<string, unknown>,
   ) {
-    super(message, code, 429);
+    super(message, code, 429, details);
     this.exitCode = 6;
   }
 }
@@ -206,9 +215,14 @@ export class ApiError extends CliError {
   // `serverCode` (optional) preserves the API's own `body.code` on generic 4xx
   // fallbacks so agents can branch on it (AIT-151). When absent we fall back to
   // the historical SERVER_ERROR / API_ERROR codes.
-  constructor(message: string, statusCode: number, serverCode?: string) {
+  constructor(
+    message: string,
+    statusCode: number,
+    serverCode?: string,
+    details?: Record<string, unknown>,
+  ) {
     const code = serverCode ?? (statusCode >= 500 ? 'SERVER_ERROR' : 'API_ERROR');
-    super(message, code, statusCode);
+    super(message, code, statusCode, details);
     this.exitCode = 1;
   }
 }
@@ -362,6 +376,15 @@ const COMMANDER_CODE_MAP: Record<string, string> = {
   'commander.help': 'MISSING_SUBCOMMAND',
 };
 
+/**
+ * An unknown command is usually a typo, but it is ALSO what a correct command
+ * from a newer guide looks like on an older install — docs and the npm package
+ * move at different speeds. `hookmyapp agent setup` printed a bare
+ * `unknown command 'agent'` on 0.14.18, which reads like the feature does not
+ * exist rather than like the CLI is behind. Name the second possibility.
+ */
+export const STALE_CLI_HINT = `If a HookMyApp guide told you to run this, your CLI is older than the guide. Update with: npm install -g @gethookmyapp/cli@latest`;
+
 export function wrapCommanderError(err: Error & { code?: string }): CliError {
   const code = COMMANDER_CODE_MAP[err.code ?? ''] ?? 'CLI_ERROR';
   // commander.help carries a useless `(outputHelp)` literal. Replace with a
@@ -370,7 +393,11 @@ export function wrapCommanderError(err: Error & { code?: string }): CliError {
     err.code === 'commander.help'
       ? `No subcommand specified. Run '${cliCommandPrefix()} <command> --help' to see available subcommands.`
       : err.message;
-  return new ValidationError(message, code);
+  const wrapped = new ValidationError(message, code);
+  if (err.code === 'commander.unknownCommand') {
+    (wrapped as CliError & { hint?: string }).hint = STALE_CLI_HINT;
+  }
+  return wrapped;
 }
 
 export function outputError(error: CliError, opts: { human?: boolean }): void {

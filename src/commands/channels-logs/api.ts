@@ -2,6 +2,7 @@ import { apiClient } from '../../api/client.js';
 import { readCredentials } from '../../auth/store.js';
 import { getEffectiveApiUrl } from '../../config/env-profiles.js';
 import { AuthError } from '../../output/error.js';
+import { connectTimedFetch } from '../../api/timed-fetch.js';
 
 export type DeliveryStatus =
   | 'delivered'
@@ -180,7 +181,9 @@ export async function* streamDeliveries(args: {
 
   let res: Response;
   try {
-    res = await fetch(url, {
+    // connectTimedFetch, NOT timedFetch: an SSE body is long-lived by design,
+    // so only the wait for headers is bounded (AIT-540).
+    res = await connectTimedFetch(url, {
       headers: {
         Authorization: `Bearer ${creds.accessToken}`,
         'X-Workspace-Id': workspaceId,

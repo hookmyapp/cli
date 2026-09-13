@@ -1,6 +1,14 @@
 import { apiClient, isNetworkFailure } from './client.js';
 import { getGatewayBaseOverride } from '../config/env-profiles.js';
-import { ApiError, NetworkError, ValidationError, AuthError, ConflictError } from '../output/error.js';
+import {
+  ApiError,
+  NetworkError,
+  ValidationError,
+  AuthError,
+  ConflictError,
+  ForbiddenError,
+  RateLimitError,
+} from '../output/error.js';
 import type { Channel } from './channel.js';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
@@ -13,6 +21,8 @@ export interface GatewayConfig { token: string; baseUrl: string; }
 // stuck in createContainer). 60s is far above Meta's normal response time;
 // binary uploads keep their own path without this cap. Shared by the backend
 // config lookup below — every leg of a gateway command is bounded.
+import { timedFetch, readBody, TRANSFER_TIMEOUT_MS } from './timed-fetch.js';
+
 const GATEWAY_JSON_TIMEOUT_MS = 60_000;
 
 /**
@@ -93,6 +103,32 @@ function metaRestrictionMessage(subcode: number | undefined): string | undefined
 }
 
 function mapGatewayError(status: number, body: unknown): never {
+  const gatewayError =
+    body &&
+    typeof body === 'object' &&
+    typeof (body as { statusCode?: unknown }).statusCode === 'number' &&
+    typeof (body as { code?: unknown }).code === 'string' &&
+    typeof (body as { message?: unknown }).message === 'string'
+      ? (body as { code: string; message: string; retry_after_seconds?: unknown })
+      : undefined;
+  if (gatewayError) {
+    const retryAfter = gatewayError.retry_after_seconds;
+    const details =
+      typeof retryAfter === 'number' && Number.isSafeInteger(retryAfter) && retryAfter > 0
+        ? { retry_after_seconds: retryAfter }
+        : undefined;
+    if (status === 400 || status === 422) {
+      throw new ValidationError(gatewayError.message, gatewayError.code);
+    }
+    if (status === 401) throw new AuthError(gatewayError.message, gatewayError.code);
+    if (status === 403) throw new ForbiddenError(gatewayError.message, gatewayError.code);
+    if (status === 409) throw new ConflictError(gatewayError.message, gatewayError.code);
+    if (status === 429) {
+      throw new RateLimitError(gatewayError.message, gatewayError.code, details);
+    }
+    throw new ApiError(gatewayError.message, status, gatewayError.code, details);
+  }
+
   // Meta error shape: { error: { message, code, error_subcode, type, ... } }
   const metaError =
     body && typeof body === 'object' && 'error' in body
@@ -138,14 +174,13 @@ export async function gatewayRequest(call: GatewayCall): Promise<any> {
   let res: Response;
   let text: string;
   try {
-    res = await fetch(url, {
+    res = await timedFetch(url, {
       method: call.method,
       headers,
       body: call.body !== undefined ? JSON.stringify(call.body) : undefined,
-      signal: AbortSignal.timeout(GATEWAY_JSON_TIMEOUT_MS),
-    });
+    }, GATEWAY_JSON_TIMEOUT_MS);
     // The timeout signal can also fire mid-body-read — same NetworkError mapping.
-    text = await res.text();
+    text = await readBody(res.text());
   } catch (err) {
     if (
       isNetworkFailure(err) ||
@@ -191,12 +226,15 @@ export async function gatewayUpload(up: GatewayUpload): Promise<any> {
   form.set('file', new Blob([bytes], { type: mime }), basename(up.file));
   let res: Response;
   try {
-    res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
+    // Media upload: bytes, so the generous transfer budget rather than the
+    // JSON one — big enough never to fire on a working upload.
+    res = await timedFetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form }, TRANSFER_TIMEOUT_MS);
   } catch (err) {
     if (isNetworkFailure(err)) throw new NetworkError();
     throw err;
   }
-  const text = await res.text();
+  // Outside the try above, so the abort needs its own mapping (AIT-540).
+  const text = await readBody(res.text());
   let json: unknown; try { json = text ? JSON.parse(text) : undefined; } catch { json = undefined; }
   if (!res.ok) mapGatewayError(res.status, json);
   return json;
@@ -211,7 +249,7 @@ export async function gatewayUpload(up: GatewayUpload): Promise<any> {
  */
 export async function gatewayDownloadToStream(signedUrl: string, sink: Writable): Promise<number> {
   let res: Response;
-  try { res = await fetch(signedUrl); } catch (err) { if (isNetworkFailure(err)) throw new NetworkError(); throw err; }
+  try { res = await timedFetch(signedUrl, {}, TRANSFER_TIMEOUT_MS); } catch (err) { if (isNetworkFailure(err)) throw new NetworkError(); throw err; }
   if (!res.ok || !res.body) {
     // The download target is a gateway-signed media/CDN URL, NOT a Meta Graph
     // endpoint — so the Meta `{error:{message}}` mapper does not apply. Drain
@@ -220,9 +258,11 @@ export async function gatewayDownloadToStream(signedUrl: string, sink: Writable)
     throw new ApiError(`Media download failed (HTTP ${res.status}).`, res.status || 502);
   }
   let bytes = 0;
+  // A transfer that stalls mid-stream aborts inside the read loop below, past
+  // every catch above it (AIT-540).
   const reader = res.body.getReader();
   for (;;) {
-    const { done, value } = await reader.read();
+    const { done, value } = await readBody(reader.read());
     if (done) break;
     bytes += value.byteLength;
     await new Promise<void>((resolve, reject) => sink.write(value, (e) => (e ? reject(e) : resolve())));

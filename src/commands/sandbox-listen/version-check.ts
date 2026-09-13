@@ -1,3 +1,5 @@
+import { timedFetch, readBody } from '../../api/timed-fetch.js';
+
 // Non-blocking version-nudge check for `hookmyapp sandbox listen`.
 //
 // The version-check contract:
@@ -26,9 +28,9 @@ const TIMEOUT_MS = 2000;
 
 export async function checkForNewerCli(): Promise<void> {
   try {
-    const res = await fetch(NPM_REGISTRY_URL, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const res = await timedFetch(NPM_REGISTRY_URL, {}, TIMEOUT_MS);
     if (!res.ok) return;
-    const body = (await res.json()) as { version?: unknown };
+    const body = (await readBody(res.json())) as { version?: unknown };
     const latest = body.version;
     if (typeof latest !== 'string' || latest.length === 0) return;
     const current = await readCliVersion();

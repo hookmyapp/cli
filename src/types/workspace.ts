@@ -6,6 +6,9 @@ export interface Workspace {
   role: 'admin' | 'member';
   createdAt: string;
   kind: WorkspaceKind;
+  /** Public id of the owning organization. Absent on older backends. */
+  organizationPublicId?: string;
+  organizationName?: string;
 }
 
 /**

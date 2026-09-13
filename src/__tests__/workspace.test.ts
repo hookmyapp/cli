@@ -502,6 +502,65 @@ describe('workspace commands', () => {
       }
     });
 
+    // AIT-525: an `--email` login is org-fixed and has no refresh token, so the
+    // rescope is a no-op. Switching to a workspace in another org used to print
+    // success and leave the token where it was; every later command then 403'd
+    // with "Only workspace admins can do this."
+    it('refuses to switch an org-locked credential to another org, and does not rescope or persist', async () => {
+      mockedRescopeWorkspaceToken.mockClear();
+      mockedApiClient.mockResolvedValue([
+        {
+          id: 'ws_OTHERORG',
+          name: 'Cyberoot',
+          role: 'admin',
+          createdAt: '2026-01-01',
+          kind: 'team',
+          organizationPublicId: 'org_BBBBBBBB',
+          organizationName: 'CYBEROOT',
+        },
+      ]);
+      const { readCredentials } = await import('../auth/store.js');
+      vi.mocked(readCredentials).mockReturnValue({
+        accessToken: 'hmok_test',
+        refreshToken: '',
+        expiresAt: 0,
+        kind: 'agent',
+        email: 'amit@example.com',
+        orgPublicId: 'org_AAAAAAAA',
+      } as never);
+
+      const fs = await import('node:fs');
+      const pathMod = await import('node:path');
+      const os = await import('node:os');
+      const configDir =
+        process.env.HOOKMYAPP_CONFIG_DIR ?? pathMod.join(os.homedir(), '.hookmyapp');
+      const configPath = pathMod.join(configDir, 'config.json');
+      fs.mkdirSync(configDir, { recursive: true });
+      let originalConfig: string | null = null;
+      try { originalConfig = fs.readFileSync(configPath, 'utf-8'); } catch { /* noop */ }
+
+      try {
+        const program = new Command();
+        program.option('--human');
+        registerWorkspaceCommand(program);
+        await expect(
+          program.parseAsync(['workspace', 'use', 'Cyberoot'], { from: 'user' }),
+        ).rejects.toThrow(/locked to one organization/i);
+
+        expect(mockedRescopeWorkspaceToken).not.toHaveBeenCalled();
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        expect(config.activeWorkspaceId).not.toBe('ws_OTHERORG');
+      } finally {
+        vi.mocked(readCredentials).mockReturnValue({
+          accessToken: 'test-token',
+          refreshToken: 'test-refresh',
+        } as never);
+        if (originalConfig !== null) {
+          fs.writeFileSync(configPath, originalConfig);
+        }
+      }
+    });
+
     it('workspace use accepts ws_ publicId', async () => {
       mockedApiClient.mockResolvedValue(fakeWorkspaces);
 

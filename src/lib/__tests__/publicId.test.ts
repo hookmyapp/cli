@@ -19,12 +19,25 @@ describe('publicId local-fallback helpers', () => {
     expect(PUBLIC_ID_LENGTH).toBe(8);
   });
 
-  it('PUBLIC_ID_PREFIXES locks the 6 product prefixes', () => {
-    expect(PUBLIC_ID_PREFIXES).toEqual(['ws', 'ch', 'usr', 'inv', 'ssn', 'mem']);
+  it('PUBLIC_ID_PREFIXES locks the 7 product prefixes', () => {
+    // 'org' joined in AIT-525: `login --email --org <org_id>` shape-checks the
+    // flag locally before spending an OTP round-trip.
+    expect(PUBLIC_ID_PREFIXES).toEqual([
+      'ws',
+      'ch',
+      'usr',
+      'inv',
+      'ssn',
+      'mem',
+      'org',
+    ]);
   });
 
   describe('isValidPublicId — positive cases', () => {
-    const cases: Array<[string, 'ws' | 'ch' | 'usr' | 'inv' | 'ssn' | 'mem']> = [
+    const cases: Array<
+      [string, 'ws' | 'ch' | 'usr' | 'inv' | 'ssn' | 'mem' | 'org']
+    > = [
+      ['org_1SYQIXGc', 'org'],
       ['ws_A4zq8d2T', 'ws'],
       ['ch_abcdEFGH', 'ch'],
       ['usr_00000000', 'usr'],

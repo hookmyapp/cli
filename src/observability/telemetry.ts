@@ -21,8 +21,9 @@ import { getConfigFile, safeWriteFileSync } from '../storage/path.js';
 type TelemetryFlag = 'on' | 'off';
 
 // Bump when the disclosure text materially changes what is collected (v2:
-// account email + user id, AIT-278) so existing installs see it again.
-const DISCLOSURE_VERSION = 2;
+// account email + user id, AIT-278; v3: agent-filed friction reports,
+// AIT-458) so existing installs see it again.
+const DISCLOSURE_VERSION = 3;
 
 interface Config {
   telemetry?: TelemetryFlag;
@@ -98,7 +99,8 @@ export function maybePrintFirstRunDisclosure(): void {
     [
       '',
       'ℹ Telemetry: HookMyApp CLI reports crashes + usage analytics to help us fix bugs and improve UX.',
-      '  No command arguments, file contents, or env var values are sent.',
+      '  No command arguments, file contents, or env var values are sent — except the',
+      '  message and --surface you pass to `hookmyapp feedback`, sent on purpose.',
       '  When logged in, your account email + user id accompany crash reports.',
       '  Disable: `hookmyapp config set telemetry off` or `HOOKMYAPP_TELEMETRY=off`',
       '',

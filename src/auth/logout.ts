@@ -16,11 +16,11 @@ export function logoutCommand(program: Command): void {
       // automation reads status "logged_out" and assumes it is signed out.
       const envKeyActive = Boolean(envApiKey());
 
-      // AIT-153: for an agent credential (org API key), also revoke it
-      // server-side so it can't keep being used after logout. Best-effort — an
-      // offline host (or an already-revoked key) must still clear local
-      // credentials. WorkOS sessions carry no CLI-side revoke, so this only
-      // fires for agent credentials.
+      // Revoke every org key this session holds, so none stays usable after
+      // logout. Best-effort — an offline host (or an already-revoked key) must
+      // still clear local credentials.
+      //   AIT-153: an OTP session IS an org key.
+      //   AIT-460: a WorkOS session also mints one for its MCP clients.
       let revoked = false;
       // Stored credential only (AIT-438): logout manages credentials.json and
       // must never revoke a key that came from HOOKMYAPP_API_KEY — the
@@ -36,7 +36,7 @@ export function logoutCommand(program: Command): void {
       if (creds && isAgentCredential(creds) && creds.credentialPublicId && !envIsSameKey) {
         try {
           const { apiClient } = await import('../api/client.js');
-          await apiClient(`/agent/credentials/${creds.credentialPublicId}`, {
+          await apiClient(`/agent/credentials/${encodeURIComponent(creds.credentialPublicId)}`, {
             method: 'DELETE',
             bearerToken: creds.accessToken,
           });
@@ -46,27 +46,58 @@ export function logoutCommand(program: Command): void {
         }
       }
 
+      // The MCP key is revoked by NAME, not by the stored id: two first-use
+      // mints racing each other leave a key this machine owns but the file
+      // never recorded, and revoking only what we remember would leave it live.
+      // WorkOS sessions only — an agent credential may not revoke its peers.
+      const { deleteMcpCredential, revokeKeysForThisMachine } = await import('./mcp-credential.js');
+      if (creds && !isAgentCredential(creds)) {
+        revoked = (await revokeKeysForThisMachine()) > 0 || revoked;
+      }
+      deleteMcpCredential();
+
       await deleteCredentials();
       const mcpCleanup = removeClaudeMcp();
+      // Cursor is the only client holding the token literally, so it is the
+      // only one still able to authenticate after the CLI's credentials are
+      // gone — and the revocation above is best-effort, so offline logouts
+      // leave that token live. Strip it; its entry and URL stay, so the next
+      // login fills it back in.
+      const { clearCursorCredential } = await import('../commands/agent.js');
+      const cursorCleanup = clearCursorCredential();
+
+      // A Cursor config we could not rewrite still holds a usable token, and
+      // the revoke above is best-effort — so this is a real warning, not a
+      // tidiness note.
+      // Both, not one: the Claude failure is the less security-sensitive of
+      // the two, and letting it win the slot would hide the fact that Cursor
+      // still holds a usable bearer token.
+      const warnings = [
+        mcpCleanup.ok ? undefined : mcpCleanup.detail,
+        cursorCleanup === 'failed'
+          ? `Could not remove the HookMyApp token from Cursor's config. Delete the "headers" entry under mcpServers.hookmyapp by hand.`
+          : undefined,
+      ].filter((w): w is string => Boolean(w));
 
       if (json) {
         process.stdout.write(
           JSON.stringify({
             status:
-              !mcpCleanup.ok || envKeyActive
+              warnings.length > 0 || envKeyActive
                 ? 'logged_out_with_warning'
                 : 'logged_out',
             revoked,
             envKeyActive,
             ...(envKeyActive ? { envKeyVar: API_KEY_ENV_VAR, envKeyIsStoredKey: envIsSameKey } : {}),
             mcpCleanup,
+            cursorCleanup,
           }) + '\n',
         );
       } else {
         console.log(
-          mcpCleanup.ok
-            ? '\n✓ Logged out\n'
-            : `\n✓ Logged out\n⚠ ${mcpCleanup.detail}\n`,
+          warnings.length > 0
+            ? `\n✓ Logged out\n${warnings.map((w) => `⚠ ${w}`).join('\n')}\n`
+            : '\n✓ Logged out\n',
         );
         if (envKeyActive) {
           console.log(

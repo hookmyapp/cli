@@ -16,6 +16,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { x as tarExtract } from 'tar';
 import { CliError } from '../../output/error.js';
+import { timedFetch, readBody, TRANSFER_TIMEOUT_MS } from '../../api/timed-fetch.js';
 
 export const CLOUDFLARED_VERSION = '2026.3.0';
 
@@ -122,7 +123,18 @@ export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise
     throw err;
   }
 
-  const res = await fetch(asset.url);
+  // ~40 MB of binary: the transfer budget, not the JSON one.
+  let res: Response;
+  try {
+    res = await timedFetch(asset.url, {}, TRANSFER_TIMEOUT_MS);
+  } catch (cause) {
+    const err = new CliError(
+      `Failed to download cloudflared from ${asset.url}: ${(cause as Error).message}`,
+      'BINARY_DOWNLOAD_FAILED',
+    );
+    err.exitCode = 4;
+    throw err;
+  }
   if (!res.ok) {
     const err = new CliError(
       `Failed to download cloudflared from ${asset.url}: HTTP ${res.status}`,
@@ -132,7 +144,19 @@ export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise
     throw err;
   }
 
-  const buf = Buffer.from(await res.arrayBuffer());
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(await readBody(res.arrayBuffer()));
+  } catch (cause) {
+    // Same shape as the connect failure above: a body that stalls halfway is
+    // still a failed download, not a generic network error.
+    const err = new CliError(
+      `Failed to download cloudflared from ${asset.url}: ${(cause as Error).message}`,
+      'BINARY_DOWNLOAD_FAILED',
+    );
+    err.exitCode = 4;
+    throw err;
+  }
   const computedSha = createHash('sha256').update(buf).digest('hex');
   if (computedSha !== expectedSha) {
     const err = new CliError(
