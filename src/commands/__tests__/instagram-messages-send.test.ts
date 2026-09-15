@@ -15,7 +15,7 @@ describe('instagram messages send', () => {
     await runInstagramMessagesSend({ channel: '@acme', to: '178410999', text: 'hey' });
     expect(resolveChannelRefOrDefault).toHaveBeenCalledWith('@acme', 'instagram');
     expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({
-      method: 'POST', path: '/{ig_id}/messages',
+      method: 'POST', path: '/{ig_msg_root}/messages',
       body: { recipient: { id: '178410999' }, message: { text: 'hey' } },
     }));
   });

@@ -74,10 +74,10 @@ describe('instagram comments', () => {
     expect(resolveChannelRefOrDefault).toHaveBeenCalledWith('@acme', 'instagram');
   });
 
-  it('private-reply DMs the commenter via {ig_id}/messages', async () => {
+  it('private-reply DMs the commenter via {ig_msg_root}/messages', async () => {
     await runInstagramCommentsPrivateReply({ channel: '@acme', comment: 'cmt_1', text: 'hi' });
     expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({
-      method: 'POST', path: '/{ig_id}/messages',
+      method: 'POST', path: '/{ig_msg_root}/messages',
       body: { recipient: { comment_id: 'cmt_1' }, message: { text: 'hi' } },
     }));
     expect(resolveChannelRefOrDefault).toHaveBeenCalledWith('@acme', 'instagram');

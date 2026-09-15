@@ -24,6 +24,7 @@ const ig: Channel = {
   instagramUsername: 'ordvir',
   instagramProfileName: 'Or',
   instagramProfilePictureUrl: null,
+  metaPageId: null,
 };
 
 describe('channels listen — IG banner copy', () => {
