@@ -7,8 +7,8 @@ import { ValidationError } from '../output/error.js';
 import { assertFbId } from './facebook-ids.js';
 
 // Same defaults as the get_facebook_insights MCP tool.
-export const PAGE_DEFAULT_METRICS = ['page_impressions', 'page_post_engagements', 'page_fans', 'page_daily_follows_unique'];
-export const POST_DEFAULT_METRICS = ['post_impressions', 'post_engaged_users', 'post_reactions_by_type_total'];
+export const PAGE_DEFAULT_METRICS = ['page_post_engagements', 'page_follows', 'page_views_total', 'page_daily_follows_unique'];
+export const POST_DEFAULT_METRICS = ['post_clicks', 'post_reactions_by_type_total', 'post_activity_by_action_type'];
 const PERIODS = ['day', 'week', 'days_28'];
 const METRIC_NAME_RE = /^[a-z0-9_]+$/i;
 
@@ -62,7 +62,7 @@ export function registerFacebookInsights(facebook: Command): void {
     `
 EXAMPLES:
   $ hookmyapp facebook insights --channel ch_XXXXXXXX
-  $ hookmyapp facebook insights --channel ch_XXXXXXXX --metric page_impressions page_fans --period week --json
+  $ hookmyapp facebook insights --channel ch_XXXXXXXX --metric page_follows page_views_total --period week --json
   $ hookmyapp facebook insights --channel ch_XXXXXXXX --post <page-id>_<post-id>
 `,
   );

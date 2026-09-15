@@ -12,20 +12,20 @@ describe('facebook insights and profile', () => {
     await runFacebookInsights({});
     expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({
       method: 'GET',
-      path: '/{page_id}/insights?metric=page_impressions%2Cpage_post_engagements%2Cpage_fans%2Cpage_daily_follows_unique&period=day',
+      path: '/{page_id}/insights?metric=page_post_engagements%2Cpage_follows%2Cpage_views_total%2Cpage_daily_follows_unique&period=day',
     }));
   });
 
   it('insights --post uses the post defaults and no period', async () => {
     await runFacebookInsights({ post: '100000000000001_5' });
     expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({
-      path: '/100000000000001_5/insights?metric=post_impressions%2Cpost_engaged_users%2Cpost_reactions_by_type_total',
+      path: '/100000000000001_5/insights?metric=post_clicks%2Cpost_reactions_by_type_total%2Cpost_activity_by_action_type',
     }));
   });
 
   it('insights --metric and --period are honoured, bad period rejected', async () => {
-    await runFacebookInsights({ metric: ['page_fans'], period: 'week' });
-    expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({ path: '/{page_id}/insights?metric=page_fans&period=week' }));
+    await runFacebookInsights({ metric: ['page_follows'], period: 'week' });
+    expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({ path: '/{page_id}/insights?metric=page_follows&period=week' }));
     await expect(runFacebookInsights({ period: 'month' })).rejects.toMatchObject({ code: 'INSIGHTS_BAD_PERIOD' });
   });
 
