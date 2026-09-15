@@ -160,12 +160,12 @@ export function registerCustomersCommand(program: Command): void {
     .alias('new')
     .description('Create a customer connect link')
     .requiredOption('--label <label>', 'Label for the link')
-    .requiredOption('--channel-type <type>', 'whatsapp or instagram')
+    .requiredOption('--channel-type <type>', 'whatsapp, instagram or facebook')
     .option('--customer <ws-id>', 'Target an existing customer (ws_XXXXXXXX) — the connect lands in that customer')
     .option('--json', 'Output machine-readable JSON')
     .action(async (opts: { label: string; channelType: string; customer?: string; json?: boolean }) => {
-      if (opts.channelType !== 'whatsapp' && opts.channelType !== 'instagram') {
-        throw new ValidationError(`--channel-type must be "whatsapp" or "instagram", got "${opts.channelType}"`);
+      if (!['whatsapp', 'instagram', 'facebook'].includes(opts.channelType)) {
+        throw new ValidationError(`--channel-type must be "whatsapp", "instagram" or "facebook", got "${opts.channelType}"`);
       }
       const created = await apiClient('/org/onboarding-links', {
         method: 'POST',

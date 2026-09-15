@@ -7,6 +7,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 ### Added
 
 - `hookmyapp facebook` (alias `fb`): Messenger messages (`messages send|read`, `threads`), Page posts (`posts`, `publish` with `--message`, `--link`, `--photo`, `--video` or `--reel`, `delete-post`), comment moderation (`comments list|reply|hide|unhide|delete|private-reply`), `insights` and `profile`. Reels go through the HookMyApp reel route, so the upload session is handled server-side (AIT-621).
+- `customers onboarding-links create --channel-type facebook` mints a link that connects a customer's Page, and its linked Instagram account, into the target workspace (AIT-621).
 - `channels connect facebook` opens the dashboard, where the Page picker lives, and waits for the new Page channel and any linked Instagram account it creates. `channels list`, `channels show` and the listen picker render `facebook` channels by Page name; rows an older server still emits as `messenger` are read as `facebook` (AIT-621).
 
 ## 0.14.23 — 2026-09-13
