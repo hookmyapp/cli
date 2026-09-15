@@ -100,7 +100,7 @@ export async function runInstagramThreads(opts: IgThreadsOpts, cmd?: Command): P
     limit: pageSize(opts.limit),
     ...(opts.after ? { after: opts.after } : {}),
   });
-  const res = await gatewayRequest({ channel, method: 'GET', path: `/{ig_id}/conversations?${params.toString()}` });
+  const res = await gatewayRequest({ channel, method: 'GET', path: `/{ig_msg_root}/conversations?${params.toString()}` });
   const rows = (res?.data ?? []) as Array<Record<string, unknown>>;
 
   if (json) {

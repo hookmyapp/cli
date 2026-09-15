@@ -50,6 +50,8 @@ export interface InstagramChannel extends ChannelBase {
   instagramUsername: string | null;
   instagramProfileName: string | null;
   instagramProfilePictureUrl: string | null;
+  /** The Facebook Page an account connected through a Page is linked to; null otherwise. */
+  metaPageId: string | null;
 }
 
 /**
@@ -165,12 +167,16 @@ export function parseChannelListItem(dto: unknown): Channel {
         malformed(id, 'IG channel: instagramProfileName must be string or null');
       if (!isStringOrNull(d.instagramProfilePictureUrl))
         malformed(id, 'IG channel: instagramProfilePictureUrl must be string or null');
+      // Tolerate absent metaPageId (backends predating the Facebook channel omit it).
+      if (d.metaPageId !== undefined && !isStringOrNull(d.metaPageId))
+        malformed(id, 'IG channel: metaPageId must be string or null');
       return {
         ...base,
         type: 'instagram',
         instagramUsername: d.instagramUsername,
         instagramProfileName: d.instagramProfileName,
         instagramProfilePictureUrl: d.instagramProfilePictureUrl,
+        metaPageId: typeof d.metaPageId === 'string' ? d.metaPageId : null,
       };
     }
     case 'facebook':

@@ -31,7 +31,7 @@ export async function runInstagramMessagesSend(opts: IgSendOpts, cmd?: Command):
       throw new ValidationError('--to (IGSID) and --text are required.', 'MISSING_TEXT_ARGS');
     body = { recipient: { id: opts.to }, message: { text: opts.text } };
   }
-  const res = await gatewayRequest({ channel, method: 'POST', path: `/{ig_id}/messages`, body });
+  const res = await gatewayRequest({ channel, method: 'POST', path: `/{ig_msg_root}/messages`, body });
   process.stdout.write(
     (cmd && isJsonMode(cmd) ? JSON.stringify(res) : `Sent. message_id=${res?.message_id ?? '(unknown)'}`) + '\n',
   );
@@ -46,7 +46,7 @@ export async function runInstagramMessagesRead(opts: IgReadOpts, cmd?: Command):
   if (!opts.to) throw new ValidationError('--to (IGSID) is required.', 'MISSING_TO');
   const channel = await resolveChannelRefOrDefault(opts.channel, 'instagram');
   const body = { recipient: { id: opts.to }, sender_action: 'mark_seen' };
-  const res = await gatewayRequest({ channel, method: 'POST', path: `/{ig_id}/messages`, body });
+  const res = await gatewayRequest({ channel, method: 'POST', path: `/{ig_msg_root}/messages`, body });
   process.stdout.write((cmd && isJsonMode(cmd) ? JSON.stringify(res) : 'Marked seen.') + '\n');
 }
 
