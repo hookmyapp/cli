@@ -355,7 +355,7 @@ export function printBanner(args: {
       ? `WhatsApp ${args.channel.whatsappDisplayPhoneNumber ?? args.channel.whatsappWabaName ?? args.channel.id}`
       : args.channel.type === 'instagram'
         ? `Instagram @${args.channel.instagramUsername ?? '(no handle)'}`
-        : `Messenger ${args.channel.id}`;
+        : `Facebook ${args.channel.facebookPageName ?? args.channel.id}`;
   process.stdout.write(`\n✓ Tunnel active:    https://${args.hostname}\n`);
   process.stdout.write(
     `✓ Forwarding to:    http://localhost:${args.localPort}${args.path}\n`,
