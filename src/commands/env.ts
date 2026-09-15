@@ -12,7 +12,7 @@ export interface EnvOptions {
 /**
  * Backend wire-shape for `GET /meta/channels/:publicId/env`. The endpoint
  * returns a generic envelope so the CLI never hardcodes per-channel-type
- * key names — when Instagram/Messenger ship, backend changes alone unlock
+ * key names — when new channel types ship, backend changes alone unlock
  * them. `values` is always overwritten on `--write`; `defaults` is
  * preserve-if-exists (only written when the key is absent locally).
  *
@@ -24,7 +24,7 @@ export interface EnvOptions {
  * the CLI writes `values` verbatim, never minting.
  */
 interface ChannelEnvPayload {
-  channelType: 'whatsapp' | 'instagram' | 'messenger' | string;
+  channelType: 'whatsapp' | 'instagram' | 'facebook' | string;
   values: Record<string, string>;
   defaults: Record<string, string>;
 }

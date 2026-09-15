@@ -196,8 +196,17 @@ describe('customers onboarding-links', () => {
   it('create rejects an invalid --channel-type', async () => {
     await expect(
       runCustomers(['onboarding-links', 'create', '--label', 'Acme', '--channel-type', 'sms']),
-    ).rejects.toThrow(/--channel-type must be "whatsapp" or "instagram"/);
+    ).rejects.toThrow(/--channel-type must be "whatsapp", "instagram" or "facebook"/);
     expect(mockedApi).not.toHaveBeenCalled();
+  });
+
+  it('create accepts --channel-type facebook', async () => {
+    mockedApi.mockResolvedValue({ publicId: 'ol_LINK0004', url: 'https://app.example/connect/tok4', token: 'tok4', verifyToken: 'vt' });
+    await runCustomers(['onboarding-links', 'create', '--label', 'Acme FB', '--channel-type', 'facebook']);
+    expect(mockedApi).toHaveBeenCalledWith('/org/onboarding-links', {
+      method: 'POST',
+      body: JSON.stringify({ label: 'Acme FB', channelType: 'facebook' }),
+    });
   });
 
   it('create --customer targets an existing customer workspace', async () => {

@@ -65,7 +65,7 @@ export async function pickChannel(
  * which delegates here after filtering.
  *
  * Generic over the discriminated `Channel` union so the row renderer can
- * narrow on `type` (WA → +phone, IG → @handle, Messenger → id). Tightened
+ * narrow on `type` (WA → +phone, IG → @handle, FB → Page name). Tightened
  * from a structural shape constraint in B10 once the parsed Channel became
  * the canonical type at this seam.
  */
@@ -93,5 +93,5 @@ export function renderRow(c: Channel): string {
     const name = c.instagramProfileName ?? '';
     return `${c.id} (${handle}${name ? `, ${name}` : ''})`;
   }
-  return `${c.id} (Messenger)`;
+  return `${c.id} (Facebook ${c.facebookPageName ?? '(unnamed Page)'})`;
 }
