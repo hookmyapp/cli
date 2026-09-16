@@ -22,6 +22,8 @@ export function sessionIdentifier(s: SandboxSession): string {
       return s.senderInstagramUsername
         ? `@${s.senderInstagramUsername}`
         : s.senderInstagramId;
+    case 'facebook':
+      return s.facebookSenderName ?? s.facebookSenderId;
     default:
       return assertNever(s, 'sessionIdentifier');
   }
@@ -37,6 +39,8 @@ export function sessionLabel(s: SandboxSession): string {
       return `WhatsApp ${sessionIdentifier(s)} (${s.status})`;
     case 'instagram':
       return `Instagram ${sessionIdentifier(s)} (${s.status})`;
+    case 'facebook':
+      return `Facebook ${sessionIdentifier(s)} (${s.status})`;
     default:
       return assertNever(s, 'sessionLabel');
   }
@@ -51,6 +55,8 @@ export function sessionLabel(s: SandboxSession): string {
  *      with { messaging_product:'whatsapp', to, type:'text', text:{body} }
  * IG:  POST {proxy}/{INSTAGRAM_GRAPH_VERSION}/{accountInstagramId}/messages
  *      with { recipient:{id:senderInstagramId}, message:{text} }
+ * FB:  POST {proxy}/{INSTAGRAM_GRAPH_VERSION}/{facebookPageId}/messages
+ *      with { recipient:{id:facebookSenderId}, messaging_type:'RESPONSE', message:{text} }
  */
 export function buildSandboxSendRequest(
   s: SandboxSession,
@@ -75,6 +81,16 @@ export function buildSandboxSendRequest(
         url: `${proxyBase}/${INSTAGRAM_GRAPH_VERSION}/${s.accountInstagramId}/messages`,
         body: {
           recipient: { id: s.senderInstagramId },
+          message: { text: message },
+        },
+      };
+    case 'facebook':
+      // Messenger send route: same URL shape rooted on the sandbox Page.
+      return {
+        url: `${proxyBase}/${INSTAGRAM_GRAPH_VERSION}/${s.facebookPageId}/messages`,
+        body: {
+          recipient: { id: s.facebookSenderId },
+          messaging_type: 'RESPONSE',
           message: { text: message },
         },
       };

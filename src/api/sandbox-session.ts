@@ -1,5 +1,5 @@
 // Wire boundary for /sandbox/sessions* responses. Parses untrusted JSON into
-// a discriminated union (WhatsApp | Instagram). Every CLI sandbox subcommand
+// a discriminated union (WhatsApp | Instagram | Facebook). Every CLI sandbox subcommand
 // + the login wizard + sandbox-listen route their wire fetches through this
 // parser; the `as SandboxSession[]` casts that used to live at sandbox.ts:96,
 // sandbox.ts:145, auth/login.ts:383, and sandbox-listen/index.ts:323 are
@@ -65,7 +65,22 @@ export interface InstagramSandboxSession extends SandboxSessionBase {
   whatsappPhoneNumberId?: null;
 }
 
-export type SandboxSession = WhatsAppSandboxSession | InstagramSandboxSession;
+export interface FacebookSandboxSession extends SandboxSessionBase {
+  type: 'facebook';
+  /** Page-scoped id of the bound Messenger sender (PSID). */
+  facebookSenderId: string;
+  /** The sandbox Page the sender wrote to. */
+  facebookPageId: string;
+  /** Sender display name, null until the backend resolves it. */
+  facebookSenderName: string | null;
+  whatsappPhone?: null;
+  whatsappPhoneNumberId?: null;
+  senderInstagramId?: null;
+  accountInstagramId?: null;
+  senderInstagramUsername?: null;
+}
+
+export type SandboxSession = WhatsAppSandboxSession | InstagramSandboxSession | FacebookSandboxSession;
 
 function isNonEmptyString(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0;
@@ -129,6 +144,20 @@ export function parseSandboxSession(dto: unknown): SandboxSession {
     )
       malformed(id, 'senderInstagramUsername must be string or null');
     return d as unknown as InstagramSandboxSession;
+  }
+
+  if (d.type === 'facebook') {
+    if (!isNonEmptyString(d.facebookSenderId))
+      malformed(id, 'Facebook session missing facebookSenderId');
+    if (!isNonEmptyString(d.facebookPageId))
+      malformed(id, 'Facebook session missing facebookPageId');
+    if (
+      d.facebookSenderName !== null &&
+      d.facebookSenderName !== undefined &&
+      typeof d.facebookSenderName !== 'string'
+    )
+      malformed(id, 'facebookSenderName must be string or null');
+    return { ...d, facebookSenderName: d.facebookSenderName ?? null } as unknown as FacebookSandboxSession;
   }
 
   throw new UnexpectedError(

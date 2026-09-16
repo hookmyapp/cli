@@ -163,6 +163,8 @@ function providerNoun(sessionType: string): string {
   switch (sessionType) {
     case 'instagram':
       return 'Instagram';
+    case 'facebook':
+      return 'Facebook';
     case 'whatsapp':
     default:
       return 'WhatsApp';

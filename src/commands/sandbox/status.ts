@@ -32,7 +32,7 @@ import { sessionIdentifier } from './helpers.js';
 
 interface StatusJsonRow {
   id: string;
-  type: 'whatsapp' | 'instagram';
+  type: SandboxSession['type'];
   identifier: string;
   status: SandboxSession['status'];
   webhookUrl: string | null;
@@ -44,6 +44,9 @@ interface StatusJsonRow {
   senderInstagramUsername?: string | null;
   senderInstagramId?: string;
   accountInstagramId?: string;
+  facebookSenderName?: string | null;
+  facebookSenderId?: string;
+  facebookPageId?: string;
 }
 
 function toStatusJson(s: SandboxSession): StatusJsonRow {
@@ -67,6 +70,13 @@ function toStatusJson(s: SandboxSession): StatusJsonRow {
         senderInstagramUsername: s.senderInstagramUsername,
         senderInstagramId: s.senderInstagramId,
         accountInstagramId: s.accountInstagramId,
+      };
+    case 'facebook':
+      return {
+        ...base,
+        facebookSenderName: s.facebookSenderName,
+        facebookSenderId: s.facebookSenderId,
+        facebookPageId: s.facebookPageId,
       };
   }
 }

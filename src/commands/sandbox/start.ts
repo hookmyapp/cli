@@ -22,6 +22,7 @@ import {
 } from '../../config/env-profiles.js';
 import { parseSandboxSession } from '../../api/sandbox-session.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
+import { sessionIdentifier } from './helpers.js';
 
 export function buildInstagramDeepLink(handle: string, code: string): string {
   const stripped = handle.replace(/^@/, '');
@@ -32,8 +33,13 @@ function buildWhatsAppDeepLink(number: string, code: string): string {
   return `https://wa.me/${number}?text=${encodeURIComponent(code)}`;
 }
 
+/** m.me carries no text prefill; the human pastes the code. `page` is the Page's handle or numeric id. */
+export function buildMessengerDeepLink(page: string): string {
+  return `https://m.me/${page}`;
+}
+
 export async function runSandboxStart(opts: {
-  type?: 'whatsapp' | 'instagram';
+  type?: 'whatsapp' | 'instagram' | 'facebook';
   workspace?: string;
   listen?: boolean;
   json?: boolean;
@@ -47,28 +53,30 @@ export async function runSandboxStart(opts: {
   if (
     opts.type !== undefined &&
     opts.type !== 'whatsapp' &&
-    opts.type !== 'instagram'
+    opts.type !== 'instagram' &&
+    opts.type !== 'facebook'
   ) {
     throw new ValidationError(
-      `Invalid --type value: ${String(opts.type)}. Must be 'whatsapp' or 'instagram'.`,
+      `Invalid --type value: ${String(opts.type)}. Must be 'whatsapp', 'instagram' or 'facebook'.`,
       'INVALID_TYPE',
     );
   }
 
-  let channelType: 'whatsapp' | 'instagram';
+  let channelType: 'whatsapp' | 'instagram' | 'facebook';
   if (opts.type) {
     channelType = opts.type;
   } else if (opts.json) {
     throw new ValidationError(
-      '--type is required in --json mode (use --type=whatsapp or --type=instagram).',
+      '--type is required in --json mode (use --type=whatsapp, --type=instagram or --type=facebook).',
       'TYPE_REQUIRED_IN_JSON',
     );
   } else if (isHuman) {
-    channelType = await select<'whatsapp' | 'instagram'>({
+    channelType = await select<'whatsapp' | 'instagram' | 'facebook'>({
       message: 'Which channel?',
       choices: [
         { name: 'WhatsApp', value: 'whatsapp' },
         { name: 'Instagram', value: 'instagram' },
+        { name: 'Facebook', value: 'facebook' },
       ],
     });
   } else {
@@ -89,6 +97,17 @@ export async function runSandboxStart(opts: {
     const waNumber = getEffectiveSandboxWhatsAppNumber();
     deepLink = buildWhatsAppDeepLink(waNumber, bindCode);
     headerHint = 'Send this code to the sandbox WhatsApp number from the phone you want to bind.';
+  } else if (channelType === 'facebook') {
+    // The sandbox Page is per environment and served by the backend with the
+    // bind code, so the CLI never hardcodes a Page.
+    if (!bindRes.facebookPage) {
+      throw new ValidationError(
+        'The Facebook sandbox is not available in this environment yet. Use whatsapp or instagram, or connect a Page with `hookmyapp channels connect`.',
+        'FACEBOOK_SANDBOX_UNAVAILABLE',
+      );
+    }
+    deepLink = buildMessengerDeepLink(bindRes.facebookPage);
+    headerHint = 'Message the sandbox Facebook Page from the Facebook account you want to bind and paste this code.';
   } else {
     const igHandle = getEffectiveSandboxInstagramUsername();
     deepLink = buildInstagramDeepLink(igHandle, bindCode);
@@ -122,7 +141,9 @@ export async function runSandboxStart(opts: {
   const waitingMsg =
     channelType === 'whatsapp'
       ? 'Waiting for your WhatsApp message…'
-      : 'Waiting for your Instagram DM…';
+      : channelType === 'facebook'
+        ? 'Waiting for your Messenger message…'
+        : 'Waiting for your Instagram DM…';
   // discardStdin:false keeps stdin out of raw mode so Ctrl+C raises SIGINT and
   // the onSigint handler below can cancel the poll. ora's default (raw mode)
   // swallows the Ctrl+C byte and traps the user in the spinner.
@@ -153,12 +174,7 @@ export async function runSandboxStart(opts: {
             { workspaceId },
           );
           const session = parseSandboxSession(dto);
-          const ident =
-            session.type === 'whatsapp'
-              ? `+${session.whatsappPhone}`
-              : session.type === 'instagram' && session.senderInstagramUsername
-                ? `@${session.senderInstagramUsername}`
-                : (session as { senderInstagramId?: string }).senderInstagramId ?? '(unknown)';
+          const ident = sessionIdentifier(session);
           spinner?.succeed(`Session created. ${ident}. Token: ${session.accessToken}`);
           if (!isTty) {
             console.log(`Session created. ${ident}. Token: ${session.accessToken}`);

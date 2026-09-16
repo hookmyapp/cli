@@ -7,6 +7,7 @@ import {
 import type {
   WhatsAppSandboxSession,
   InstagramSandboxSession,
+  FacebookSandboxSession,
 } from '../../../api/sandbox-session.js';
 
 const wa: WhatsAppSandboxSession = {
@@ -41,6 +42,39 @@ const igWithoutUsername: InstagramSandboxSession = {
   id: 'ssn_IG000002',
   senderInstagramUsername: null,
 };
+
+const fb: FacebookSandboxSession = {
+  id: 'ssn_FB000001',
+  type: 'facebook',
+  facebookSenderId: '33004113645846399',
+  facebookPageId: '1147107778492505',
+  facebookSenderName: 'Or Dvir',
+  accessToken: 'ACT_fb_xxx',
+  hmacSecret: 'HMAC_fb',
+  verifyToken: 'VT_test',
+  status: 'active',
+  origin: 'manual',
+};
+
+describe('Facebook sessions (AIT-621)', () => {
+  it('identifies by sender name, falling back to the PSID', () => {
+    expect(sessionIdentifier(fb)).toBe('Or Dvir');
+    expect(sessionIdentifier({ ...fb, facebookSenderName: null })).toBe('33004113645846399');
+    expect(sessionLabel(fb)).toBe('Facebook Or Dvir (active)');
+  });
+
+  it('builds the Messenger send rooted on the sandbox Page with a RESPONSE messaging type', () => {
+    process.env.HOOKMYAPP_SANDBOX_PROXY_URL = 'https://proxy.test';
+    const { url, body } = buildSandboxSendRequest(fb, 'hi');
+    delete process.env.HOOKMYAPP_SANDBOX_PROXY_URL;
+    expect(url).toBe('https://proxy.test/v25.0/1147107778492505/messages');
+    expect(body).toEqual({
+      recipient: { id: '33004113645846399' },
+      messaging_type: 'RESPONSE',
+      message: { text: 'hi' },
+    });
+  });
+});
 
 describe('sessionIdentifier', () => {
   it('renders +<phone> for WhatsApp', () => {

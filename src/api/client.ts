@@ -547,6 +547,8 @@ export interface BindCodeResponse {
   code: string;
   issuedAt: string; // ISO timestamp
   consumedSessionId?: string; // ssn_<8> publicId; present iff the code was consumed
+  /** Sandbox Facebook Page for the m.me deep link (handle or id); null when the env has none. */
+  facebookPage?: string | null;
 }
 
 /**
