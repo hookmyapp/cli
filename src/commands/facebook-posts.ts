@@ -90,7 +90,11 @@ export async function runFacebookPublish(opts: FbPublishOpts, cmd?: Command): Pr
     throw new ValidationError('Pass --message, --link, --photo, --video or --reel.', 'PUBLISH_NOTHING');
   }
   const res = await gatewayRequest({ channel, method: 'POST', path, body });
-  process.stdout.write((json ? JSON.stringify(res) : `Published. post_id=${res?.post_id ?? res?.id ?? '(unknown)'}`) + '\n');
+  // A video publish answers with the video id alone; the post the other
+  // commands take is {pageId}_{videoId}. Feed and photo answers carry post_id.
+  const rawId = typeof res?.id === 'string' ? res.id : undefined;
+  const postId = res?.post_id ?? (rawId && /^\d+$/.test(rawId) ? `${channel.metaResourceId}_${rawId}` : rawId);
+  process.stdout.write((json ? JSON.stringify({ ...res, post_id: postId }) : `Published. post_id=${postId ?? '(unknown)'}`) + '\n');
 }
 
 export interface FbDeletePostOpts {
