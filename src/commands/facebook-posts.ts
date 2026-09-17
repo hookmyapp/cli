@@ -90,10 +90,14 @@ export async function runFacebookPublish(opts: FbPublishOpts, cmd?: Command): Pr
     throw new ValidationError('Pass --message, --link, --photo, --video or --reel.', 'PUBLISH_NOTHING');
   }
   const res = await gatewayRequest({ channel, method: 'POST', path, body });
-  // A video publish answers with the video id alone; the post the other
-  // commands take is {pageId}_{videoId}. Feed and photo answers carry post_id.
-  const rawId = typeof res?.id === 'string' ? res.id : undefined;
-  const postId = res?.post_id ?? (rawId && /^\d+$/.test(rawId) ? `${channel.metaResourceId}_${rawId}` : rawId);
+  // Feed and photo answers carry the post id. A video answers with the VIDEO
+  // id, which is not the post: the post it created is `post_id` on the video
+  // node, and the other commands take `{pageId}_{post_id}`.
+  let postId: string | undefined = res?.post_id ?? res?.id;
+  if (opts.video && typeof res?.id === 'string') {
+    const video = await gatewayRequest({ channel, method: 'GET', path: `/${res.id}?fields=post_id` });
+    postId = typeof video?.post_id === 'string' ? `${channel.metaResourceId}_${video.post_id}` : undefined;
+  }
   process.stdout.write((json ? JSON.stringify({ ...res, post_id: postId }) : `Published. post_id=${postId ?? '(unknown)'}`) + '\n');
 }
 

@@ -40,11 +40,12 @@ describe('facebook posts', () => {
     expect(gatewayRequest).toHaveBeenCalledWith(expect.objectContaining({ path: '/{page_id}/videos', body: { file_url: 'https://example.com/a.mp4', description: 'cap' } }));
   });
 
-  it('publish --video prints the {pageId}_{videoId} post id when Meta answers with the video id alone', async () => {
-    vi.mocked(gatewayRequest).mockResolvedValueOnce({ id: '4242' });
+  it('publish --video reads the created post off the video node (the video id is not the post id)', async () => {
+    vi.mocked(gatewayRequest).mockResolvedValueOnce({ id: '4242' }).mockResolvedValueOnce({ id: '4242', post_id: '7001' });
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await runFacebookPublish({ video: 'https://example.com/a.mp4' });
-    expect(write).toHaveBeenCalledWith('Published. post_id=100000000000001_4242\n');
+    expect(gatewayRequest).toHaveBeenLastCalledWith(expect.objectContaining({ method: 'GET', path: '/4242?fields=post_id' }));
+    expect(write).toHaveBeenCalledWith('Published. post_id=100000000000001_7001\n');
     write.mockRestore();
   });
 
