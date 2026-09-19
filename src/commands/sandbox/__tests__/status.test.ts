@@ -99,6 +99,18 @@ describe('runSandboxStatus --json — minimal hand-picked shape', () => {
     outSpy.mockRestore();
   });
 
+  it('human table renders a Facebook session as Facebook, not Instagram', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([
+      { ...rawIgWire, id: 'ssn_FB000001', type: 'facebook', facebookSenderName: 'Or Dvir', facebookSenderId: '2859', facebookPageId: '1147107778492505' },
+    ]);
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runSandboxStatus({});
+    const table = outSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(table).toContain('Facebook');
+    expect(table).not.toContain('Instagram');
+    outSpy.mockRestore();
+  });
+
   it('NEVER leaks hmacSecret / accessToken / cloudflareTunnelToken / origin / workspaceName', async () => {
     vi.mocked(apiClient).mockResolvedValueOnce([rawWaWire, rawIgWire]);
     const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);

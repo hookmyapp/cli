@@ -71,7 +71,7 @@ EXAMPLES:
   const send = messages
     .command('send')
     .description('Send a Messenger message (--text shortcut, or complete --body)')
-    .option('--channel <ref>', 'Channel: Page name or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--to <psid>', 'Recipient PSID (from the inbound webhook)')
     .option('--text <text>', 'Text body')
     .option('--tag <tag>', 'Message tag for sending outside the 24-hour window')
@@ -84,7 +84,7 @@ EXAMPLES:
   const read = messages
     .command('read')
     .description('Mark a Messenger thread as seen')
-    .option('--channel <ref>', 'Channel: Page name or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--to <psid>', 'Sender PSID (from the inbound webhook)')
     .action(async function (this: Command, opts: { channel?: string; to?: string }) {
       await runFacebookMessagesRead(opts, this);

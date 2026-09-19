@@ -74,7 +74,7 @@ export async function runFacebookCommentsPrivateReply(opts: FbCommentOpts, cmd?:
   process.stdout.write((cmd && isJsonMode(cmd) ? JSON.stringify(res) : `Sent. message_id=${res?.message_id ?? '(unknown)'}`) + '\n');
 }
 
-const CHANNEL_OPT = ['--channel <ref>', 'Channel: Page name or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)'] as const;
+const CHANNEL_OPT = ['--channel <ref>', 'Channel: ch_id (defaults to HOOKMYAPP_CHANNEL_ID)'] as const;
 const COMMENT_OPT = ['--comment <id>', 'Comment id from `facebook comments list`'] as const;
 
 /** Registers `facebook comments list|reply|hide|unhide|delete|private-reply`. */

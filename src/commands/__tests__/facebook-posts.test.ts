@@ -63,6 +63,7 @@ describe('facebook posts', () => {
   it('publish rejects http media and two kinds at once', async () => {
     await expect(runFacebookPublish({ photo: 'http://example.com/a.jpg' })).rejects.toMatchObject({ code: 'BAD_MEDIA_URL' });
     await expect(runFacebookPublish({ photo: 'https://a/b.jpg', video: 'https://a/b.mp4' })).rejects.toMatchObject({ code: 'PUBLISH_ONE_KIND' });
+    await expect(runFacebookPublish({ link: 'https://a/page', photo: 'https://a/b.jpg' })).rejects.toMatchObject({ code: 'PUBLISH_ONE_KIND' });
     await expect(runFacebookPublish({})).rejects.toMatchObject({ code: 'PUBLISH_NOTHING' });
   });
 

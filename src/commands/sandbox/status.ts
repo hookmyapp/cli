@@ -97,7 +97,7 @@ export async function runSandboxStatus(opts: { json?: boolean } = {}): Promise<v
   }
 
   const rows = sessions.map((s) => ({
-    Type: s.type === 'whatsapp' ? 'WhatsApp' : 'Instagram',
+    Type: s.type === 'whatsapp' ? 'WhatsApp' : s.type === 'facebook' ? 'Facebook' : 'Instagram',
     Identifier: sessionIdentifier(s),
     Status: s.status,
   }));

@@ -24,7 +24,7 @@ export function registerFacebookProfile(facebook: Command): void {
   const profile = facebook
     .command('profile')
     .description('Read the Page profile: name, category, followers, link, picture')
-    .option('--channel <ref>', 'Channel: Page name or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .action(async function (this: Command, opts: { channel?: string }) {
       await runFacebookProfile(opts, this);
     });

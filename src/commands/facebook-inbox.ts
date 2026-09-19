@@ -73,7 +73,7 @@ export function registerFacebookInbox(facebook: Command): void {
   const threads = facebook
     .command('threads')
     .description('List Messenger threads or read one thread')
-    .option('--channel <ref>', 'Channel: Page name or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--thread <id>', 'Read the messages in this thread (t_…)')
     .option('--limit <n>', 'Page size, 1-100 (default 25)')
     .option('--after <cursor>', 'Continue from a previous page')

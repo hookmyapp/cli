@@ -49,7 +49,7 @@ export function registerFacebookInsights(facebook: Command): void {
   const insights = facebook
     .command('insights')
     .description('Read Page insights, or one post\'s insights with --post')
-    .option('--channel <ref>', 'Channel: Page name or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--post <id>', 'Post id ({pageId}_{postId}) for post insights')
     .option('--metric <name...>', `Metric names (Page default: ${PAGE_DEFAULT_METRICS.join(', ')})`)
     .option('--period <period>', 'Page metrics period: day, week, days_28 (default day)')

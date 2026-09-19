@@ -58,6 +58,7 @@ function assertHttps(url: string, flag: string): string {
 export async function runFacebookPublish(opts: FbPublishOpts, cmd?: Command): Promise<void> {
   const media = [opts.photo, opts.video, opts.reel].filter(Boolean);
   if (media.length > 1) throw new ValidationError('Pass only one of --photo, --video, --reel.', 'PUBLISH_ONE_KIND');
+  if (opts.link && media.length > 0) throw new ValidationError('--link cannot be combined with --photo, --video or --reel.', 'PUBLISH_ONE_KIND');
   const channel = await resolveChannelRefOrDefault(opts.channel, 'facebook');
   const json = Boolean(cmd && isJsonMode(cmd));
 
@@ -118,7 +119,7 @@ export function registerFacebookPosts(facebook: Command): void {
   const posts = facebook
     .command('posts')
     .description('List the posts published by the Page')
-    .option('--channel <ref>', 'Channel: Page name or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--limit <n>', 'Page size, 1-100 (default 25)')
     .option('--after <cursor>', 'Continue from a previous page')
     .action(async function (this: Command, opts: FbPostsOpts) {
@@ -128,7 +129,7 @@ export function registerFacebookPosts(facebook: Command): void {
   const publish = facebook
     .command('publish')
     .description('Publish a text, link, photo, video or reel post to the Page')
-    .option('--channel <ref>', 'Channel: Page name or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--message <text>', 'Post text (alone, or with --link / --photo)')
     .option('--link <url>', 'Share a link')
     .option('--photo <url>', 'Public https URL of a JPG or PNG')
@@ -142,7 +143,7 @@ export function registerFacebookPosts(facebook: Command): void {
   const del = facebook
     .command('delete-post')
     .description('Delete a post published by the Page (irreversible)')
-    .option('--channel <ref>', 'Channel: Page name or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
+    .option('--channel <ref>', 'Channel: ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--post <id>', 'Post id ({pageId}_{postId})')
     .action(async function (this: Command, opts: FbDeletePostOpts) {
       await runFacebookDeletePost(opts, this);
