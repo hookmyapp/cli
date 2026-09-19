@@ -2,6 +2,7 @@
 // runX functions and attaches addExamples() to every command so help.test.ts
 // continues to pass.
 
+import { facebookVisible } from '../../config/facebook-preview.js';
 import type { Command } from 'commander';
 import { addExamples } from '../../output/help.js';
 import { ValidationError } from '../../output/error.js';
@@ -44,9 +45,9 @@ export function registerSandboxCommand(program: Command): void {
   const sandboxStart = sandbox
     .command('start')
     .description('Bind a sandbox session for local development')
-    .argument('[type]', 'Channel type shortcut: "whatsapp" or "instagram" (same as --type=...)')
+    .argument('[type]', `Channel type shortcut: ${facebookVisible() ? '"whatsapp", "instagram" or "facebook"' : '"whatsapp" or "instagram"'} (same as --type=...)`)
     .option(
-      '--type <whatsapp|instagram>',
+      `--type <${facebookVisible() ? 'whatsapp|instagram|facebook' : 'whatsapp|instagram'}>`,
       'Channel type (prompts if omitted; required in --json mode)',
     )
     .option('--listen', 'After bind, immediately start the webhook listener')
@@ -54,7 +55,7 @@ export function registerSandboxCommand(program: Command): void {
     .action(
       async (
         positionalType: string | undefined,
-        opts: { type?: 'whatsapp' | 'instagram'; listen?: boolean; json?: boolean },
+        opts: { type?: 'whatsapp' | 'instagram' | 'facebook'; listen?: boolean; json?: boolean },
       ) => {
         // Reconcile positional + flag. If both set and they disagree → ValidationError.
         // If only one is set → that wins. Final value passes through runSandboxStart's
@@ -67,7 +68,7 @@ export function registerSandboxCommand(program: Command): void {
               'CONFLICTING_TYPE',
             );
           }
-          resolvedType = positionalType as 'whatsapp' | 'instagram';
+          resolvedType = positionalType as 'whatsapp' | 'instagram' | 'facebook';
         }
         await runSandboxStart({
           ...opts,
@@ -81,7 +82,7 @@ export function registerSandboxCommand(program: Command): void {
     `EXAMPLES:
   $ hookmyapp sandbox start
   $ hookmyapp sandbox start whatsapp
-  $ hookmyapp sandbox start instagram --listen
+  $ hookmyapp sandbox start instagram --listen${facebookVisible() ? '\n  $ hookmyapp sandbox start facebook' : ''}
   $ hookmyapp sandbox start whatsapp --json
   $ hookmyapp sandbox start --type=instagram        # flag form still works`,
   );

@@ -95,7 +95,7 @@ describe('parseChannelListItem', () => {
     expect(() => parseChannelListItem(broken)).toThrow(/whatsappWabaName/);
   });
 
-  it('throws when type is "messenger" (forward-compat: union allows it)', () => {
+  it('maps the legacy "messenger" type to facebook', () => {
     const messenger = {
       id: 'ch_MS000000',
       type: 'messenger',
@@ -108,7 +108,7 @@ describe('parseChannelListItem', () => {
       webhookUrl: null,
       verifyToken: null,
     };
-    expect(parseChannelListItem(messenger).type).toBe('messenger');
+    expect(parseChannelListItem(messenger).type).toBe('facebook');
   });
 });
 

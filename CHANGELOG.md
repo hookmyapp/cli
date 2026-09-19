@@ -2,6 +2,20 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.24 — 2026-09-19
+
+### Added
+
+- `hookmyapp facebook` (alias `fb`): Messenger messages (`messages send|read`, `threads`), Page posts (`posts`, `publish` with `--message`, `--link`, `--photo`, `--video` or `--reel`, `delete-post`), comment moderation (`comments list|reply|hide|unhide|delete|private-reply`), `insights` and `profile`. Reels go through the HookMyApp reel route, so the upload session is handled server-side (AIT-621).
+- `customers onboarding-links create --channel-type facebook` mints a link that connects a customer's Page, and its linked Instagram account, into the target workspace (AIT-621).
+- `channels connect facebook` opens the dashboard, where the Page picker lives, and waits for the new Page channel and any linked Instagram account it creates. `channels list`, `channels show` and the listen picker render `facebook` channels by Page name; rows an older server still emits as `messenger` are read as `facebook` (AIT-621).
+- `facebook publish --video` and `--reel` print the id of the post Meta created (`{pageId}_{postId}`, the id `comments`, `insights` and `delete-post` take) alongside the video id; the post is addressable once Meta finishes processing the video (AIT-621).
+- `hookmyapp sandbox start facebook` binds a Messenger sender to the sandbox Page and prints its `m.me` link; `sandbox status`, `send`, `env`, `logs` and `listen` handle Facebook sessions, which are selected by `--session` and shown by sender name (AIT-621).
+
+### Changed
+
+- The Facebook commands ship dark: `hookmyapp facebook`, the Facebook choice in `channels connect` and `sandbox start`, and the Facebook mentions in help stay hidden until Facebook Pages is switched on in production. Every command still runs when named explicitly, and `HOOKMYAPP_FACEBOOK_PREVIEW=1` shows all of it. A connect the platform refuses while the switch is off fails with the platform's own "not available yet" message instead of a permission error (AIT-621).
+
 ## 0.14.23 — 2026-09-13
 
 ### Added

@@ -56,6 +56,15 @@ export function buildEnvPairs(session: SandboxSession): [string, string][] {
         ['INSTAGRAM_ACCESS_TOKEN', session.accessToken],
         ['INSTAGRAM_ACCOUNT_ID', session.accountInstagramId],
       ];
+    case 'facebook':
+      return [
+        ['WEBHOOK_HMAC_SECRET', session.hmacSecret],
+        ['VERIFY_TOKEN', session.verifyToken],
+        ['PORT', '3000'],
+        ['FACEBOOK_API_URL', `${proxyBase}/${INSTAGRAM_GRAPH_VERSION}`],
+        ['FACEBOOK_ACCESS_TOKEN', session.accessToken],
+        ['FACEBOOK_PAGE_ID', session.facebookPageId],
+      ];
     default:
       return assertNever(session, 'buildEnvPairs');
   }

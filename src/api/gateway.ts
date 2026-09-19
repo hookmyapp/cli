@@ -51,14 +51,28 @@ export async function getGatewayConfig(channel: Channel): Promise<GatewayConfig>
   return { token: data.token, baseUrl: baseUrl.replace(/\/$/, '') };
 }
 
-/** Replace {phone_number_id} / {waba_id} / {ig_id} in a Graph path from the channel. */
+/**
+ * Replace {phone_number_id} / {waba_id} / {ig_id} / {ig_msg_root} / {page_id}
+ * in a Graph path from the channel. `{ig_msg_root}` is the node Instagram
+ * messaging (conversations, messages, messenger_profile) hangs off: the account
+ * itself, or the linked Page when the account was connected through a Facebook
+ * Page. Content edges (media, insights, comments) stay on `{ig_id}`.
+ */
 export function substitutePath(path: string, channel: Channel): string {
+  const igMsgRoot =
+    channel.type !== 'instagram'
+      ? undefined
+      : channel.connectionType === 'facebook_login'
+        ? channel.metaPageId
+        : channel.metaResourceId;
   const map: Record<string, string | null | undefined> = {
     phone_number_id: channel.type === 'whatsapp' ? channel.whatsappPhoneNumberId : undefined,
     waba_id: channel.metaWabaId,
     ig_id: channel.type === 'instagram' ? channel.metaResourceId : undefined,
+    ig_msg_root: igMsgRoot,
+    page_id: channel.type === 'facebook' ? channel.metaResourceId : undefined,
   };
-  return path.replace(/\{(phone_number_id|waba_id|ig_id)\}/g, (_m, key: string) => {
+  return path.replace(/\{(phone_number_id|waba_id|ig_id|ig_msg_root|page_id)\}/g, (_m, key: string) => {
     const v = map[key];
     if (!v) {
       throw new ValidationError(

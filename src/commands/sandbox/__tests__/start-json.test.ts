@@ -50,4 +50,31 @@ describe('runSandboxStart — --json success path', () => {
       { json: true },
     );
   });
+
+  it('deep-links a Facebook start to the sandbox Page the backend returned with the code', async () => {
+    mockedGetBindCode.mockResolvedValueOnce({
+      code: 'hmp3gj54',
+      issuedAt: '2026-05-30T00:00:00.000Z',
+      facebookPage: '1147107778492505',
+    } as never);
+
+    await runSandboxStart({ type: 'facebook', json: true });
+
+    expect(mockedOutput).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'facebook', deepLink: 'https://m.me/1147107778492505' }),
+      { json: true },
+    );
+  });
+
+  it('refuses a Facebook start when the environment has no sandbox Page', async () => {
+    mockedGetBindCode.mockResolvedValueOnce({
+      code: 'hmp3gj54',
+      issuedAt: '2026-05-30T00:00:00.000Z',
+      facebookPage: null,
+    } as never);
+
+    await expect(runSandboxStart({ type: 'facebook', json: true })).rejects.toMatchObject({
+      code: 'FACEBOOK_SANDBOX_UNAVAILABLE',
+    });
+  });
 });

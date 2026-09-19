@@ -1,3 +1,4 @@
+import { channelKinds, facebookVisible } from '../config/facebook-preview.js';
 import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { c } from '../output/color.js';
@@ -9,6 +10,7 @@ import { cliCommandPrefix } from '../output/cli-self.js';
 import open from 'open';
 import { select } from '@inquirer/prompts';
 import { pollForNewChannels } from './channels-connect-poll.js';
+import { getEffectiveAppUrl } from '../config/env-profiles.js';
 import { registerChannelsListenCommand } from './channels-listen/index.js';
 import { registerChannelsLogsCommand } from './channels-logs/index.js';
 import { runChannelEnv } from './env.js';
@@ -89,13 +91,13 @@ export async function resolveChannel(ref: string): Promise<Channel> {
  *
  *   whatsapp  → "WhatsApp +972…"
  *   instagram → "Instagram @ordvir"
- *   messenger → "Messenger ch_XXXXXXXX"
+ *   facebook  → "Facebook Acme Coffee"
  */
 export function channelLabel(c: Channel): string {
   if (c.type === 'whatsapp')
     return `WhatsApp ${c.whatsappDisplayPhoneNumber ?? c.whatsappWabaName ?? c.id}`;
   if (c.type === 'instagram') return `Instagram @${c.instagramUsername ?? c.id}`;
-  return `Messenger ${c.id}`;
+  return `Facebook ${c.facebookPageName ?? c.id}`;
 }
 
 function throwNoMatch(needle: string, channels: Channel[]): never {
@@ -103,7 +105,7 @@ function throwNoMatch(needle: string, channels: Channel[]): never {
     .map((c) => {
       if (c.type === 'whatsapp') return c.whatsappDisplayPhoneNumber ?? c.id;
       if (c.type === 'instagram') return c.instagramUsername ? `@${c.instagramUsername}` : c.id;
-      return c.id;
+      return c.facebookPageName ?? c.id;
     })
     .join(', ');
   // NotFoundError carries `httpStatus = 404` + statusCode=404 so the JSON
@@ -120,8 +122,10 @@ function throwNoMatch(needle: string, channels: Channel[]): never {
   throw err;
 }
 
+export type ConnectType = 'whatsapp' | 'instagram' | 'facebook';
+
 interface ChannelsConnectOpts {
-  type?: 'whatsapp' | 'instagram';
+  type?: ConnectType;
   /**
    * Print the OAuth sign-in URL to stdout instead of launching the browser.
    * The flow is otherwise identical — we still snapshot + poll for the new
@@ -183,18 +187,19 @@ export async function runChannelsConnect(
   // proceeds to the headless URL courier below.
   if (!isTty && opts.type === undefined) {
     throw new ValidationError(
-      'Specify a channel type in a non-interactive shell: channels connect whatsapp|instagram.',
+      `Specify a channel type in a non-interactive shell: channels connect ${facebookVisible() ? 'whatsapp|instagram|facebook' : 'whatsapp|instagram'}.`,
       'CONNECT_TYPE_REQUIRED',
     );
   }
 
   let type = opts.type;
   if (type === undefined) {
-    type = await select<'whatsapp' | 'instagram'>({
+    type = await select<ConnectType>({
       message: 'Which channel type?',
       choices: [
         { name: 'WhatsApp', value: 'whatsapp' },
         { name: 'Instagram', value: 'instagram' },
+        ...(facebookVisible() ? [{ name: 'Facebook', value: 'facebook' as const }] : []),
       ],
     });
   }
@@ -233,20 +238,29 @@ export async function runChannelsConnect(
         ? (ch.whatsappDisplayPhoneNumber ?? ch.id)
         : ch.type === 'instagram'
           ? `@${ch.instagramUsername ?? ch.id}`
-          : ch.id;
+          : (ch.facebookPageName ?? ch.id);
     status(
       `Note: this workspace already has a connected ${type} channel: ${label}. ` +
         `Waiting for a NEW connection — press Ctrl+C if you meant that one.`,
     );
   }
 
-  // 2. Route to the per-type OAuth start endpoint via the pure helper.
-  const { path, body } = buildConnectStartRequest(type);
-  const { redirectUrl } = (await apiClient(path, {
-    method: 'POST',
-    body,
-    workspaceId,
-  })) as { redirectUrl: string };
+  // 2. Route to the per-type OAuth start endpoint via the pure helper. A
+  //    Facebook Page connect ends in a Page picker that only the dashboard
+  //    renders, so that type sends the user to the dashboard and the poll
+  //    below reports the Page (and any linked Instagram account) it creates.
+  let redirectUrl: string;
+  if (type === 'facebook') {
+    redirectUrl = `${getEffectiveAppUrl()}/w/${workspaceId}/channels`;
+    status('Facebook Pages connect from the dashboard: Connect Channel, then Facebook, then pick the Page.');
+  } else {
+    const { path, body } = buildConnectStartRequest(type);
+    ({ redirectUrl } = (await apiClient(path, {
+      method: 'POST',
+      body,
+      workspaceId,
+    })) as { redirectUrl: string });
+  }
 
   // 3. Hand the OAuth URL to the user. The headless URL courier (D5):
   //    - JSON mode  → one { connectUrl } object on stdout, nothing else there.
@@ -283,7 +297,7 @@ export async function runChannelsConnect(
         ? `  WhatsApp  ${ch.whatsappDisplayPhoneNumber ?? '(no phone)'}  (${ch.id})`
         : ch.type === 'instagram'
           ? `  Instagram @${ch.instagramUsername ?? '(no handle)'}  (${ch.id})`
-          : `  Messenger (${ch.id})`;
+          : `  Facebook  ${ch.facebookPageName ?? '(unnamed Page)'}  (${ch.id})`;
     status(label);
   }
 }
@@ -314,13 +328,13 @@ export async function runChannelsList(opts: { json?: boolean }): Promise<void> {
     return;
   }
   if (channels.length === 0) {
-    console.log(`No channels. Run: ${cliCommandPrefix()} channels connect <whatsapp|instagram>`);
+    console.log(`No channels. Run: ${cliCommandPrefix()} channels connect <${facebookVisible() ? 'whatsapp|instagram|facebook' : 'whatsapp|instagram'}>`);
     return;
   }
   // Loop var is `ch` so it doesn't shadow the imported `c` color helper —
   // `c.success('on')` would otherwise type-error against a Channel.
   const rows = channels.map((ch) => ({
-    Type: ch.type === 'whatsapp' ? 'WhatsApp' : ch.type === 'instagram' ? 'Instagram' : 'Messenger',
+    Type: ch.type === 'whatsapp' ? 'WhatsApp' : ch.type === 'instagram' ? 'Instagram' : 'Facebook',
     Identifier:
       ch.type === 'whatsapp'
         ? ch.whatsappDisplayPhoneNumber ?? ch.whatsappWabaName ?? ch.id
@@ -328,7 +342,7 @@ export async function runChannelsList(opts: { json?: boolean }): Promise<void> {
           ? ch.instagramUsername
             ? `@${ch.instagramUsername}`
             : ch.id
-          : ch.id,
+          : (ch.facebookPageName ?? ch.id),
     'Channel ID': ch.id,
     Forwarding: ch.forwardingEnabled ? c.success('on') : c.dim('off'),
   }));
@@ -368,6 +382,9 @@ export async function runChannelsShow(
   } else if (detail.type === 'instagram') {
     console.log(`Instagram: @${detail.instagramUsername ?? '(no handle)'}`);
     console.log(`Display name: ${detail.instagramProfileName ?? '(none)'}`);
+  } else {
+    console.log(`Facebook Page: ${detail.facebookPageName ?? '(unnamed)'}`);
+    console.log(`Page ID: ${detail.metaResourceId}`);
   }
   console.log(`Forwarding: ${detail.forwardingEnabled ? 'on' : 'off'}`);
   console.log(`Webhook URL: ${detail.webhookUrl ?? '(not set)'}`);
@@ -491,7 +508,7 @@ export async function runChannelsMetaRetry(
 }
 
 export function registerChannelsCommand(program: Command): void {
-  const channels = program.command('channels').description('Manage channels (WhatsApp & Instagram)');
+  const channels = program.command('channels').description(`Manage channels (${channelKinds()})`);
 
   // `hookmyapp channels listen` — spec 2026-05-15. Mounts under the existing
   // plural parent (D10): real-channel local listener mirroring `sandbox listen`.
@@ -518,18 +535,18 @@ export function registerChannelsCommand(program: Command): void {
 
   const channelsConnect = channels
     .command('connect')
-    .description('Connect a channel via Meta OAuth (WhatsApp or Instagram)')
-    .argument('[type]', 'Channel type: "whatsapp" or "instagram" (interactive if omitted)')
+    .description(`Connect a channel via Meta OAuth (${channelKinds('or')})`)
+    .argument('[type]', `Channel type: ${facebookVisible() ? '"whatsapp", "instagram" or "facebook"' : '"whatsapp" or "instagram"'} (interactive if omitted)`)
     .option('--print-url', 'Print the sign-in URL instead of opening the browser')
     .action(async (type: string | undefined, options: { printUrl?: boolean }) => {
-      if (type !== undefined && type !== 'whatsapp' && type !== 'instagram') {
+      if (type !== undefined && type !== 'whatsapp' && type !== 'instagram' && type !== 'facebook') {
         throw new ValidationError(
-          `Invalid type "${type}". Must be "whatsapp" or "instagram".`,
+          `Invalid type "${type}". Must be ${facebookVisible() ? '"whatsapp", "instagram" or "facebook"' : '"whatsapp" or "instagram"'}.`,
           'INVALID_CONNECT_TYPE',
         );
       }
       await runChannelsConnect({
-        type,
+        type: type as ConnectType | undefined,
         printUrl: options.printUrl,
         json: !!program.opts().json,
       });

@@ -135,7 +135,7 @@ export async function runInstagramCommentsPrivateReply(
   const res = await gatewayRequest({
     channel,
     method: 'POST',
-    path: `/{ig_id}/messages`,
+    path: `/{ig_msg_root}/messages`,
     body: { recipient: { comment_id: opts.comment }, message: { text: opts.text } },
   });
   process.stdout.write(

@@ -248,7 +248,7 @@ export async function mapApiError(res: Response): Promise<CliError> {
     // Feature-availability rejections (e.g. INSTAGRAM_DISABLED) surface the
     // server's message verbatim — "contact your workspace admin" would be
     // wrong guidance for a feature the server has turned off.
-    if (code === 'INSTAGRAM_DISABLED') {
+    if (code === 'INSTAGRAM_DISABLED' || code === 'FACEBOOK_DISABLED') {
       return new FeatureDisabledError(msg, code);
     }
     // AIT-525: the workspace is in an org this session isn't scoped to. Append
@@ -547,6 +547,8 @@ export interface BindCodeResponse {
   code: string;
   issuedAt: string; // ISO timestamp
   consumedSessionId?: string; // ssn_<8> publicId; present iff the code was consumed
+  /** Sandbox Facebook Page for the m.me deep link (handle or id); null when the env has none. */
+  facebookPage?: string | null;
 }
 
 /**

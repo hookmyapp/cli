@@ -5,7 +5,7 @@ interface ChannelBase {
   workspaceId: string;
   /**
    * Phase A backend cleanup: WhatsApp channels carry the WABA id; Instagram &
-   * Messenger emit `null`. Older backends emitted `''` for non-WA; consumers
+   * Facebook emit `null`. Older backends emitted `''` for non-WA; consumers
    * still treat empty-string as "no WABA".
    */
   metaWabaId: string | null;
@@ -50,13 +50,22 @@ export interface InstagramChannel extends ChannelBase {
   instagramUsername: string | null;
   instagramProfileName: string | null;
   instagramProfilePictureUrl: string | null;
+  /** The Facebook Page an account connected through a Page is linked to; null otherwise. */
+  metaPageId: string | null;
 }
 
-export interface MessengerChannel extends ChannelBase {
-  type: 'messenger';
+/**
+ * A Facebook Page (Messenger DMs, Page posts, comments, insights). Older
+ * backends emitted this row as `type: 'messenger'`; the parser maps that alias
+ * here with null Page fields.
+ */
+export interface FacebookChannel extends ChannelBase {
+  type: 'facebook';
+  facebookPageName: string | null;
+  facebookPagePictureUrl: string | null;
 }
 
-export type Channel = WhatsAppChannel | InstagramChannel | MessengerChannel;
+export type Channel = WhatsAppChannel | InstagramChannel | FacebookChannel;
 
 /** Detail-only fields returned by GET /meta/channels/:id (not on list endpoint). */
 interface DetailExtras {
@@ -158,16 +167,30 @@ export function parseChannelListItem(dto: unknown): Channel {
         malformed(id, 'IG channel: instagramProfileName must be string or null');
       if (!isStringOrNull(d.instagramProfilePictureUrl))
         malformed(id, 'IG channel: instagramProfilePictureUrl must be string or null');
+      // Tolerate absent metaPageId (backends predating the Facebook channel omit it).
+      if (d.metaPageId !== undefined && !isStringOrNull(d.metaPageId))
+        malformed(id, 'IG channel: metaPageId must be string or null');
       return {
         ...base,
         type: 'instagram',
         instagramUsername: d.instagramUsername,
         instagramProfileName: d.instagramProfileName,
         instagramProfilePictureUrl: d.instagramProfilePictureUrl,
+        metaPageId: typeof d.metaPageId === 'string' ? d.metaPageId : null,
       };
     }
+    case 'facebook':
     case 'messenger': {
-      return { ...base, type: 'messenger' };
+      if (d.facebookPageName !== undefined && !isStringOrNull(d.facebookPageName))
+        malformed(id, 'FB channel: facebookPageName must be string or null');
+      if (d.facebookPagePictureUrl !== undefined && !isStringOrNull(d.facebookPagePictureUrl))
+        malformed(id, 'FB channel: facebookPagePictureUrl must be string or null');
+      return {
+        ...base,
+        type: 'facebook',
+        facebookPageName: (d.facebookPageName as string | null | undefined) ?? null,
+        facebookPagePictureUrl: (d.facebookPagePictureUrl as string | null | undefined) ?? null,
+      };
     }
     default:
       malformed(id, `unknown type "${d.type}"`);

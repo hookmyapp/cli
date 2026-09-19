@@ -10,6 +10,8 @@ import { registerWhatsappTemplates } from './commands/whatsapp-templates.js';
 import { registerWhatsappMedia } from './commands/whatsapp-media.js';
 import { registerWhatsappProfile } from './commands/whatsapp-profile.js';
 import { registerInstagramCommand } from './commands/instagram.js';
+import { registerFacebookCommand } from './commands/facebook.js';
+import { channelKinds } from './config/facebook-preview.js';
 import { registerDoctorCommand } from './commands/doctor.js';
 import { registerAlertsCommand } from './commands/alerts.js';
 import { registerBillingCommand } from './commands/billing.js';
@@ -49,7 +51,7 @@ const program = new Command();
 
 program
   .name('hookmyapp')
-  .description('HookMyApp CLI: manage WhatsApp & Instagram channels')
+  .description(`HookMyApp CLI: manage ${channelKinds()} channels`)
   .version(pkg.version);
 
 program.option('--json', 'Machine-readable JSON output (scripts/CI)');
@@ -124,7 +126,7 @@ USAGE:
 
 COMMON COMMANDS:
   login             Browser sign-in + workspace picker and next-steps guide
-  channels connect  Connect a channel via Meta OAuth (WhatsApp or Instagram)
+  channels connect  Connect a channel via Meta OAuth (${channelKinds('or')})
   channels list     List your connected channels
   channels env      Print or write channel env values
   channels token    Print channel token
@@ -180,6 +182,7 @@ registerChannelsCommand(program);
 // returned Command refs so those plans can mount their subcommands onto them.
 const whatsappCmd = registerWhatsappCommand(program);
 registerInstagramCommand(program);
+registerFacebookCommand(program);
 registerWhatsappMessages(whatsappCmd);
 registerWhatsappTemplates(whatsappCmd);
 registerWhatsappMedia(whatsappCmd);

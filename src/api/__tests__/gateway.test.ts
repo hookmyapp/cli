@@ -34,6 +34,13 @@ describe('substitutePath', () => {
     const ig = { ...waChannel, type: 'instagram', metaWabaId: null } as any;
     expect(() => substitutePath('/{waba_id}/x', ig)).toThrow(/waba_id/);
   });
+  it('roots {ig_msg_root} on the account for Instagram Login and on the Page for a Page-linked account', () => {
+    const igLogin = { ...waChannel, type: 'instagram', metaResourceId: '17841400000000001', connectionType: 'instagram_login', metaPageId: null } as any;
+    const viaPage = { ...igLogin, connectionType: 'facebook_login', metaPageId: '863293123535840' } as any;
+    expect(substitutePath('/{ig_msg_root}/messages', igLogin)).toBe('/17841400000000001/messages');
+    expect(substitutePath('/{ig_msg_root}/messages', viaPage)).toBe('/863293123535840/messages');
+    expect(substitutePath('/{ig_id}/media', viaPage)).toBe('/17841400000000001/media');
+  });
 });
 
 describe('substitutePath — two numbers on one WABA (D7 passthrough)', () => {

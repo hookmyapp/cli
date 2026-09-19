@@ -103,6 +103,28 @@ describe('parseSandboxSession', () => {
     expect(() => parseSandboxSession(validIg)).not.toThrow();
   });
 
+  it('returns a typed Facebook variant and defaults a missing sender name to null (AIT-621)', () => {
+    const parsed = parseSandboxSession({
+      ...baseShared,
+      id: 'ssn_FB000001',
+      type: 'facebook',
+      facebookSenderId: '33004113645846399',
+      facebookPageId: '1147107778492505',
+    });
+    expect(parsed).toMatchObject({
+      type: 'facebook',
+      facebookSenderId: '33004113645846399',
+      facebookPageId: '1147107778492505',
+      facebookSenderName: null,
+    });
+  });
+
+  it('rejects a Facebook row without its Page id', () => {
+    expect(() =>
+      parseSandboxSession({ ...baseShared, id: 'ssn_FB000002', type: 'facebook', facebookSenderId: '1' }),
+    ).toThrow(/facebookPageId/);
+  });
+
   it('rejects unknown type', () => {
     expect(() => parseSandboxSession({ ...baseShared, type: 'messenger' })).toThrow(
       UnexpectedError,

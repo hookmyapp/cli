@@ -236,3 +236,30 @@ describe('runChannelsConnect — --print-url', () => {
     logSpy.mockRestore();
   });
 });
+
+describe('channels connect facebook', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+    vi.mocked(pollForNewChannels).mockReset();
+  });
+
+  it('accepts facebook, sends the user to the dashboard channels page and reports the new Page', async () => {
+    vi.mocked(apiClient).mockResolvedValueOnce([]);
+    vi.mocked(pollForNewChannels).mockResolvedValueOnce([
+      {
+        id: 'ch_FBaaaaaa', type: 'facebook', workspaceId: 'ws_TEST0001', metaWabaId: null,
+        metaResourceId: '100000000000001', connectionType: 'facebook_login', metaConnected: true,
+        forwardingEnabled: true, webhookUrl: null, verifyToken: null,
+        facebookPageName: 'Acme', facebookPagePictureUrl: null,
+      },
+    ]);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runChannelsConnect({ type: 'facebook', printUrl: true });
+    const out = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(out).toMatch(/\/w\/ws_TEST0001\/channels/);
+    expect(out).toContain('Facebook  Acme');
+    // No OAuth start route exists for Facebook; the picker lives in the dashboard.
+    expect(vi.mocked(apiClient).mock.calls.filter(([p]) => String(p).includes('oauth/start'))).toHaveLength(0);
+    logSpy.mockRestore();
+  });
+});
