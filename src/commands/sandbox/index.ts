@@ -82,8 +82,7 @@ export function registerSandboxCommand(program: Command): void {
     `EXAMPLES:
   $ hookmyapp sandbox start
   $ hookmyapp sandbox start whatsapp
-  $ hookmyapp sandbox start instagram --listen
-  $ hookmyapp sandbox start facebook
+  $ hookmyapp sandbox start instagram --listen${facebookVisible() ? '\n  $ hookmyapp sandbox start facebook' : ''}
   $ hookmyapp sandbox start whatsapp --json
   $ hookmyapp sandbox start --type=instagram        # flag form still works`,
   );

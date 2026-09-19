@@ -328,7 +328,7 @@ export async function runChannelsList(opts: { json?: boolean }): Promise<void> {
     return;
   }
   if (channels.length === 0) {
-    console.log(`No channels. Run: ${cliCommandPrefix()} channels connect <whatsapp|instagram|facebook>`);
+    console.log(`No channels. Run: ${cliCommandPrefix()} channels connect <${facebookVisible() ? 'whatsapp|instagram|facebook' : 'whatsapp|instagram'}>`);
     return;
   }
   // Loop var is `ch` so it doesn't shadow the imported `c` color helper —

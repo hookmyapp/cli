@@ -1,3 +1,4 @@
+import { facebookVisible } from '../config/facebook-preview.js';
 import type { Command } from 'commander';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
@@ -160,12 +161,12 @@ export function registerCustomersCommand(program: Command): void {
     .alias('new')
     .description('Create a customer connect link')
     .requiredOption('--label <label>', 'Label for the link')
-    .requiredOption('--channel-type <type>', 'whatsapp, instagram or facebook')
+    .requiredOption('--channel-type <type>', facebookVisible() ? 'whatsapp, instagram or facebook' : 'whatsapp or instagram')
     .option('--customer <ws-id>', 'Target an existing customer (ws_XXXXXXXX) — the connect lands in that customer')
     .option('--json', 'Output machine-readable JSON')
     .action(async (opts: { label: string; channelType: string; customer?: string; json?: boolean }) => {
       if (!['whatsapp', 'instagram', 'facebook'].includes(opts.channelType)) {
-        throw new ValidationError(`--channel-type must be "whatsapp", "instagram" or "facebook", got "${opts.channelType}"`);
+        throw new ValidationError(`--channel-type must be ${facebookVisible() ? '"whatsapp", "instagram" or "facebook"' : '"whatsapp" or "instagram"'}, got "${opts.channelType}"`);
       }
       const created = await apiClient('/org/onboarding-links', {
         method: 'POST',
