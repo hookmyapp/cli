@@ -59,6 +59,11 @@ export async function runFacebookPublish(opts: FbPublishOpts, cmd?: Command): Pr
   const media = [opts.photo, opts.video, opts.reel].filter(Boolean);
   if (media.length > 1) throw new ValidationError('Pass only one of --photo, --video, --reel.', 'PUBLISH_ONE_KIND');
   if (opts.link && media.length > 0) throw new ValidationError('--link cannot be combined with --photo, --video or --reel.', 'PUBLISH_ONE_KIND');
+  // Each kind has one caption field on Meta's side; a caption flag that the
+  // kind cannot carry is refused rather than dropped.
+  const videoKind = Boolean(opts.video || opts.reel);
+  if (videoKind && opts.message) throw new ValidationError('--video and --reel take --description, not --message.', 'PUBLISH_CAPTION_FLAG');
+  if (!videoKind && opts.description) throw new ValidationError('--description is for --video or --reel; use --message here.', 'PUBLISH_CAPTION_FLAG');
   const channel = await resolveChannelRefOrDefault(opts.channel, 'facebook');
   const json = Boolean(cmd && isJsonMode(cmd));
 
