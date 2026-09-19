@@ -4,6 +4,7 @@
 // QR + deep link (handle stripped of @, code URL-encoded), same polling
 // loop. The IG handle is per-env (see getEffectiveSandboxInstagramUsername).
 
+import { facebookVisible } from '../../config/facebook-preview.js';
 import { select } from '@inquirer/prompts';
 import qrcode from 'qrcode-terminal';
 import ora from 'ora';
@@ -57,7 +58,7 @@ export async function runSandboxStart(opts: {
     opts.type !== 'facebook'
   ) {
     throw new ValidationError(
-      `Invalid --type value: ${String(opts.type)}. Must be 'whatsapp', 'instagram' or 'facebook'.`,
+      `Invalid --type value: ${String(opts.type)}. Must be ${facebookVisible() ? "'whatsapp', 'instagram' or 'facebook'" : "'whatsapp' or 'instagram'"}.`,
       'INVALID_TYPE',
     );
   }
@@ -67,7 +68,7 @@ export async function runSandboxStart(opts: {
     channelType = opts.type;
   } else if (opts.json) {
     throw new ValidationError(
-      '--type is required in --json mode (use --type=whatsapp, --type=instagram or --type=facebook).',
+      `--type is required in --json mode (use ${facebookVisible() ? '--type=whatsapp, --type=instagram or --type=facebook' : '--type=whatsapp or --type=instagram'}).`,
       'TYPE_REQUIRED_IN_JSON',
     );
   } else if (isHuman) {
@@ -76,7 +77,7 @@ export async function runSandboxStart(opts: {
       choices: [
         { name: 'WhatsApp', value: 'whatsapp' },
         { name: 'Instagram', value: 'instagram' },
-        { name: 'Facebook', value: 'facebook' },
+        ...(facebookVisible() ? [{ name: 'Facebook', value: 'facebook' as const }] : []),
       ],
     });
   } else {

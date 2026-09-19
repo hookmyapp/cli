@@ -1,3 +1,4 @@
+import { channelKinds, facebookVisible } from '../config/facebook-preview.js';
 import type { Command } from 'commander';
 import { apiClient, forceTokenRefresh } from '../api/client.js';
 import { c } from '../output/color.js';
@@ -186,7 +187,7 @@ export async function runChannelsConnect(
   // proceeds to the headless URL courier below.
   if (!isTty && opts.type === undefined) {
     throw new ValidationError(
-      'Specify a channel type in a non-interactive shell: channels connect whatsapp|instagram|facebook.',
+      `Specify a channel type in a non-interactive shell: channels connect ${facebookVisible() ? 'whatsapp|instagram|facebook' : 'whatsapp|instagram'}.`,
       'CONNECT_TYPE_REQUIRED',
     );
   }
@@ -198,7 +199,7 @@ export async function runChannelsConnect(
       choices: [
         { name: 'WhatsApp', value: 'whatsapp' },
         { name: 'Instagram', value: 'instagram' },
-        { name: 'Facebook', value: 'facebook' },
+        ...(facebookVisible() ? [{ name: 'Facebook', value: 'facebook' as const }] : []),
       ],
     });
   }
@@ -507,7 +508,7 @@ export async function runChannelsMetaRetry(
 }
 
 export function registerChannelsCommand(program: Command): void {
-  const channels = program.command('channels').description('Manage channels (WhatsApp, Instagram & Facebook)');
+  const channels = program.command('channels').description(`Manage channels (${channelKinds()})`);
 
   // `hookmyapp channels listen` — spec 2026-05-15. Mounts under the existing
   // plural parent (D10): real-channel local listener mirroring `sandbox listen`.
@@ -534,13 +535,13 @@ export function registerChannelsCommand(program: Command): void {
 
   const channelsConnect = channels
     .command('connect')
-    .description('Connect a channel via Meta OAuth (WhatsApp, Instagram or Facebook)')
-    .argument('[type]', 'Channel type: "whatsapp", "instagram" or "facebook" (interactive if omitted)')
+    .description(`Connect a channel via Meta OAuth (${channelKinds('or')})`)
+    .argument('[type]', `Channel type: ${facebookVisible() ? '"whatsapp", "instagram" or "facebook"' : '"whatsapp" or "instagram"'} (interactive if omitted)`)
     .option('--print-url', 'Print the sign-in URL instead of opening the browser')
     .action(async (type: string | undefined, options: { printUrl?: boolean }) => {
       if (type !== undefined && type !== 'whatsapp' && type !== 'instagram' && type !== 'facebook') {
         throw new ValidationError(
-          `Invalid type "${type}". Must be "whatsapp", "instagram" or "facebook".`,
+          `Invalid type "${type}". Must be ${facebookVisible() ? '"whatsapp", "instagram" or "facebook"' : '"whatsapp" or "instagram"'}.`,
           'INVALID_CONNECT_TYPE',
         );
       }

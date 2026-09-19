@@ -2,6 +2,7 @@
 // runX functions and attaches addExamples() to every command so help.test.ts
 // continues to pass.
 
+import { facebookVisible } from '../../config/facebook-preview.js';
 import type { Command } from 'commander';
 import { addExamples } from '../../output/help.js';
 import { ValidationError } from '../../output/error.js';
@@ -44,9 +45,9 @@ export function registerSandboxCommand(program: Command): void {
   const sandboxStart = sandbox
     .command('start')
     .description('Bind a sandbox session for local development')
-    .argument('[type]', 'Channel type shortcut: "whatsapp", "instagram" or "facebook" (same as --type=...)')
+    .argument('[type]', `Channel type shortcut: ${facebookVisible() ? '"whatsapp", "instagram" or "facebook"' : '"whatsapp" or "instagram"'} (same as --type=...)`)
     .option(
-      '--type <whatsapp|instagram|facebook>',
+      `--type <${facebookVisible() ? 'whatsapp|instagram|facebook' : 'whatsapp|instagram'}>`,
       'Channel type (prompts if omitted; required in --json mode)',
     )
     .option('--listen', 'After bind, immediately start the webhook listener')

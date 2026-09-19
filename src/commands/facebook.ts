@@ -1,3 +1,4 @@
+import { facebookVisible } from '../config/facebook-preview.js';
 import type { Command } from 'commander';
 import { addExamples } from '../output/help.js';
 import { gatewayRequest } from '../api/gateway.js';
@@ -111,7 +112,7 @@ EXAMPLES:
 /** Registers the `facebook` (alias `fb`) command group plus its subcommands. */
 export function registerFacebookCommand(program: Command): Command {
   const facebook = program
-    .command('facebook')
+    .command('facebook', { hidden: !facebookVisible() })
     .alias('fb')
     .description('Facebook Page messages, posts, comments, publishing, and insights');
 
