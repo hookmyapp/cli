@@ -138,12 +138,29 @@ describe('shouldCaptureToSentry filter — capture every non-null error', () => 
     expect(shouldCaptureToSentry(new NetworkError())).toBe(true);
   });
 
-  it('captures ApiError (so the CLI-side perspective on backend failures is preserved)', () => {
-    expect(shouldCaptureToSentry(new ApiError('5xx', 500))).toBe(true);
+  it('rejects sev3 ApiError (the backend already captured its own failure)', () => {
+    expect(shouldCaptureToSentry(new ApiError('5xx', 500))).toBe(false);
   });
 
-  it('captures AuthError (whether thrown locally on missing creds or wrapped from backend 401)', () => {
-    expect(shouldCaptureToSentry(new AuthError())).toBe(true);
+  // AIT-652: sev3 CliErrors are expected user states (session expired,
+  // forwarding disabled, validation). Customer agent loops replayed them by
+  // the thousand and exhausted the org quota on 2026-09-13, blinding the
+  // pager for every service. They still reach PostHog; Sentry gets only the
+  // sev3 codes that describe the environment, not the user.
+  it('rejects sev3 AuthError (expected user state, PostHog has it)', () => {
+    expect(shouldCaptureToSentry(new AuthError())).toBe(false);
+  });
+
+  it('rejects the sev3 CliErrors that flooded the quota', async () => {
+    const { CliError, ValidationError } = await import('../output/error.js');
+    expect(shouldCaptureToSentry(new CliError('forwarding disabled', 'CHANNEL_FORWARDING_DISABLED'))).toBe(false);
+    expect(shouldCaptureToSentry(new ValidationError('bad arg'))).toBe(false);
+  });
+
+  it('still captures sev1/sev2 CliErrors', async () => {
+    const { ConfigurationError, UnexpectedError } = await import('../output/error.js');
+    expect(shouldCaptureToSentry(new ConfigurationError('missing config'))).toBe(true);
+    expect(shouldCaptureToSentry(new UnexpectedError('boom'))).toBe(true);
   });
 
   it('captures unknown throws (non-AppError — unexpected bugs)', () => {

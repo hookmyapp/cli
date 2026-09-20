@@ -2,6 +2,12 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.25 — 2026-09-20
+
+### Changed
+
+- Expected user-facing errors (session expired, forwarding disabled, validation, API rejections) are no longer reported to Sentry; agent loops replaying them by the thousand had exhausted the error quota. Connection failures and blocked config writes are still reported (AIT-652).
+
 ## 0.14.24 — 2026-09-19
 
 ### Added
