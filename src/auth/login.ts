@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { saveCredentials, peekIdentity } from './store.js';
 import { revokeCredentialsForReplacedSession } from './mcp-credential.js';
 import { API_KEY_ENV_VAR, envApiKey } from '../config/env-vars.js';
-import { AuthError, NetworkError, ValidationError } from '../output/error.js';
+import { AuthError, NetworkError, UnexpectedError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
 import { displayEmail } from '../output/mask.js';
@@ -913,7 +913,11 @@ export function loginCommand(program: Command): void {
         }
 
         if (!res.ok) {
-          throw new AuthError('Failed to initiate login. Try again later.');
+          // AIT-652: a non-2xx from the sign-in service is a dependency
+          // failure, not an expired session; sev2 so it reaches Sentry.
+          const err = new UnexpectedError('Failed to initiate login. Try again later.', 'WORKOS_DEVICE_AUTH_FAILED');
+          err.exitCode = 4;
+          throw err;
         }
 
         const {
