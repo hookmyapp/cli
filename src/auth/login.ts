@@ -982,7 +982,7 @@ export function loginCommand(program: Command): void {
           deviceCode: device_code,
           expiresIn: expires_in,
           // WorkOS sends the poll interval; 5s is the RFC 8628 default if absent.
-          interval: typeof interval === 'number' && Number.isFinite(interval) && interval > 0 ? interval : 5,
+          interval: typeof interval === 'number' && Number.isFinite(interval) && interval >= 0 ? interval : 5,
         });
 
         // Auto-chain into the wizard.
