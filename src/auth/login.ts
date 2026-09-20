@@ -92,6 +92,14 @@ async function pollForTokens(opts: {
 
     if (res.ok) {
       const data = await readBody(res.json(), 'Lost the connection to the sign-in service. Try again.');
+      // AIT-652: never revoke the old session or write the store off a 2xx
+      // that carries no tokens; that is a sign-in service contract break.
+      if (typeof data?.access_token !== 'string' || data.access_token === '' ||
+          typeof data?.refresh_token !== 'string' || data.refresh_token === '') {
+        const malformed = new UnexpectedError('Login failed: the sign-in service returned no session. Try again.', 'WORKOS_DEVICE_TOKEN_MALFORMED');
+        malformed.exitCode = 4;
+        throw malformed;
+      }
       // BEFORE saveCredentials: revoking authenticates as the session that
       // minted the key, and a login replaces the session. `login --code`
       // supports switching accounts without a logout, so without this the old
