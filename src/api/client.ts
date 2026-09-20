@@ -331,7 +331,14 @@ export async function mapApiError(res: Response): Promise<CliError> {
     // carry safe, actionable user messages — surface them verbatim instead
     // of the generic 5xx line.
     if (code?.startsWith('SUPPORT_')) return new ApiError(msg, res.status, code);
-    return new ApiError('Something went wrong on our end. Try again later.', res.status);
+    // AIT-652: keep the server's code in details so Sentry capture can tell a
+    // backend-handled 5xx (already captured server-side) from a bare edge 5xx.
+    return new ApiError(
+      'Something went wrong on our end. Try again later.',
+      res.status,
+      undefined,
+      code ? { serverCode: code } : undefined,
+    );
   }
   // Generic 4xx fallback — preserve the server's own code (AIT-151) so scripts
   // reading --json can branch on it instead of a flat API_ERROR.

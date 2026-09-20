@@ -198,6 +198,33 @@ describe('apiClient', () => {
         'Something went wrong on our end',
       );
       expect((err as InstanceType<typeof ApiError>).statusCode).toBe(500);
+      // No body code: nothing in details, so Sentry treats it as a bare edge 5xx.
+      expect((err as InstanceType<typeof ApiError>).details?.serverCode).toBeUndefined();
+    }
+  });
+
+  it('keeps a coded 5xx body code in details.serverCode (AIT-652), public code stays SERVER_ERROR', async () => {
+    const futureExp = Math.floor(Date.now() / 1000) + 3600;
+    const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
+    mockedReadCredentials.mockResolvedValue({
+      accessToken: `header.${payload}.sig`,
+      refreshToken: 'rt',
+      expiresAt: futureExp,
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ message: 'boom', code: 'DB_DOWN' }),
+      statusText: 'Internal Server Error',
+    });
+
+    try {
+      await apiClient('/test');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      const e = err as InstanceType<typeof ApiError>;
+      expect(e.code).toBe('SERVER_ERROR');
+      expect(e.details).toEqual({ serverCode: 'DB_DOWN' });
     }
   });
 

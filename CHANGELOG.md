@@ -6,7 +6,9 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 ### Changed
 
-- Expected user-facing errors (session expired, forwarding disabled, validation, API rejections) are no longer reported to Sentry; agent loops replaying them by the thousand had exhausted the error quota. Connection failures and blocked config writes are still reported (AIT-652).
+- Expected user-facing errors (session expired, forwarding disabled, validation, API rejections) are no longer reported to Sentry; agent loops replaying them by the thousand had exhausted the error quota. Connection failures, blocked config writes and uncoded server 5xx are still reported (AIT-652).
+- Broken-dependency and broken-integration failures (`BINARY_DOWNLOAD_FAILED`, `BINARY_CHECKSUM_FAILED`, `PUBLISH_NO_CONTAINER`, `PUBLISH_NO_MEDIA_ID`) are now sev2 `UnexpectedError`s so they keep reaching Sentry; codes, messages and exit codes are unchanged (AIT-652).
+- A 5xx whose body carried a code now exposes it as `details.serverCode` in `--json` output; the top-level code stays `SERVER_ERROR` (AIT-652).
 
 ## 0.14.24 — 2026-09-19
 

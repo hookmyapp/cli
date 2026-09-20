@@ -146,6 +146,15 @@ describe('shouldCaptureToSentry filter — capture every non-null error', () => 
     expect(shouldCaptureToSentry(new ApiError('nope', 400, 'SOME_CODE'))).toBe(false);
     expect(shouldCaptureToSentry(new ApiError('nope', 404))).toBe(false);
     expect(shouldCaptureToSentry(new ApiError('nope', 503, 'SUPPORT_NOT_CONFIGURED'))).toBe(false);
+    // 5xx whose body carried a code: the backend handled it (mapApiError keeps
+    // the code in details.serverCode, public code stays SERVER_ERROR).
+    expect(shouldCaptureToSentry(new ApiError('nope', 500, undefined, { serverCode: 'DB_DOWN' }))).toBe(false);
+  });
+
+  it('captures operational failures that were reclassified to sev2', async () => {
+    const { UnexpectedError } = await import('../output/error.js');
+    expect(shouldCaptureToSentry(new UnexpectedError('checksum', 'BINARY_CHECKSUM_FAILED'))).toBe(true);
+    expect(shouldCaptureToSentry(new UnexpectedError('no id', 'PUBLISH_NO_MEDIA_ID'))).toBe(true);
   });
 
   // AIT-652: sev3 CliErrors are expected user states (session expired,

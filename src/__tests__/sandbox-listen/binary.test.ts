@@ -108,7 +108,7 @@ describe('ensureCloudflaredBinary', () => {
     expect(mockedChmod).toHaveBeenCalled();
   });
 
-  it('ensureCloudflaredBinary throws CliError with exit code 4 on sha256 mismatch', async () => {
+  it('ensureCloudflaredBinary throws UnexpectedError (sev2, AIT-652) with exit code 4 on sha256 mismatch', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux' });
     Object.defineProperty(process, 'arch', { value: 'x64' });
     mockedStat.mockRejectedValueOnce(new Error('ENOENT'));
@@ -123,7 +123,7 @@ describe('ensureCloudflaredBinary', () => {
       throw new Error('should have thrown');
     } catch (err) {
       const e = err as { code?: string; exitCode?: number; name?: string };
-      expect(e.name).toBe('CliError');
+      expect(e.name).toBe('UnexpectedError');
       expect(e.code).toBe('BINARY_CHECKSUM_FAILED');
       expect(e.exitCode).toBe(4);
     }

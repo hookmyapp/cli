@@ -3,7 +3,7 @@ import { addExamples } from '../output/help.js';
 import { gatewayRequest } from '../api/gateway.js';
 import { resolveChannelRefOrDefault } from './_helpers.js';
 import { isJsonMode } from '../output/format.js';
-import { ValidationError, CliError } from '../output/error.js';
+import { ValidationError, CliError, UnexpectedError } from '../output/error.js';
 import { startSpinner } from '../output/spinner.js';
 import type { Channel } from '../api/channel.js';
 
@@ -88,7 +88,7 @@ export async function pollContainerFinished(channel: Channel, containerId: strin
 
 async function createContainer(channel: Channel, body: Record<string, unknown>): Promise<string> {
   const res = await gatewayRequest({ channel, method: 'POST', path: `/{ig_id}/media`, body });
-  if (!res?.id) throw new CliError('Meta returned no container id.', 'PUBLISH_NO_CONTAINER');
+  if (!res?.id) throw new UnexpectedError('Meta returned no container id.', 'PUBLISH_NO_CONTAINER');
   return res.id as string;
 }
 
@@ -240,7 +240,7 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
       body: { creation_id: containerId },
     });
     if (!published?.id) {
-      throw new CliError(
+      throw new UnexpectedError(
         'Meta returned no media id from media_publish — publish state unknown; check the account before retrying.',
         'PUBLISH_NO_MEDIA_ID',
       );
