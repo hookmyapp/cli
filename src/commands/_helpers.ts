@@ -1,5 +1,5 @@
 import { apiClient, setWorkspaceContext } from '../api/client.js';
-import { AuthError, CliError, NetworkError, ValidationError, exitCodeFor } from '../output/error.js';
+import { ApiError, AuthError, CliError, NetworkError, UnexpectedError, ValidationError, exitCodeFor } from '../output/error.js';
 import { readWorkspaceConfig, writeWorkspaceConfig } from './workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
 import { emit, shouldEmitCommandInvoked } from '../observability/posthog.js';
@@ -26,7 +26,10 @@ async function listWorkspacesOrEmpty(): Promise<
       name: string;
     }>;
   } catch (err) {
-    if (err instanceof AuthError || err instanceof NetworkError) {
+    // AIT-652: a 5xx is an outage, not "no workspaces"; keep it (and its
+    // Sentry event) instead of turning it into a workspace-not-found.
+    if (err instanceof AuthError || err instanceof NetworkError ||
+        (err instanceof ApiError && (err.statusCode ?? 0) >= 500)) {
       throw err;
     }
     return [];
@@ -138,13 +141,24 @@ export async function resolveOrgPublicIdForWorkspace(
     id: string;
     organizationPublicId?: string;
   }>;
-  const orgPublicId = all.find((w) => w.id === workspaceId)?.organizationPublicId;
-  if (!orgPublicId) {
+  const row = all.find((w) => w.id === workspaceId);
+  if (!row) {
+    // The persisted active workspace is gone or not ours any more: user state.
     throw new ValidationError(
       'No organization found for your active workspace. Run: hookmyapp workspace use <name|id>',
     );
   }
-  return orgPublicId;
+  if (!row.organizationPublicId) {
+    // AIT-652: the row exists but the backend sent no organization: a
+    // contract break, sev2 so it reaches Sentry. Exit code stays 2.
+    const err = new UnexpectedError(
+      'No organization found for your active workspace. Run: hookmyapp workspace use <name|id>',
+      'WORKSPACE_ORG_MISSING',
+    );
+    err.exitCode = 2;
+    throw err;
+  }
+  return row.organizationPublicId;
 }
 
 /**
