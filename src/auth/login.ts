@@ -945,9 +945,10 @@ export function loginCommand(program: Command): void {
         } = await readBody(res.json(), 'Lost the connection to the sign-in service (api.workos.com). Try again.');
         // AIT-652: a 2xx missing the fields the poll needs is a sign-in
         // service contract break, not a user state; sev2 so it reaches Sentry.
-        if (typeof device_code !== 'string' || !device_code || typeof user_code !== 'string' ||
-            typeof expires_in !== 'number' || !Number.isFinite(expires_in) ||
-            (typeof verification_uri !== 'string' && typeof verification_uri_complete !== 'string')) {
+        const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+        if (!nonEmpty(device_code) || !nonEmpty(user_code) ||
+            typeof expires_in !== 'number' || !(expires_in > 0) ||
+            (!nonEmpty(verification_uri) && !nonEmpty(verification_uri_complete))) {
           const err = new UnexpectedError('Failed to initiate login. Try again later.', 'WORKOS_DEVICE_AUTH_MALFORMED');
           err.exitCode = 4;
           throw err;
@@ -958,7 +959,7 @@ export function loginCommand(program: Command): void {
         // Print the verification URL as text so a headless/browserless host
         // (CI, SSH, agent) can relay it instead of being stuck waiting on a
         // browser that never opened (D5).
-        const verifyUrl = verification_uri_complete ?? verification_uri;
+        const verifyUrl = nonEmpty(verification_uri_complete) ? verification_uri_complete : verification_uri;
         process.stdout.write(`To finish signing in, open:\n${verifyUrl}\n`);
 
         // Integration-test hook: when set, write the verification URI to a file
