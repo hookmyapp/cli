@@ -607,9 +607,14 @@ export async function runAgentClaimLogin(opts: {
       ? opts.scopes
       : await fetchSupportedScopes();
   if (scopes.length === 0) {
-    throw new ValidationError(
+    // AIT-652: an empty scope discovery response is a backend contract
+    // break, not user input; sev2 so it reaches Sentry. Exit code stays 2.
+    const err = new UnexpectedError(
       'Could not resolve any scopes to request. Pass --scope <name> explicitly.',
+      'SCOPES_UNRESOLVED',
     );
+    err.exitCode = 2;
+    throw err;
   }
   const claim = await initiateClaim({ email: opts.email, scopes });
 

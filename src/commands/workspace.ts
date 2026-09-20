@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { apiClient, rescopeWorkspaceToken } from '../api/client.js';
 import { output } from '../output/format.js';
-import { ValidationError } from '../output/error.js';
+import { UnexpectedError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { dropWorkosOrgId, type Workspace } from '../types/workspace.js';
 import { isLikelyUuid, isValidPublicId } from '../lib/publicId.js';
@@ -63,9 +63,13 @@ export function writeWorkspaceConfig(config: WorkspaceConfig): void {
   // Symmetric with the read-side drop in readWorkspaceConfig — invariant is
   // "no UUID ever reaches disk or escapes to the backend."
   if (config.activeWorkspaceId && !isValidPublicId(config.activeWorkspaceId, 'ws')) {
-    throw new ValidationError(
+    // AIT-652: the message says it: a bug. sev2 so it reaches Sentry.
+    const err = new UnexpectedError(
       `activeWorkspaceId "${config.activeWorkspaceId}" is not a valid ws_ publicId. This is a bug: callers must pass the server-returned publicId.`,
+      'WORKSPACE_ID_NOT_PUBLIC_ID',
     );
+    err.exitCode = 2;
+    throw err;
   }
   // Merge with existing config so we never clobber env-profiles fields
   // (specifically `env`). See env-profiles.ts for the other half.

@@ -457,11 +457,15 @@ function describeUpgradedPlan(sub: BillingSubscription): string {
 async function checkoutEligiblePlan(orgPublicId: string): Promise<void> {
   const eligibility = await getBillingEligibility(orgPublicId);
   if (!eligibility) {
-    throw new ValidationError(
+    // AIT-652: eligibility missing for a money-model-v2 org is a backend
+    // fault, not user input; sev2 so it reaches Sentry. Exit code stays 2.
+    const err = new UnexpectedError(
       'Could not determine your eligible plan. Try again, or run ' +
         `\`${cliCommandPrefix()} billing manage\` to open your Billing page.`,
       'ELIGIBILITY_UNAVAILABLE',
     );
+    err.exitCode = 2;
+    throw err;
   }
 
   const { select } = await import('@inquirer/prompts');
