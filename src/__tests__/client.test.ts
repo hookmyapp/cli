@@ -203,6 +203,27 @@ describe('apiClient', () => {
     }
   });
 
+  it('does not flatten a config-write failure during refresh into "Session expired" (AIT-652)', async () => {
+    const pastExp = Math.floor(Date.now() / 1000) - 10;
+    const payload = Buffer.from(JSON.stringify({ exp: pastExp })).toString('base64');
+    mockedReadCredentials.mockResolvedValue({
+      accessToken: `header.${payload}.sig`,
+      refreshToken: 'rt',
+      expiresAt: pastExp,
+    });
+    const futureExp = Math.floor(Date.now() / 1000) + 3600;
+    const fresh = `header.${Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64')}.sig`;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ access_token: fresh, refresh_token: 'rt2' }),
+    });
+    const { ConfigWriteForbiddenError } = await import('../storage/errors.js');
+    mockedSaveCredentials.mockRejectedValueOnce(new ConfigWriteForbiddenError('/tmp/credentials.json'));
+
+    await expect(apiClient('/test')).rejects.toMatchObject({ code: 'CONFIG_WRITE_FORBIDDEN' });
+  });
+
   it('keeps a coded 5xx body code in details.serverCode (AIT-652), public code stays SERVER_ERROR', async () => {
     const futureExp = Math.floor(Date.now() / 1000) + 3600;
     const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');

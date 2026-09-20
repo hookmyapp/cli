@@ -114,7 +114,7 @@ async function refreshToken(
     typeof data?.access_token !== 'string' || data.access_token === '' ||
     typeof data?.refresh_token !== 'string' || data.refresh_token === ''
   ) {
-    throw new UnexpectedError('refresh response malformed', 'WORKOS_REFRESH_FAILED');
+    throw new UnexpectedError('refresh response malformed', 'WORKOS_REFRESH_MALFORMED');
   }
   return {
     accessToken: data.access_token,
@@ -137,7 +137,8 @@ async function validAccessToken(
   } catch (err) {
     // Transport/transient failures keep their retryable identity — only a
     // refresh WorkOS actually rejected means the session is gone.
-    if (err instanceof NetworkError) throw err;
+    if (isRefreshEnvironmentFault(err)) throw err;
+    await reportMalformedRefresh(err);
     throw new AuthError('Session expired. Run: hookmyapp login');
   }
 }
@@ -167,8 +168,30 @@ export async function forceTokenRefresh(): Promise<void> {
     // means the session is gone. A transport failure kept its identity there
     // and was losing it here, so `channels connect` on a stalled network told
     // the user to log in again (AIT-540).
-    if (err instanceof NetworkError) throw err;
+    if (isRefreshEnvironmentFault(err)) throw err;
+    await reportMalformedRefresh(err);
     throw new AuthError('Session expired. Run: hookmyapp login');
+  }
+}
+
+// AIT-652: what a failed refresh must NOT flatten into "Session expired":
+// transport failures and a config dir we cannot write the new token to.
+// Both are environment faults that keep their own code and reach Sentry.
+// A malformed 2xx from the sign-in service stays "Session expired" for the
+// user (logging in again does fix it) but is reported to Sentry first, since
+// no backend captured that exchange.
+function isRefreshEnvironmentFault(err: unknown): boolean {
+  if (err instanceof NetworkError) return true;
+  return (err as { code?: unknown } | null)?.code === 'CONFIG_WRITE_FORBIDDEN';
+}
+
+async function reportMalformedRefresh(err: unknown): Promise<void> {
+  if ((err as { code?: unknown } | null)?.code !== 'WORKOS_REFRESH_MALFORMED') return;
+  try {
+    const { captureError } = await import('../observability/sentry.js');
+    await captureError(err);
+  } catch {
+    // Telemetry never blocks the CLI.
   }
 }
 
