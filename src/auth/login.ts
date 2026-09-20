@@ -141,8 +141,18 @@ async function pollForTokens(opts: {
       continue;
     }
 
-    // Unexpected error
-    throw new AuthError('Login failed: ' + (err.error_description ?? err.error ?? 'unknown error'));
+    // The user declined or let the code lapse: an auth state.
+    if (err.error === 'access_denied' || err.error === 'expired_token') {
+      throw new AuthError('Login failed: ' + (err.error_description ?? err.error));
+    }
+    // AIT-652: anything else (5xx, unknown grant error) is a sign-in service
+    // fault; sev2 so it reaches Sentry. Exit code stays 4 (auth tier).
+    const failed = new UnexpectedError(
+      'Login failed: ' + (err.error_description ?? err.error ?? 'unknown error'),
+      'WORKOS_DEVICE_TOKEN_FAILED',
+    );
+    failed.exitCode = 4;
+    throw failed;
   }
 
   throw new AuthError(`Login timed out. Try again: ${cliCommandPrefix()} login`);

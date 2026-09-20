@@ -3,7 +3,7 @@ import open from 'open';
 import { apiClient, isNetworkFailure, getBillingEligibility, type BillingSubscription } from '../api/client.js';
 import { output } from '../output/format.js';
 import { c } from '../output/color.js';
-import { ApiError, NetworkError, ValidationError } from '../output/error.js';
+import { ApiError, NetworkError, UnexpectedError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { cliCommandPrefix } from '../output/cli-self.js';
 import { getEffectiveAppUrl } from '../config/env-profiles.js';
@@ -357,7 +357,11 @@ async function fetchPaidPlans(exceptSlug?: string): Promise<CatalogPlan[]> {
   const catalog = (await apiClient('/plans')) as CatalogPlan[];
   const paidPlans = catalog.filter((p) => p.priceInCents > 0 && p.slug !== exceptSlug);
   if (paidPlans.length === 0) {
-    throw new ValidationError('No paid plans available. Try again later.', 'PLANS_EMPTY');
+    // AIT-652: an empty paid catalog is a backend fault, not user input;
+    // sev2 so it reaches Sentry. Exit code stays 2.
+    const err = new UnexpectedError('No paid plans available. Try again later.', 'PLANS_EMPTY');
+    err.exitCode = 2;
+    throw err;
   }
   return paidPlans;
 }

@@ -9,7 +9,7 @@ import {
 } from '../api/gateway.js';
 import { resolveChannelRefOrDefault } from './_helpers.js';
 import { isJsonMode } from '../output/format.js';
-import { ValidationError } from '../output/error.js';
+import { UnexpectedError, ValidationError } from '../output/error.js';
 
 export interface WaMediaUploadOpts {
   channel?: string;
@@ -59,7 +59,11 @@ export async function runWhatsappMediaDownload(
   const meta = await gatewayRequest({ channel, method: 'GET', path: `/${mediaId}` });
   const url = meta?.url;
   if (typeof url !== 'string' || !url) {
-    throw new ValidationError(`Media ${mediaId} has no downloadable url.`, 'NO_MEDIA_URL');
+    // AIT-652: a 2xx media node without a url is a gateway/Meta contract
+    // break, not user input; sev2 so it reaches Sentry. Exit code stays 2.
+    const err = new UnexpectedError(`Media ${mediaId} has no downloadable url.`, 'NO_MEDIA_URL');
+    err.exitCode = 2;
+    throw err;
   }
 
   // Hop 2: stream the bytes. Caller owns the sink lifecycle.
