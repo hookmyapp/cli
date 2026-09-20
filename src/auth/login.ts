@@ -943,6 +943,15 @@ export function loginCommand(program: Command): void {
           interval,
           expires_in,
         } = await readBody(res.json(), 'Lost the connection to the sign-in service (api.workos.com). Try again.');
+        // AIT-652: a 2xx missing the fields the poll needs is a sign-in
+        // service contract break, not a user state; sev2 so it reaches Sentry.
+        if (typeof device_code !== 'string' || !device_code || typeof user_code !== 'string' ||
+            typeof expires_in !== 'number' || !Number.isFinite(expires_in) ||
+            (typeof verification_uri !== 'string' && typeof verification_uri_complete !== 'string')) {
+          const err = new UnexpectedError('Failed to initiate login. Try again later.', 'WORKOS_DEVICE_AUTH_MALFORMED');
+          err.exitCode = 4;
+          throw err;
+        }
 
         console.log(`\nOpening browser to authenticate...\nCode: ${user_code}\n`);
 
@@ -972,7 +981,8 @@ export function loginCommand(program: Command): void {
           clientId: getEffectiveWorkosClientId(),
           deviceCode: device_code,
           expiresIn: expires_in,
-          interval,
+          // WorkOS sends the poll interval; 5s is the RFC 8628 default if absent.
+          interval: typeof interval === 'number' && Number.isFinite(interval) && interval > 0 ? interval : 5,
         });
 
         // Auto-chain into the wizard.
