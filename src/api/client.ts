@@ -130,17 +130,18 @@ async function validAccessToken(
   if (isAgentCredential(creds)) return creds.accessToken;
   const exp = decodeJwtExp(creds.accessToken);
   if (exp === 0 || Date.now() / 1000 <= exp - 60) return creds.accessToken;
+  let refreshed;
   try {
-    const refreshed = await refreshToken(creds.refreshToken, signal);
-    await saveCredentials(refreshed);
-    return refreshed.accessToken;
+    refreshed = await refreshToken(creds.refreshToken, signal);
   } catch (err) {
     // Transport/transient failures keep their retryable identity — only a
     // refresh WorkOS actually rejected means the session is gone.
-    if (isRefreshEnvironmentFault(err)) throw err;
+    if (err instanceof NetworkError) throw err;
     await reportMalformedRefresh(err);
     throw new AuthError('Session expired. Run: hookmyapp login');
   }
+  await persistRefreshed(refreshed);
+  return refreshed.accessToken;
 }
 
 /** Return the same fresh Bearer token used by normal CLI API requests. */
@@ -160,30 +161,41 @@ export async function forceTokenRefresh(): Promise<void> {
   if (isAgentCredential(creds)) {
     return;
   }
+  let refreshed;
   try {
-    const refreshed = await refreshToken(creds.refreshToken);
-    await saveCredentials(refreshed);
+    refreshed = await refreshToken(creds.refreshToken);
   } catch (err) {
     // Same rule as validAccessToken: only a refresh WorkOS actually rejected
     // means the session is gone. A transport failure kept its identity there
     // and was losing it here, so `channels connect` on a stalled network told
     // the user to log in again (AIT-540).
-    if (isRefreshEnvironmentFault(err)) throw err;
+    if (err instanceof NetworkError) throw err;
     await reportMalformedRefresh(err);
     throw new AuthError('Session expired. Run: hookmyapp login');
   }
+  await persistRefreshed(refreshed);
 }
 
-// AIT-652: what a failed refresh must NOT flatten into "Session expired":
-// transport failures and a config dir we cannot write the new token to.
-// Both are environment faults that keep their own code and reach Sentry.
+// AIT-652: the refresh succeeded; a failure to persist it is a filesystem
+// fault, never "Session expired". A typed AppError (ConfigWriteForbiddenError
+// on a read-only config dir) keeps its own code; anything else (ENOSPC, EIO,
+// chmod) becomes sev2 CREDENTIAL_WRITE_FAILED so it reaches Sentry.
+async function persistRefreshed(refreshed: Awaited<ReturnType<typeof refreshToken>>): Promise<void> {
+  try {
+    await saveCredentials(refreshed);
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    const cause = err instanceof Error ? err.message : String(err);
+    throw new UnexpectedError(
+      `Signed in, but could not save the new session token: ${cause}`,
+      'CREDENTIAL_WRITE_FAILED',
+    );
+  }
+}
+
 // A malformed 2xx from the sign-in service stays "Session expired" for the
 // user (logging in again does fix it) but is reported to Sentry first, since
 // no backend captured that exchange.
-function isRefreshEnvironmentFault(err: unknown): boolean {
-  if (err instanceof NetworkError) return true;
-  return (err as { code?: unknown } | null)?.code === 'CONFIG_WRITE_FORBIDDEN';
-}
 
 async function reportMalformedRefresh(err: unknown): Promise<void> {
   if ((err as { code?: unknown } | null)?.code !== 'WORKOS_REFRESH_MALFORMED') return;

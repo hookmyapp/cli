@@ -224,6 +224,26 @@ describe('apiClient', () => {
     await expect(apiClient('/test')).rejects.toMatchObject({ code: 'CONFIG_WRITE_FORBIDDEN' });
   });
 
+  it('a plain filesystem error while saving the refreshed token is CREDENTIAL_WRITE_FAILED, not Session expired (AIT-652)', async () => {
+    const pastExp = Math.floor(Date.now() / 1000) - 10;
+    const payload = Buffer.from(JSON.stringify({ exp: pastExp })).toString('base64');
+    mockedReadCredentials.mockResolvedValue({
+      accessToken: `header.${payload}.sig`,
+      refreshToken: 'rt',
+      expiresAt: pastExp,
+    });
+    const futureExp = Math.floor(Date.now() / 1000) + 3600;
+    const fresh = `header.${Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64')}.sig`;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ access_token: fresh, refresh_token: 'rt2' }),
+    });
+    mockedSaveCredentials.mockRejectedValueOnce(Object.assign(new Error('ENOSPC: no space left'), { code: 'ENOSPC' }));
+
+    await expect(apiClient('/test')).rejects.toMatchObject({ code: 'CREDENTIAL_WRITE_FAILED', severity: 'sev2' });
+  });
+
   it('keeps a coded 5xx body code in details.serverCode (AIT-652), public code stays SERVER_ERROR', async () => {
     const futureExp = Math.floor(Date.now() / 1000) + 3600;
     const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
