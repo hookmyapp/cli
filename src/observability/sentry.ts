@@ -260,7 +260,9 @@ export async function setCliUserFromCreds(): Promise<void> {
 // told how to fix; customer agent loops replay those by the thousand and in
 // September 2026 they exhausted the org quota, blinding the pager for every
 // service. PostHog keeps them (`cli_command_invoked.errorCode`).
-const SEV3_ENVIRONMENT_CODES = new Set(['NETWORK_ERROR', 'CONFIG_WRITE_FORBIDDEN']);
+// SERVER_ERROR is the bare 5xx wrapper (no body code): an edge/load-balancer
+// failure the backend never saw, so nothing else captures it.
+const SEV3_ENVIRONMENT_CODES = new Set(['NETWORK_ERROR', 'CONFIG_WRITE_FORBIDDEN', 'SERVER_ERROR']);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function shouldCaptureToSentry(err: any): boolean {

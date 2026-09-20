@@ -138,8 +138,14 @@ describe('shouldCaptureToSentry filter — capture every non-null error', () => 
     expect(shouldCaptureToSentry(new NetworkError())).toBe(true);
   });
 
-  it('rejects sev3 ApiError (the backend already captured its own failure)', () => {
-    expect(shouldCaptureToSentry(new ApiError('5xx', 500))).toBe(false);
+  it('captures the bare 5xx ApiError (edge/LB failure the backend never saw)', () => {
+    expect(shouldCaptureToSentry(new ApiError('5xx', 500))).toBe(true);
+  });
+
+  it('rejects coded ApiErrors (backend rejected the request and captured its own side)', () => {
+    expect(shouldCaptureToSentry(new ApiError('nope', 400, 'SOME_CODE'))).toBe(false);
+    expect(shouldCaptureToSentry(new ApiError('nope', 404))).toBe(false);
+    expect(shouldCaptureToSentry(new ApiError('nope', 503, 'SUPPORT_NOT_CONFIGURED'))).toBe(false);
   });
 
   // AIT-652: sev3 CliErrors are expected user states (session expired,
