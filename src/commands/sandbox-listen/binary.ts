@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { x as tarExtract } from 'tar';
-import { CliError } from '../../output/error.js';
+import { CliError, UnexpectedError } from '../../output/error.js';
 import { timedFetch, readBody, TRANSFER_TIMEOUT_MS } from '../../api/timed-fetch.js';
 
 export const CLOUDFLARED_VERSION = '2026.3.0';
@@ -76,7 +76,7 @@ export function resolveAsset(platform: NodeJS.Platform, arch: string): ResolvedA
  *
  * @param opts.force — skip the on-disk check and re-download unconditionally.
  * @returns absolute path to the verified binary.
- * @throws {CliError} BINARY_DOWNLOAD_FAILED or BINARY_CHECKSUM_FAILED (exitCode=4).
+ * @throws {UnexpectedError} BINARY_DOWNLOAD_FAILED or BINARY_CHECKSUM_FAILED (exitCode=4).
  *
  * Test-only escape hatch: when `HOOKMYAPP_CLOUDFLARED_BIN` points at an
  * existing executable, this returns the env-supplied path verbatim — no
@@ -115,7 +115,7 @@ export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise
   const asset = resolveAsset(process.platform, process.arch);
   const expectedSha = CLOUDFLARED_SHA256[asset.manifestKey];
   if (!expectedSha) {
-    const err = new CliError(
+    const err = new UnexpectedError(
       `No SHA-256 manifest entry for ${asset.manifestKey}. Run scripts/generate-cf-manifest.ts.`,
       'BINARY_CHECKSUM_FAILED',
     );
@@ -128,7 +128,7 @@ export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise
   try {
     res = await timedFetch(asset.url, {}, TRANSFER_TIMEOUT_MS);
   } catch (cause) {
-    const err = new CliError(
+    const err = new UnexpectedError(
       `Failed to download cloudflared from ${asset.url}: ${(cause as Error).message}`,
       'BINARY_DOWNLOAD_FAILED',
     );
@@ -136,7 +136,7 @@ export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise
     throw err;
   }
   if (!res.ok) {
-    const err = new CliError(
+    const err = new UnexpectedError(
       `Failed to download cloudflared from ${asset.url}: HTTP ${res.status}`,
       'BINARY_DOWNLOAD_FAILED',
     );
@@ -150,7 +150,7 @@ export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise
   } catch (cause) {
     // Same shape as the connect failure above: a body that stalls halfway is
     // still a failed download, not a generic network error.
-    const err = new CliError(
+    const err = new UnexpectedError(
       `Failed to download cloudflared from ${asset.url}: ${(cause as Error).message}`,
       'BINARY_DOWNLOAD_FAILED',
     );
@@ -159,7 +159,7 @@ export async function ensureCloudflaredBinary(opts: { force: boolean }): Promise
   }
   const computedSha = createHash('sha256').update(buf).digest('hex');
   if (computedSha !== expectedSha) {
-    const err = new CliError(
+    const err = new UnexpectedError(
       `cloudflared checksum mismatch for ${asset.filename}: expected ${expectedSha}, got ${computedSha}`,
       'BINARY_CHECKSUM_FAILED',
     );

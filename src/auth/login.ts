@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { saveCredentials, peekIdentity } from './store.js';
 import { revokeCredentialsForReplacedSession } from './mcp-credential.js';
 import { API_KEY_ENV_VAR, envApiKey } from '../config/env-vars.js';
-import { AuthError, NetworkError, ValidationError } from '../output/error.js';
+import { AuthError, NetworkError, UnexpectedError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { c, icon } from '../output/color.js';
 import { displayEmail } from '../output/mask.js';
@@ -92,6 +92,14 @@ async function pollForTokens(opts: {
 
     if (res.ok) {
       const data = await readBody(res.json(), 'Lost the connection to the sign-in service. Try again.');
+      // AIT-652: never revoke the old session or write the store off a 2xx
+      // that carries no tokens; that is a sign-in service contract break.
+      if (typeof data?.access_token !== 'string' || data.access_token === '' ||
+          typeof data?.refresh_token !== 'string' || data.refresh_token === '') {
+        const malformed = new UnexpectedError('Login failed: the sign-in service returned no session. Try again.', 'WORKOS_DEVICE_TOKEN_MALFORMED');
+        malformed.exitCode = 4;
+        throw malformed;
+      }
       // BEFORE saveCredentials: revoking authenticates as the session that
       // minted the key, and a login replaces the session. `login --code`
       // supports switching accounts without a logout, so without this the old
@@ -141,8 +149,18 @@ async function pollForTokens(opts: {
       continue;
     }
 
-    // Unexpected error
-    throw new AuthError('Login failed: ' + (err.error_description ?? err.error ?? 'unknown error'));
+    // The user declined or let the code lapse: an auth state.
+    if (err.error === 'access_denied' || err.error === 'expired_token') {
+      throw new AuthError('Login failed: ' + (err.error_description ?? err.error));
+    }
+    // AIT-652: anything else (5xx, unknown grant error) is a sign-in service
+    // fault; sev2 so it reaches Sentry. Exit code stays 4 (auth tier).
+    const failed = new UnexpectedError(
+      'Login failed: ' + (err.error_description ?? err.error ?? 'unknown error'),
+      'WORKOS_DEVICE_TOKEN_FAILED',
+    );
+    failed.exitCode = 4;
+    throw failed;
   }
 
   throw new AuthError(`Login timed out. Try again: ${cliCommandPrefix()} login`);
@@ -597,9 +615,14 @@ export async function runAgentClaimLogin(opts: {
       ? opts.scopes
       : await fetchSupportedScopes();
   if (scopes.length === 0) {
-    throw new ValidationError(
+    // AIT-652: an empty scope discovery response is a backend contract
+    // break, not user input; sev2 so it reaches Sentry. Exit code stays 2.
+    const err = new UnexpectedError(
       'Could not resolve any scopes to request. Pass --scope <name> explicitly.',
+      'SCOPES_UNRESOLVED',
     );
+    err.exitCode = 2;
+    throw err;
   }
   const claim = await initiateClaim({ email: opts.email, scopes });
 
@@ -913,7 +936,11 @@ export function loginCommand(program: Command): void {
         }
 
         if (!res.ok) {
-          throw new AuthError('Failed to initiate login. Try again later.');
+          // AIT-652: a non-2xx from the sign-in service is a dependency
+          // failure, not an expired session; sev2 so it reaches Sentry.
+          const err = new UnexpectedError('Failed to initiate login. Try again later.', 'WORKOS_DEVICE_AUTH_FAILED');
+          err.exitCode = 4;
+          throw err;
         }
 
         const {
@@ -924,13 +951,23 @@ export function loginCommand(program: Command): void {
           interval,
           expires_in,
         } = await readBody(res.json(), 'Lost the connection to the sign-in service (api.workos.com). Try again.');
+        // AIT-652: a 2xx missing the fields the poll needs is a sign-in
+        // service contract break, not a user state; sev2 so it reaches Sentry.
+        const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+        if (!nonEmpty(device_code) || !nonEmpty(user_code) ||
+            typeof expires_in !== 'number' || !(expires_in > 0) ||
+            (!nonEmpty(verification_uri) && !nonEmpty(verification_uri_complete))) {
+          const err = new UnexpectedError('Failed to initiate login. Try again later.', 'WORKOS_DEVICE_AUTH_MALFORMED');
+          err.exitCode = 4;
+          throw err;
+        }
 
         console.log(`\nOpening browser to authenticate...\nCode: ${user_code}\n`);
 
         // Print the verification URL as text so a headless/browserless host
         // (CI, SSH, agent) can relay it instead of being stuck waiting on a
         // browser that never opened (D5).
-        const verifyUrl = verification_uri_complete ?? verification_uri;
+        const verifyUrl = nonEmpty(verification_uri_complete) ? verification_uri_complete : verification_uri;
         process.stdout.write(`To finish signing in, open:\n${verifyUrl}\n`);
 
         // Integration-test hook: when set, write the verification URI to a file
@@ -953,7 +990,8 @@ export function loginCommand(program: Command): void {
           clientId: getEffectiveWorkosClientId(),
           deviceCode: device_code,
           expiresIn: expires_in,
-          interval,
+          // WorkOS sends the poll interval; 5s is the RFC 8628 default if absent.
+          interval: typeof interval === 'number' && Number.isFinite(interval) && interval >= 0 ? interval : 5,
         });
 
         // Auto-chain into the wizard.

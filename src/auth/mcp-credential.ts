@@ -3,7 +3,7 @@ import { hostname } from 'node:os';
 import { readCredentials } from './store.js';
 import { isAgentCredential } from '../storage/secrets.js';
 import { getMcpCredentialFile, safeWriteFileSync } from '../storage/path.js';
-import { AuthError } from '../output/error.js';
+import { AuthError, UnexpectedError } from '../output/error.js';
 
 /**
  * The token MCP clients get.
@@ -196,9 +196,14 @@ async function mint(): Promise<StoredMcpCredential> {
   // be stringified into a Bearer header, alongside a publicId logout could
   // never revoke.
   if (!isNonEmptyString(created?.token) || !isNonEmptyString(created.publicId)) {
-    throw new AuthError(
+    // AIT-652: a malformed 2xx is a backend contract break, not a user auth
+    // state; sev2 so it reaches Sentry. Exit code stays 4 (auth tier).
+    const err = new UnexpectedError(
       'HookMyApp did not return an org credential for this machine. Run: hookmyapp doctor',
+      'AGENT_CREDENTIAL_MALFORMED',
     );
+    err.exitCode = 4;
+    throw err;
   }
   return { accessToken: created.token, publicId: created.publicId };
 }

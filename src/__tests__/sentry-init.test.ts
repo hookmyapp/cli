@@ -138,12 +138,44 @@ describe('shouldCaptureToSentry filter — capture every non-null error', () => 
     expect(shouldCaptureToSentry(new NetworkError())).toBe(true);
   });
 
-  it('captures ApiError (so the CLI-side perspective on backend failures is preserved)', () => {
+  it('captures the bare 5xx ApiError (edge/LB failure the backend never saw)', () => {
     expect(shouldCaptureToSentry(new ApiError('5xx', 500))).toBe(true);
   });
 
-  it('captures AuthError (whether thrown locally on missing creds or wrapped from backend 401)', () => {
-    expect(shouldCaptureToSentry(new AuthError())).toBe(true);
+  it('rejects coded ApiErrors (backend rejected the request and captured its own side)', () => {
+    expect(shouldCaptureToSentry(new ApiError('nope', 400, 'SOME_CODE'))).toBe(false);
+    expect(shouldCaptureToSentry(new ApiError('nope', 404))).toBe(false);
+    expect(shouldCaptureToSentry(new ApiError('nope', 503, 'SUPPORT_NOT_CONFIGURED'))).toBe(false);
+    // 5xx whose body carried a code: the backend handled it (mapApiError keeps
+    // the code in details.serverCode, public code stays SERVER_ERROR).
+    expect(shouldCaptureToSentry(new ApiError('nope', 500, undefined, { serverCode: 'DB_DOWN' }))).toBe(false);
+  });
+
+  it('captures operational failures that were reclassified to sev2', async () => {
+    const { UnexpectedError } = await import('../output/error.js');
+    expect(shouldCaptureToSentry(new UnexpectedError('checksum', 'BINARY_CHECKSUM_FAILED'))).toBe(true);
+    expect(shouldCaptureToSentry(new UnexpectedError('no id', 'PUBLISH_NO_MEDIA_ID'))).toBe(true);
+  });
+
+  // AIT-652: sev3 CliErrors are expected user states (session expired,
+  // forwarding disabled, validation). Customer agent loops replayed them by
+  // the thousand and exhausted the org quota on 2026-09-13, blinding the
+  // pager for every service. They still reach PostHog; Sentry gets only the
+  // sev3 codes that describe the environment, not the user.
+  it('rejects sev3 AuthError (expected user state, PostHog has it)', () => {
+    expect(shouldCaptureToSentry(new AuthError())).toBe(false);
+  });
+
+  it('rejects the sev3 CliErrors that flooded the quota', async () => {
+    const { CliError, ValidationError } = await import('../output/error.js');
+    expect(shouldCaptureToSentry(new CliError('forwarding disabled', 'CHANNEL_FORWARDING_DISABLED'))).toBe(false);
+    expect(shouldCaptureToSentry(new ValidationError('bad arg'))).toBe(false);
+  });
+
+  it('still captures sev1/sev2 CliErrors', async () => {
+    const { ConfigurationError, UnexpectedError } = await import('../output/error.js');
+    expect(shouldCaptureToSentry(new ConfigurationError('missing config'))).toBe(true);
+    expect(shouldCaptureToSentry(new UnexpectedError('boom'))).toBe(true);
   });
 
   it('captures unknown throws (non-AppError — unexpected bugs)', () => {

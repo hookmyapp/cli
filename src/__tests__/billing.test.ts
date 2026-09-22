@@ -558,7 +558,7 @@ describe('billing commands', () => {
       expect(paths).not.toContain('/stripe/portal');
     });
 
-    it('missing organizationPublicId is a ValidationError with exit code 2 and does not open', async () => {
+    it('missing organizationPublicId on an existing row is WORKSPACE_ORG_MISSING (sev2, AIT-652) with exit code 2 and does not open', async () => {
       mockedApiClient.mockImplementation(async (path: string) => {
         if (path === '/workspaces') return [{ id: WORKSPACE_ID, name: 'Acme' }];
         throw new Error(`unexpected path: ${path}`);
@@ -571,7 +571,7 @@ describe('billing commands', () => {
         caught = e;
       }
       expect(caught).toBeDefined();
-      expect(caught.code).toBe('VALIDATION_ERROR');
+      expect(caught.code).toBe('WORKSPACE_ORG_MISSING');
       expect(caught.exitCode).toBe(2);
       expect(mockedOpen).not.toHaveBeenCalled();
     });

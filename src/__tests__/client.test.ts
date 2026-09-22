@@ -198,6 +198,74 @@ describe('apiClient', () => {
         'Something went wrong on our end',
       );
       expect((err as InstanceType<typeof ApiError>).statusCode).toBe(500);
+      // No body code: nothing in details, so Sentry treats it as a bare edge 5xx.
+      expect((err as InstanceType<typeof ApiError>).details?.serverCode).toBeUndefined();
+    }
+  });
+
+  it('does not flatten a config-write failure during refresh into "Session expired" (AIT-652)', async () => {
+    const pastExp = Math.floor(Date.now() / 1000) - 10;
+    const payload = Buffer.from(JSON.stringify({ exp: pastExp })).toString('base64');
+    mockedReadCredentials.mockResolvedValue({
+      accessToken: `header.${payload}.sig`,
+      refreshToken: 'rt',
+      expiresAt: pastExp,
+    });
+    const futureExp = Math.floor(Date.now() / 1000) + 3600;
+    const fresh = `header.${Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64')}.sig`;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ access_token: fresh, refresh_token: 'rt2' }),
+    });
+    const { ConfigWriteForbiddenError } = await import('../storage/errors.js');
+    mockedSaveCredentials.mockRejectedValueOnce(new ConfigWriteForbiddenError('/tmp/credentials.json'));
+
+    await expect(apiClient('/test')).rejects.toMatchObject({ code: 'CONFIG_WRITE_FORBIDDEN' });
+  });
+
+  it('a plain filesystem error while saving the refreshed token is CREDENTIAL_WRITE_FAILED, not Session expired (AIT-652)', async () => {
+    const pastExp = Math.floor(Date.now() / 1000) - 10;
+    const payload = Buffer.from(JSON.stringify({ exp: pastExp })).toString('base64');
+    mockedReadCredentials.mockResolvedValue({
+      accessToken: `header.${payload}.sig`,
+      refreshToken: 'rt',
+      expiresAt: pastExp,
+    });
+    const futureExp = Math.floor(Date.now() / 1000) + 3600;
+    const fresh = `header.${Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64')}.sig`;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ access_token: fresh, refresh_token: 'rt2' }),
+    });
+    mockedSaveCredentials.mockRejectedValueOnce(Object.assign(new Error('ENOSPC: no space left'), { code: 'ENOSPC' }));
+
+    await expect(apiClient('/test')).rejects.toMatchObject({ code: 'CREDENTIAL_WRITE_FAILED', severity: 'sev2' });
+  });
+
+  it('keeps a coded 5xx body code in details.serverCode (AIT-652), public code stays SERVER_ERROR', async () => {
+    const futureExp = Math.floor(Date.now() / 1000) + 3600;
+    const payload = Buffer.from(JSON.stringify({ exp: futureExp })).toString('base64');
+    mockedReadCredentials.mockResolvedValue({
+      accessToken: `header.${payload}.sig`,
+      refreshToken: 'rt',
+      expiresAt: futureExp,
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ message: 'boom', code: 'DB_DOWN' }),
+      statusText: 'Internal Server Error',
+    });
+
+    try {
+      await apiClient('/test');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      const e = err as InstanceType<typeof ApiError>;
+      expect(e.code).toBe('SERVER_ERROR');
+      expect(e.details).toEqual({ serverCode: 'DB_DOWN' });
     }
   });
 

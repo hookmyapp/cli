@@ -229,10 +229,10 @@ export async function setCliUserFromCreds(): Promise<void> {
 /**
  * Decide whether to forward an error to Sentry.
  *
- * Capture every non-null error. The CLI-side perspective (user, CLI version,
- * OS, invoked command) is valuable enough to keep even when the backend
- * already captured the same failure on its end. Sentry's automatic
- * fingerprint-based grouping handles any duplication.
+ * Capture every non-null error except expected sev3 user states (AIT-652,
+ * see SEV3_ENVIRONMENT_CODES) and commander argv errors. The CLI-side
+ * perspective (user, CLI version, OS, invoked command) is kept for sev1/sev2
+ * and for environment faults.
  *
  * Earlier versions used a `statusCode` heuristic to exclude backend-response
  * wrappers from re-capture. That was unsafe: the AppError base class derives
@@ -254,11 +254,26 @@ export async function setCliUserFromCreds(): Promise<void> {
  * carries code `CONFIG_WRITE_FORBIDDEN`, no commander prefix, regression
  * pinned in the test suite.
  */
+// AIT-652: sev3 codes that describe the environment rather than the user's
+// state. Every other sev3 CliError (session expired, forwarding disabled,
+// validation, backend 4xx/5xx wrappers) is an expected outcome the user was
+// told how to fix; customer agent loops replay those by the thousand and in
+// September 2026 they exhausted the org quota, blinding the pager for every
+// service. PostHog keeps them (`cli_command_invoked.errorCode`).
+// SERVER_ERROR is the 5xx wrapper; it stays only when the body carried no
+// code (`details.serverCode` unset): an edge/load-balancer failure the
+// backend never saw, so nothing else captures it.
+const SEV3_ENVIRONMENT_CODES = new Set(['NETWORK_ERROR', 'CONFIG_WRITE_FORBIDDEN', 'SERVER_ERROR']);
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function shouldCaptureToSentry(err: any): boolean {
   if (err == null) return false;
   if (typeof err?.code === 'string' && err.code.startsWith('commander.')) {
     return false;
+  }
+  if (err?.severity === 'sev3') {
+    if (!SEV3_ENVIRONMENT_CODES.has(err.code)) return false;
+    if (err.code === 'SERVER_ERROR' && err.details?.serverCode) return false;
   }
   return true;
 }

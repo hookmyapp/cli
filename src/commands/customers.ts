@@ -2,7 +2,7 @@ import { facebookVisible } from '../config/facebook-preview.js';
 import type { Command } from 'commander';
 import { apiClient } from '../api/client.js';
 import { output } from '../output/format.js';
-import { ValidationError } from '../output/error.js';
+import { UnexpectedError, ValidationError } from '../output/error.js';
 import { addExamples } from '../output/help.js';
 import { dropWorkosOrgId, type Workspace } from '../types/workspace.js';
 import { readWorkspaceConfig, switchActiveWorkspace } from './workspace.js';
@@ -40,13 +40,24 @@ export function registerCustomersCommand(program: Command): void {
       // workspace's row and show only its customers.
       const workspaceId = await getDefaultWorkspaceId();
       const all = (await apiClient('/workspaces')) as WorkspaceRow[];
-      const activeOrg = all.find((w) => w.id === workspaceId)?.organizationPublicId;
-      if (!activeOrg) {
+      const activeRow = all.find((w) => w.id === workspaceId);
+      if (!activeRow) {
         // A stale/absent active workspace must surface actionably — never as a
         // silently empty list. Same contract as resolveOrgPublicIdForWorkspace.
         throw new ValidationError(
           'No organization found for your active workspace. Run: hookmyapp workspace use <name|id>',
         );
+      }
+      const activeOrg = activeRow.organizationPublicId;
+      if (!activeOrg) {
+        // AIT-652: the row exists but carries no organization: a backend
+        // contract break, sev2 so it reaches Sentry. Exit code stays 2.
+        const err = new UnexpectedError(
+          'No organization found for your active workspace. Run: hookmyapp workspace use <name|id>',
+          'WORKSPACE_ORG_MISSING',
+        );
+        err.exitCode = 2;
+        throw err;
       }
       const customers = all.filter(
         (w) => w.kind === 'customer' && w.organizationPublicId === activeOrg,

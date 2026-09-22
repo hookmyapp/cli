@@ -13,7 +13,7 @@ import { apiClient } from '../../api/client.js';
 import { parseSandboxSessions } from '../../api/sandbox-session.js';
 import type { SandboxSession } from '../../api/sandbox-session.js';
 import { c } from '../../output/color.js';
-import { AuthError } from '../../output/error.js';
+import { ApiError, AuthError, NetworkError, UnexpectedError } from '../../output/error.js';
 import { getDefaultWorkspaceId } from '../_helpers.js';
 import { cleanDeliveryLog, type DeliveryLog } from '../channels-logs/api.js';
 import { getEffectiveApiUrl } from '../../config/env-profiles.js';
@@ -370,11 +370,26 @@ async function runFollow(args: {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new AuthError(`SSE connect failed: ${msg}`);
+    // AIT-652: a transport failure is a NetworkError (exit 5), not an auth state.
+    throw new NetworkError(`SSE connect failed: ${msg}`);
   }
 
+  if (res.status === 401) {
+    throw new AuthError();
+  }
+  if (res.status >= 400 && res.status < 500) {
+    // Expected client refusal (403 access, 429 rate limit): sev3, not Sentry.
+    // Exit code stays 4 as before.
+    const err = new ApiError(`SSE connect failed: HTTP ${res.status}`, res.status);
+    err.exitCode = 4;
+    throw err;
+  }
   if (!res.ok || !res.body) {
-    throw new AuthError(`SSE connect failed: HTTP ${res.status}`);
+    // AIT-652: a 5xx or a 2xx without a body is a backend/edge fault; sev2
+    // so it reaches Sentry. Exit code stays 4 as before.
+    const err = new UnexpectedError(`SSE connect failed: HTTP ${res.status}`, 'SSE_CONNECT_FAILED');
+    err.exitCode = 4;
+    throw err;
   }
 
   const reader = res.body.getReader();
