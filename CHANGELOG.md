@@ -2,6 +2,12 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## Unreleased
+
+### Changed
+
+- `instagram publish --carousel` now accepts `--tag`: the tags go on the first carousel item, which must be an image. `--alt-text` and `--location` are still rejected with `--carousel` (AIT-686).
+
 ## 0.14.25 — 2026-09-20
 
 ### Changed

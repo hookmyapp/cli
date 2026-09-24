@@ -102,6 +102,8 @@ describe('instagram publish', () => {
       .rejects.toMatchObject({ code: 'PUBLISH_STORY_FIELDS' });
     await expect(runInstagramPublish({ channel: '@acme', carousel: 'https://x/a.jpg,https://x/b.jpg', location: '123' }))
       .rejects.toMatchObject({ code: 'PUBLISH_CAROUSEL_FIELDS' });
+    await expect(runInstagramPublish({ channel: '@acme', carousel: 'video:https://x/a.mp4,https://x/b.jpg', tag: ['bob'] }))
+      .rejects.toMatchObject({ code: 'PUBLISH_CAROUSEL_TAG_IMAGE' });
     expect(gatewayRequest).not.toHaveBeenCalled();
   });
 
@@ -162,6 +164,28 @@ describe('instagram publish', () => {
     }));
     expect(gatewayRequest).toHaveBeenNthCalledWith(5, expect.objectContaining({
       body: { media_type: 'CAROUSEL', children: 'child_1,child_2', caption: 'c' },
+    }));
+  });
+
+  it('carousel --tag puts user_tags on the first child only', async () => {
+    vi.mocked(gatewayRequest)
+      .mockResolvedValueOnce({ id: 'child_1' })
+      .mockResolvedValueOnce({ id: 'child_2' })
+      .mockResolvedValueOnce({ status_code: 'FINISHED' })
+      .mockResolvedValueOnce({ status_code: 'FINISHED' })
+      .mockResolvedValueOnce({ id: 'parent_1' })
+      .mockResolvedValueOnce({ status_code: 'FINISHED' })
+      .mockResolvedValueOnce({ id: 'media_1' })
+      .mockResolvedValueOnce({ permalink: null });
+    await runInstagramPublish({ channel: '@acme', carousel: 'https://x/a.jpg,https://x/b.jpg', tag: ['bob:0.5,0.5'] });
+    expect(gatewayRequest).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      body: { is_carousel_item: true, image_url: 'https://x/a.jpg', user_tags: [{ username: 'bob', x: 0.5, y: 0.5 }] },
+    }));
+    expect(gatewayRequest).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      body: { is_carousel_item: true, image_url: 'https://x/b.jpg' },
+    }));
+    expect(gatewayRequest).toHaveBeenNthCalledWith(5, expect.objectContaining({
+      body: { media_type: 'CAROUSEL', children: 'child_1,child_2' },
     }));
   });
 

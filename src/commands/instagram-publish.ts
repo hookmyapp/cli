@@ -159,10 +159,10 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
   if (opts.story && (opts.altText || opts.location || opts.audioName || opts.thumbOffset !== undefined)) {
     throw new ValidationError('--alt-text, --location, --thumb-offset, and --audio-name are not supported with --story.', 'PUBLISH_STORY_FIELDS');
   }
-  if (opts.carousel && (opts.altText || opts.tag?.length || opts.location)) {
-    // Meta accepts none of these on the CAROUSEL parent container — rejecting
-    // beats silently dropping a requested field.
-    throw new ValidationError('--alt-text, --tag, and --location are not supported with --carousel.', 'PUBLISH_CAROUSEL_FIELDS');
+  if (opts.carousel && (opts.altText || opts.location)) {
+    // Meta takes neither on the CAROUSEL parent, and location_id is not
+    // supported on carousel items — rejecting beats silently dropping a field.
+    throw new ValidationError('--alt-text and --location are not supported with --carousel.', 'PUBLISH_CAROUSEL_FIELDS');
   }
   if (opts.thumbOffset !== undefined && !/^\d+$/.test(opts.thumbOffset)) {
     throw new ValidationError('--thumb-offset must be a whole number of milliseconds.', 'PUBLISH_THUMB_OFFSET_INVALID');
@@ -186,6 +186,10 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
     if (carouselItems.length < 2 || carouselItems.length > 10) {
       throw new ValidationError('--carousel needs 2-10 comma-separated items.', 'PUBLISH_CAROUSEL_COUNT');
     }
+    // ponytail: tags go on the first item (the cover); per-item tags if someone asks.
+    if (userTags && carouselItems[0].video) {
+      throw new ValidationError('--tag with --carousel tags the first item, which must be an image.', 'PUBLISH_CAROUSEL_TAG_IMAGE');
+    }
   }
   const channel = await resolveChannelRefOrDefault(opts.channel, 'instagram');
   const json = Boolean(cmd && isJsonMode(cmd));
@@ -197,10 +201,10 @@ export async function runInstagramPublish(opts: IgPublishOpts, cmd?: CommandType
       // Create ALL children first, then poll them under the single shared deadline —
       // a 10-item carousel must never wait 10 × 5min.
       const childIds: string[] = [];
-      for (const { url, video } of carouselItems) {
+      for (const [i, { url, video }] of carouselItems.entries()) {
         childIds.push(await createContainer(channel, video
           ? { is_carousel_item: true, video_url: url, media_type: 'VIDEO' } // no reels inside carousels
-          : { is_carousel_item: true, image_url: url }));
+          : { is_carousel_item: true, image_url: url, ...(i === 0 && userTags && { user_tags: userTags }) }));
       }
       for (const childId of childIds) {
         await pollContainerFinished(channel, childId, deadline);
@@ -281,7 +285,7 @@ export function registerInstagramPublish(instagram: CommandType): void {
     .option('--location <page-id>', 'Facebook Page id of a place to tag')
     .option('--thumb-offset <ms>', 'Video/reel cover frame, in milliseconds (ignored with --cover)')
     .option('--audio-name <name>', "Name the reel's audio (settable once)")
-    .option('--tag <username[:x,y]>', 'Tag a public account (repeat for more; x,y position the tag on images)',
+    .option('--tag <username[:x,y]>', 'Tag a public account (repeat for more; x,y position the tag on images; with --carousel, tags the first item)',
       (value: string, prev: string[] = []) => [...prev, value])
     .action(async function (this: CommandType, opts: IgPublishOpts) {
       await runInstagramPublish(opts, this);
