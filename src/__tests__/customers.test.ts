@@ -196,7 +196,7 @@ describe('customers onboarding-links', () => {
   it('create rejects an invalid --channel-type', async () => {
     await expect(
       runCustomers(['onboarding-links', 'create', '--label', 'Acme', '--channel-type', 'sms']),
-    ).rejects.toThrow(/--channel-type must be "whatsapp" or "instagram"/);
+    ).rejects.toThrow(/--channel-type must be "whatsapp", "instagram" or "facebook"/);
     expect(mockedApi).not.toHaveBeenCalled();
   });
 

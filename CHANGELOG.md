@@ -2,6 +2,12 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.27 — 2026-09-26
+
+### Changed
+
+- Facebook Pages is live: `hookmyapp facebook` (alias `fb`), the Facebook choice in `channels connect` and `sandbox start`, the `facebook` onboarding-link type and the Facebook mentions in help are no longer hidden. `HOOKMYAPP_FACEBOOK_PREVIEW` is no longer needed (AIT-648).
+
 ## 0.14.26 — 2026-09-24
 
 ### Changed
