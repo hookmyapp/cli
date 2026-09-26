@@ -8,7 +8,7 @@
  * Flip FACEBOOK_PUBLIC to true in the release that goes out with the
  * production flag; HOOKMYAPP_FACEBOOK_PREVIEW=1 shows everything before that.
  */
-export const FACEBOOK_PUBLIC = false;
+export const FACEBOOK_PUBLIC = true;
 
 export function facebookVisible(): boolean {
   return FACEBOOK_PUBLIC || process.env.HOOKMYAPP_FACEBOOK_PREVIEW === "1";
