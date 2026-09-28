@@ -155,3 +155,30 @@ describe('doctor — active workspace is validated against the backend (AIT-51)'
     expect(ws.detail).toBe('My Workspace');
   });
 });
+
+describe('doctor: env API key scoped to one organization (AIT-551)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200 })));
+    vi.mocked(readCredentials).mockResolvedValue({
+      accessToken: 'hmok_abc', refreshToken: '', expiresAt: 0, kind: 'agent', source: 'env',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    vi.mocked(readWorkspaceConfig).mockReturnValue({ activeWorkspaceId: 'ws_OTHERORG', activeWorkspaceSlug: 'Other org workspace' });
+  });
+
+  it('an env key whose /workspaces holds one org only: the old selection is stale, the key is NOT treated as revoked', async () => {
+    vi.mocked(apiClient).mockResolvedValue([
+      { id: 'ws_KEYORG01', organizationPublicId: 'org_KEY' },
+      { id: 'ws_KEYORG02', organizationPublicId: 'org_KEY' },
+    ]);
+
+    const report = await collectDoctorReport({ checkTools: false });
+
+    expect(report.loggedIn).toBe(true);
+    expect(report.checks.find((c) => c.id === 'auth')!.detail).toBe('credentials valid for this env — HOOKMYAPP_API_KEY (environment)');
+    const ws = report.checks.find((c) => c.id === 'workspace')!;
+    expect(ws.ok).toBe(false);
+    expect(ws.detail).toContain('stale selection');
+  });
+});

@@ -125,9 +125,10 @@ export async function getDefaultWorkspaceId(): Promise<string> {
 
 /**
  * Resolve the org publicId for an org-scoped CLI action (customers, billing)
- * from the ACTIVE workspace's row in the /workspaces union.
+ * from the ACTIVE workspace's row in the /workspaces list.
  *
- * Never a bare `row[0]`: the union spans every org the user belongs to, so
+ * Never a bare `row[0]`: for a login session the list spans every org the user
+ * belongs to (an API key receives only its own organization since AIT-551), so
  * row[0] is nondeterministic for a user in 2+ orgs and 403s when it disagrees
  * with the token's org (the backend `can()` boundary requires
  * path-org == token-org). Pass the workspaceId from getDefaultWorkspaceId() —

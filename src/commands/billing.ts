@@ -15,7 +15,7 @@ import { getDefaultWorkspaceId, resolveOrgPublicIdForWorkspace } from './_helper
 
 // Billing is org-scoped (the workspace-addressed /stripe/subscription and
 // /stripe/checkout routes are retired — 410 BILLING_ROUTE_MOVED). The org is
-// resolved from the active workspace's row in the /workspaces union via the
+// resolved from the active workspace's row in the /workspaces list via the
 // shared resolveOrgPublicIdForWorkspace helper (AIT-263 — one derivation for
 // customers + billing, never a bare row[0]).
 
