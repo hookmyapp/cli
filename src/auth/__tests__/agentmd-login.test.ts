@@ -221,3 +221,27 @@ test('otp login when /workspaces returns a non-array 2xx → config untouched', 
 
   expect(readConfig().activeWorkspaceId).toBe('ws_stale123');
 });
+
+// AIT-551: /workspaces returns only the credential's organization for API keys.
+test('otp login: a persisted workspace from another org is replaced by the key org\'s only workspace', async () => {
+  seedConfig('ws_OTHERORG', 'Other org workspace');
+  vi.stubGlobal('fetch', fetchByUrl([{ id: 'ws_KEYORG01', name: 'Key org', organizationPublicId: 'org_KEY' }]));
+  const mod = await import('../login.js');
+
+  await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
+
+  expect(readConfig().activeWorkspaceId).toBe('ws_KEYORG01');
+});
+
+test('otp login: a persisted workspace from another org is cleared when the key org has several workspaces', async () => {
+  seedConfig('ws_OTHERORG', 'Other org workspace');
+  vi.stubGlobal('fetch', fetchByUrl([
+    { id: 'ws_KEYORG01', name: 'A', organizationPublicId: 'org_KEY' },
+    { id: 'ws_KEYORG02', name: 'B', organizationPublicId: 'org_KEY' },
+  ]));
+  const mod = await import('../login.js');
+
+  await mod.runAgentClaimLogin({ email: 'a@b.com', registrationId: '3333', otp: '654321', json: true });
+
+  expect(readConfig().activeWorkspaceId).toBeUndefined();
+});

@@ -8,7 +8,7 @@ import { dropWorkosOrgId, type Workspace } from '../types/workspace.js';
 import { readWorkspaceConfig, switchActiveWorkspace } from './workspace.js';
 import { getDefaultWorkspaceId, resolveOrgPublicIdForWorkspace } from './_helpers.js';
 
-/** A /workspaces union row carries the org it belongs to; the base Workspace type does not. */
+/** A /workspaces row carries the org it belongs to; the base Workspace type does not. */
 type WorkspaceRow = Workspace & { organizationPublicId?: string };
 
 interface OnboardingLinkRow {
@@ -20,7 +20,7 @@ interface OnboardingLinkRow {
 
 /**
  * Customers surface. A customer IS a workspace (`kind='customer'`) —
- * this group is a filtered view over the same `/workspaces` union plus the
+ * this group is a filtered view over the same `/workspaces` list plus the
  * org onboarding-link endpoints, reusing the workspace active-context
  * machinery. Every org-scoped action derives its org from the ACTIVE
  * workspace (via resolveOrgPublicIdForWorkspace), never a bare union row[0] —
@@ -34,10 +34,10 @@ export function registerCustomersCommand(program: Command): void {
     .description('List customers')
     .option('--json', 'Output machine-readable JSON')
     .action(async (opts: { json?: boolean }) => {
-      // Scope to the ACTIVE org: the /workspaces union spans every org the
-      // user belongs to, so an unscoped filter would mix other orgs' customers
-      // into the list (AIT-263). Derive the active org from the active
-      // workspace's row and show only its customers.
+      // Scope to the ACTIVE org. An API key only ever receives its own
+      // organization from /workspaces (AIT-551); a login session still gets
+      // every organization the user belongs to. The filter stays either way as
+      // defensive validation (AIT-263): never mix other orgs' customers in.
       const workspaceId = await getDefaultWorkspaceId();
       const all = (await apiClient('/workspaces')) as WorkspaceRow[];
       const activeRow = all.find((w) => w.id === workspaceId);
