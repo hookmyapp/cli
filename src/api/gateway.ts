@@ -13,6 +13,7 @@ import type { Channel } from './channel.js';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { createWriteStream } from 'node:fs';
+import { guessMime } from './mime.js';
 import { Writable } from 'node:stream';
 
 export interface GatewayConfig { token: string; baseUrl: string; }
@@ -216,16 +217,6 @@ export async function gatewayRequest(call: GatewayCall): Promise<any> {
 
 export interface GatewayUpload { channel: Channel; path: string; file: string; type?: string; }
 
-const MIME_BY_EXT: Record<string, string> = {
-  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
-  mp4: 'video/mp4', '3gp': 'video/3gpp', ogg: 'audio/ogg', mp3: 'audio/mpeg',
-  aac: 'audio/aac', amr: 'audio/amr', pdf: 'application/pdf',
-};
-/** Best-effort MIME from a file extension; defaults to application/octet-stream. */
-function guessMime(file: string): string {
-  const ext = file.split('.').pop()?.toLowerCase() ?? '';
-  return MIME_BY_EXT[ext] ?? 'application/octet-stream';
-}
 
 /** Multipart upload to the gateway (/media). Returns parsed JSON ({ id }). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

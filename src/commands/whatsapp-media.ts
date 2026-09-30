@@ -8,6 +8,7 @@ import {
   createWriteStream,
 } from '../api/gateway.js';
 import { resolveChannelRefOrDefault } from './_helpers.js';
+import { uploadHandle } from '../api/whatsapp-upload.js';
 import { isJsonMode } from '../output/format.js';
 import { UnexpectedError, ValidationError } from '../output/error.js';
 
@@ -15,11 +16,18 @@ export interface WaMediaUploadOpts {
   channel?: string;
   file?: string;
   type?: string;
+  handle?: boolean;
 }
 
 export async function runWhatsappMediaUpload(opts: WaMediaUploadOpts, cmd?: Command): Promise<void> {
   if (!opts.file) throw new ValidationError('--file <path> is required to upload media.', 'MISSING_FILE');
   const channel = await resolveChannelRefOrDefault(opts.channel, 'whatsapp');
+  if (opts.handle) {
+    // AIT-713: a reusable handle (template media header, profile photo) instead of a media id.
+    const up = await uploadHandle(channel, opts.file, opts.type);
+    process.stdout.write((cmd && isJsonMode(cmd) ? JSON.stringify(up) : `handle=${up.handle}`) + '\n');
+    return;
+  }
   const res = await gatewayUpload({ channel, path: `/{phone_number_id}/media`, file: opts.file, type: opts.type });
   process.stdout.write((cmd && isJsonMode(cmd) ? JSON.stringify(res) : `id=${res?.id ?? '(unknown)'}`) + '\n');
 }
@@ -117,6 +125,7 @@ EXAMPLES:
     .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .option('--file <path>', 'Path to the file to upload')
     .option('--type <mime>', 'Override the MIME type (default: guessed from extension)')
+    .option('--handle', 'Return a reusable handle (template media header, profile photo) instead of a media id')
     .action(async function (this: Command, opts: WaMediaUploadOpts) {
       await runWhatsappMediaUpload(opts, this);
     });
@@ -154,6 +163,7 @@ EXAMPLES:
     `
 EXAMPLES:
   $ hookmyapp whatsapp media upload --channel 1555 --file ./a.jpg
+  $ hookmyapp whatsapp media upload --channel 1555 --file ./header.jpg --handle
   $ hookmyapp whatsapp media upload --channel 1555 --file ./a.pdf --type application/pdf
 `,
   );

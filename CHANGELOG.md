@@ -2,6 +2,13 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.28 — 2026-09-30
+
+### Added
+
+- `whatsapp profile update --photo <path>` sets the WhatsApp business profile photo from a JPEG or PNG up to 5 MB. It works alone or with the other profile flags (AIT-713).
+- `whatsapp media upload --file <path> --handle` returns a reusable handle for a template media header instead of a media id (AIT-713).
+
 ## 0.14.27 — 2026-09-26
 
 ### Changed

@@ -14,6 +14,7 @@ vi.mock('../../api/gateway.js', () => ({
   }),
   createWriteStream,
 }));
+vi.mock('../../api/whatsapp-upload.js', () => ({ uploadHandle: vi.fn(async () => ({ handle: '4:SA==', mimeType: 'application/pdf', sizeBytes: 3 })) }));
 vi.mock('../_helpers.js', () => ({ resolveChannelRefOrDefault: vi.fn(async () => ({ id: 'ch_a', type: 'whatsapp', whatsappPhoneNumberId: '111', metaWabaId: '222', metaResourceId: '111', workspaceId: 'ws_1' })) }));
 
 import {
@@ -21,6 +22,7 @@ import {
   runWhatsappMediaDownload,
 } from '../whatsapp-media.js';
 import { gatewayUpload } from '../../api/gateway.js';
+import { uploadHandle } from '../../api/whatsapp-upload.js';
 
 const origIsTTY = process.stdout.isTTY;
 
@@ -28,6 +30,15 @@ describe('whatsapp media', () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(() => {
     Object.defineProperty(process.stdout, 'isTTY', { value: origIsTTY, configurable: true });
+  });
+
+  it('AIT-713: --handle prints a reusable handle, forwards --type, and skips the media-id upload', async () => {
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runWhatsappMediaUpload({ channel: '+1', file: './doc.bin', type: 'application/pdf', handle: true });
+    expect(uploadHandle).toHaveBeenCalledWith(expect.objectContaining({ id: 'ch_a' }), './doc.bin', 'application/pdf');
+    expect(write).toHaveBeenCalledWith('handle=4:SA==\n');
+    expect(gatewayUpload).not.toHaveBeenCalled();
+    write.mockRestore();
   });
 
   it('uploads a file with the resolved channel', async () => {
