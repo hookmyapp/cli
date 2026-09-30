@@ -1,10 +1,24 @@
 import type { Command } from 'commander';
+import { stat } from 'node:fs/promises';
 import { addExamples } from '../output/help.js';
 import { gatewayRequest } from '../api/gateway.js';
 import { resolveChannelRefOrDefault } from './_helpers.js';
 import { isJsonMode } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 import { readBodyFlag, assertBodyXorFlags } from './whatsapp.js';
+import { uploadHandle } from '../api/whatsapp-upload.js';
+import { guessMime } from '../api/mime.js';
+
+// AIT-713: Meta's profile photo rules, checked before anything is uploaded.
+const PHOTO_TYPES = new Set(['image/jpeg', 'image/png']);
+const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+
+async function assertPhoto(path: string): Promise<string> {
+  const type = guessMime(path);
+  const ok = PHOTO_TYPES.has(type) && (await stat(path)).size <= PHOTO_MAX_BYTES;
+  if (!ok) throw new ValidationError('--photo must be a JPEG or PNG image up to 5 MB.', 'PHOTO_INVALID');
+  return type;
+}
 
 const DEFAULT_FIELDS = 'about,address,description,email,profile_picture_url,websites,vertical';
 
@@ -35,6 +49,7 @@ export interface WaProfileUpdateOpts {
   email?: string;
   vertical?: string;
   website?: string[];
+  photo?: string;
   body?: string;
   data?: string;
 }
@@ -43,9 +58,10 @@ export async function runWhatsappProfileUpdate(opts: WaProfileUpdateOpts, cmd?: 
   const bodyRaw = opts.body ?? opts.data; // -d/--data alias of --body (D2)
   const websites = opts.website ?? [];
   const hasBuilderFlags = Boolean(
-    opts.about || opts.description || opts.address || opts.email || opts.vertical || websites.length > 0,
+    opts.about || opts.description || opts.address || opts.email || opts.vertical || websites.length > 0 || opts.photo,
   );
   assertBodyXorFlags(hasBuilderFlags, Boolean(bodyRaw));
+  const photoType = opts.photo ? await assertPhoto(opts.photo) : undefined;
 
   const channel = await resolveChannelRefOrDefault(opts.channel, 'whatsapp');
 
@@ -63,6 +79,7 @@ export async function runWhatsappProfileUpdate(opts: WaProfileUpdateOpts, cmd?: 
     if (opts.email) fields.email = opts.email;
     if (opts.vertical) fields.vertical = opts.vertical;
     if (websites.length > 0) fields.websites = websites;
+    if (opts.photo) fields.profile_picture_handle = (await uploadHandle(channel, opts.photo, photoType)).handle;
     body = fields;
   }
 
@@ -107,6 +124,7 @@ EXAMPLES:
     .option('--email <email>', 'Contact email')
     .option('--vertical <vertical>', 'Business vertical')
     .option('--website <url>', 'Website (repeatable, max 2)', collect, [])
+    .option('--photo <path>', 'Set the profile photo from a JPEG or PNG file (up to 5 MB)')
     .option('--body <json|@file|->', 'Complete Meta profile body (verbatim)')
     .option('-d, --data <json|@file|->', 'Alias for --body')
     .action(async function (this: Command, opts: WaProfileUpdateOpts) {
@@ -127,6 +145,7 @@ EXAMPLES:
 EXAMPLES:
   $ hookmyapp whatsapp profile update --channel 1555 --about "We ship fast"
   $ hookmyapp whatsapp profile update --channel 1555 --website https://a.com --website https://b.com
+  $ hookmyapp whatsapp profile update --channel 1555 --photo ./logo.png
 `,
   );
 }
