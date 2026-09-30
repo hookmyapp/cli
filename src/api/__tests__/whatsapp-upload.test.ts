@@ -22,4 +22,8 @@ describe('uploadHandle (AIT-713)', () => {
     expect([part.name, part.type, await part.text()]).toEqual(['logo.png', 'image/png', 'PNGDATA']);
     expect(out.handle).toBe('4:SA==');
   });
+
+  it('a missing file is a validation error naming the path, not a raw filesystem crash', async () => {
+    await expect(uploadHandle({ id: 'ch_a', workspaceId: 'ws_1' } as never, './nope.jpg')).rejects.toMatchObject({ code: 'FILE_NOT_READABLE' });
+  });
 });

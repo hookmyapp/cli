@@ -15,8 +15,10 @@ const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
 async function assertPhoto(path: string): Promise<string> {
   const type = guessMime(path);
-  const ok = PHOTO_TYPES.has(type) && (await stat(path)).size <= PHOTO_MAX_BYTES;
-  if (!ok) throw new ValidationError('--photo must be a JPEG or PNG image up to 5 MB.', 'PHOTO_INVALID');
+  if (!PHOTO_TYPES.has(type)) throw new ValidationError('--photo must be a JPEG or PNG image up to 5 MB.', 'PHOTO_INVALID');
+  const info = await stat(path).catch(() => null);
+  if (!info?.isFile()) throw new ValidationError(`--photo ${path}: no readable file at that path.`, 'PHOTO_INVALID');
+  if (info.size > PHOTO_MAX_BYTES) throw new ValidationError('--photo must be a JPEG or PNG image up to 5 MB.', 'PHOTO_INVALID');
   return type;
 }
 

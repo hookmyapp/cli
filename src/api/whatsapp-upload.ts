@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { apiClient } from './client.js';
 import { guessMime } from './mime.js';
+import { ValidationError } from '../output/error.js';
 import type { Channel } from './channel.js';
 
 /**
@@ -15,7 +16,10 @@ export async function uploadHandle(
 ): Promise<{ handle: string; mimeType: string; sizeBytes: number }> {
   const type = mimeType ?? guessMime(file);
   const form = new FormData();
-  form.append('file', new Blob([await readFile(file)], { type }), basename(file));
+  const bytes = await readFile(file).catch(() => {
+    throw new ValidationError(`${file}: no readable file at that path.`, 'FILE_NOT_READABLE');
+  });
+  form.append('file', new Blob([bytes], { type }), basename(file));
   return apiClient(`/channels/${channel.id}/whatsapp/uploads`, {
     method: 'POST',
     workspaceId: channel.workspaceId,

@@ -30,6 +30,11 @@ describe('whatsapp profile', () => {
     }));
   });
 
+  it.each([['./missing.png'], [dir]])('AIT-713: --photo %s (missing or not a file) is a validation error, not a crash', async (photo) => {
+    await expect(runWhatsappProfileUpdate({ channel: '+1', photo })).rejects.toMatchObject({ code: 'PHOTO_INVALID' });
+    expect(uploadHandle).not.toHaveBeenCalled();
+  });
+
   it.each([['./a.gif'], [huge]])('AIT-713: --photo %s is refused before uploading', async (photo) => {
     await expect(runWhatsappProfileUpdate({ channel: '+1', photo })).rejects.toThrow(/JPEG or PNG image up to 5 MB/);
     expect(uploadHandle).not.toHaveBeenCalled();
