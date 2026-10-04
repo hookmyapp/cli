@@ -283,8 +283,11 @@ export function shouldCaptureToSentry(err: any): boolean {
  * Sets severity/service/code tags from the AppError subclass if available.
  */
 export async function captureError(err: unknown): Promise<void> {
-  if (!initialized || !sentryModule) return;
   if (!shouldCaptureToSentry(err)) return;
+  // `mcp-headers` skips the boot-time init (AIT-722): load Sentry only once
+  // there is something to report. A no-op for every other command.
+  await initSentryLazy();
+  if (!initialized || !sentryModule) return;
   // Attach identity here too, not only in apiClient — errors thrown before
   // the first API call (local validation, arg handling) must still name the
   // logged-in user in operator alerts (AIT-278). Best-effort.
