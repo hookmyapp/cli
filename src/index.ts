@@ -338,11 +338,14 @@ async function main(): Promise<void> {
       // Emit cli_parse_error for non-zero parse failures BEFORE the
       // emitCommandInvoked early-return swallows the signal (invokedCommand
       // is null on parse failures because the action handler never ran).
-      const { emitParseError } = await import('./observability/posthog.js');
-      await emitParseError({
-        errorCode: err.code ?? 'commander.unknown',
-        argv: process.argv,
-      });
+      // Not for mcp-headers: no PostHog on that path at all (AIT-722).
+      if (!headersOnly) {
+        const { emitParseError } = await import('./observability/posthog.js');
+        await emitParseError({
+          errorCode: err.code ?? 'commander.unknown',
+          argv: process.argv,
+        });
+      }
       // JSON mode: route through wrapCommanderError + outputError so the
       // canonical nested envelope is the only stderr write. Human mode
       // already saw the message via configureOutput.writeErr above.
