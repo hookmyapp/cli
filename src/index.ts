@@ -243,6 +243,10 @@ async function emitCommandInvoked(
   }
 }
 
+// ponytail: argv scan, not a parse. Another command given a literal
+// "mcp-headers" argument just skips its banners and boot telemetry.
+const headersOnly = process.argv.slice(2).includes('mcp-headers');
+
 async function main(): Promise<void> {
   // Storage migration — moves legacy ~/.hookmyapp/config.json to the
   // XDG-canonical location on first invocation. Idempotent. Cheap (a single
@@ -264,38 +268,44 @@ async function main(): Promise<void> {
     // Same fail-open policy as the config migration.
   }
 
-  // init Sentry early so top-level throws + unhandled
-  // rejections capture before we hit the exit boundary. The function is
-  // idempotent + lazy: if telemetry is disabled (HOOKMYAPP_TELEMETRY=off
-  // or `config set telemetry off`), Sentry is never loaded.
-  await initSentryLazy();
+  // AIT-722: MCP clients run `mcp-headers` on every connect and give up after
+  // 10s. On Windows the boot work below took longer than that on its own, so
+  // the helper skips it: it only needs the credential files. Sentry still
+  // loads if it fails (captureError inits on demand).
+  if (!headersOnly) {
+    // init Sentry early so top-level throws + unhandled
+    // rejections capture before we hit the exit boundary. The function is
+    // idempotent + lazy: if telemetry is disabled (HOOKMYAPP_TELEMETRY=off
+    // or `config set telemetry off`), Sentry is never loaded.
+    await initSentryLazy();
 
-  // emit cli_first_run on the first-ever invocation per
-  // machine. Idempotent: subsequent invocations short-circuit on the
-  // persisted machine-id presence. Skipped silently when telemetry is off.
-  // Wrapped: telemetry must NEVER block the CLI. ConfigWriteForbiddenError
-  // from a sandboxed config dir would otherwise escape to the
-  // unhandledRejection handler and surface as the generic "Something went
-  // wrong" message — losing the actionable error from the actual command
-  // the user ran below.
-  try {
-    await maybeEmitFirstRun();
-  } catch {
-    // Same fail-open policy as the migration calls above.
+    // emit cli_first_run on the first-ever invocation per
+    // machine. Idempotent: subsequent invocations short-circuit on the
+    // persisted machine-id presence. Skipped silently when telemetry is off.
+    // Wrapped: telemetry must NEVER block the CLI. ConfigWriteForbiddenError
+    // from a sandboxed config dir would otherwise escape to the
+    // unhandledRejection handler and surface as the generic "Something went
+    // wrong" message — losing the actionable error from the actual command
+    // the user ran below.
+    try {
+      await maybeEmitFirstRun();
+    } catch {
+      // Same fail-open policy as the migration calls above.
+    }
+
+    // AIT-24 — update-available banner, once at boot BEFORE the command runs
+    // (so long-running commands like `channels listen` show it in their boot
+    // banner and are never interrupted mid-stream). stderr-only; suppressed on
+    // --json / non-TTY / CI; fail-open like everything above.
+    const { maybeNotifyUpdate } = await import('./update-check.js');
+    await maybeNotifyUpdate(pkg.version);
+
+    // AIT-358 — unread-notifications nudge, same boundary + etiquette as the update
+    // banner above: print from the previous run's cache now, refresh via a
+    // detached child for the next run. Fail-open; never throws.
+    const { maybeNudge } = await import('./notifications-nudge.js');
+    await maybeNudge();
   }
-
-  // AIT-24 — update-available banner, once at boot BEFORE the command runs
-  // (so long-running commands like `channels listen` show it in their boot
-  // banner and are never interrupted mid-stream). stderr-only; suppressed on
-  // --json / non-TTY / CI; fail-open like everything above.
-  const { maybeNotifyUpdate } = await import('./update-check.js');
-  await maybeNotifyUpdate(pkg.version);
-
-  // AIT-358 — unread-notifications nudge, same boundary + etiquette as the update
-  // banner above: print from the previous run's cache now, refresh via a
-  // detached child for the next run. Fail-open; never throws.
-  const { maybeNudge } = await import('./notifications-nudge.js');
-  await maybeNudge();
 
   const startedAt = Date.now();
   try {
@@ -304,7 +314,8 @@ async function main(): Promise<void> {
     // successful parse is not always a zero exit.
     const rawExit = typeof process.exitCode === 'number' ? process.exitCode : 0;
     const commandExit = (rawExit >= 0 && rawExit <= 6 ? rawExit : 1) as CliExitCode;
-    await emitCommandInvoked(commandExit, Date.now() - startedAt, null);
+    // mcp-headers fires on every agent connect: not worth a PostHog round trip.
+    if (!headersOnly) await emitCommandInvoked(commandExit, Date.now() - startedAt, null);
     await flushAndExit(commandExit);
   } catch (err) {
     const human = resolveHuman();
@@ -374,6 +385,15 @@ async function main(): Promise<void> {
 // handler fires on test-driven CLI error paths — exiting the test worker
 // with code 1 even though every test passed. VITEST=true is set by vitest.
 if (!process.env.VITEST) {
+  // AIT-722: a reader that stopped listening (an MCP client past its timeout,
+  // `| head`) closes the pipe. That is not a crash: exit quietly, no Sentry.
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EPIPE') process.exit(0);
+      throw err;
+    });
+  }
+
   process.on('unhandledRejection', async (reason) => {
     const human = resolveHuman();
     const msg = 'Something went wrong. Try again later.';
