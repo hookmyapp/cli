@@ -217,12 +217,19 @@ if (sandboxCmd) {
   registerListenCommand(sandboxCmd, program);
 }
 
+// ponytail: argv scan, not a parse. Another command given a literal
+// "mcp-headers" argument just skips its banners and boot telemetry.
+const headersOnly = process.argv.slice(2).includes('mcp-headers');
+
 async function emitCommandInvoked(
   exit_code: CliExitCode,
   duration_ms: number,
   errorCode: string | null,
 ): Promise<void> {
   if (invokedCommand === null) return; // Commander didn't dispatch (e.g. --help, --version, parse error)
+  // mcp-headers fires on every agent connect, success or failure: not worth a
+  // PostHog round trip (AIT-722).
+  if (headersOnly) return;
   if (!shouldEmitCommandInvoked(invokedCommand, invokedSubcommand)) return;
   await emit('cli_command_invoked', {
     cli_version: getCliVersion(),
@@ -242,10 +249,6 @@ async function emitCommandInvoked(
     });
   }
 }
-
-// ponytail: argv scan, not a parse. Another command given a literal
-// "mcp-headers" argument just skips its banners and boot telemetry.
-const headersOnly = process.argv.slice(2).includes('mcp-headers');
 
 async function main(): Promise<void> {
   // Storage migration — moves legacy ~/.hookmyapp/config.json to the
@@ -314,8 +317,7 @@ async function main(): Promise<void> {
     // successful parse is not always a zero exit.
     const rawExit = typeof process.exitCode === 'number' ? process.exitCode : 0;
     const commandExit = (rawExit >= 0 && rawExit <= 6 ? rawExit : 1) as CliExitCode;
-    // mcp-headers fires on every agent connect: not worth a PostHog round trip.
-    if (!headersOnly) await emitCommandInvoked(commandExit, Date.now() - startedAt, null);
+    await emitCommandInvoked(commandExit, Date.now() - startedAt, null);
     await flushAndExit(commandExit);
   } catch (err) {
     const human = resolveHuman();
