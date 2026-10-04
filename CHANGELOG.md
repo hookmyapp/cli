@@ -6,7 +6,7 @@ All notable changes to `@gethookmyapp/cli` are documented here.
 
 ### Fixed
 
-- `hookmyapp mcp-headers` (run by Claude Code and Codex on every MCP connect, which give up after 10 seconds) no longer runs the update check, the notifications nudge or usage telemetry, and loads Sentry only when it has an error to report. On Windows the boot work alone outlasted the 10 seconds, so agents lost the HookMyApp MCP tools (AIT-722).
+- `hookmyapp mcp-headers` (run by Claude Code and Codex on every MCP connect, which give up after 10 seconds) no longer runs the update check or the notifications nudge, and loads Sentry only when it has an error to report. It prints the header first and sends its usage events afterwards, with at most about 1 second for them, so an unreachable telemetry endpoint cannot hold the agent. On Windows the boot work alone outlasted the 10 seconds, so agents lost the HookMyApp MCP tools (AIT-722).
 - A reader that closes the pipe early (an MCP client past its timeout, `| head`) now ends the CLI quietly with exit code 0 instead of an `EPIPE` crash (AIT-722).
 
 ## 0.14.27 — 2026-09-26

@@ -218,8 +218,19 @@ if (sandboxCmd) {
 }
 
 // ponytail: argv scan, not a parse. Another command given a literal
-// "mcp-headers" argument just skips its banners and boot telemetry.
+// "mcp-headers" argument just skips its banners and boot-time telemetry.
 const headersOnly = process.argv.slice(2).includes('mcp-headers');
+
+/**
+ * AIT-722: mcp-headers sends its telemetry only once its output is written,
+ * and gets ~1s for it, so an unreachable PostHog cannot hold an MCP client
+ * (10s budget) waiting. Unref'd: it fires only while a slow send is still
+ * holding the process open, and exits with the command's own code.
+ */
+const HEADERS_TELEMETRY_MS = 1_000;
+function capHeadersTelemetry(exitCode: number): void {
+  setTimeout(() => process.exit(exitCode), HEADERS_TELEMETRY_MS).unref();
+}
 
 async function emitCommandInvoked(
   exit_code: CliExitCode,
@@ -227,9 +238,6 @@ async function emitCommandInvoked(
   errorCode: string | null,
 ): Promise<void> {
   if (invokedCommand === null) return; // Commander didn't dispatch (e.g. --help, --version, parse error)
-  // mcp-headers fires on every agent connect, success or failure: not worth a
-  // PostHog round trip (AIT-722).
-  if (headersOnly) return;
   if (!shouldEmitCommandInvoked(invokedCommand, invokedSubcommand)) return;
   await emit('cli_command_invoked', {
     cli_version: getCliVersion(),
@@ -273,8 +281,9 @@ async function main(): Promise<void> {
 
   // AIT-722: MCP clients run `mcp-headers` on every connect and give up after
   // 10s. On Windows the boot work below took longer than that on its own, so
-  // the helper skips it: it only needs the credential files. Sentry still
-  // loads if it fails (captureError inits on demand).
+  // the helper skips it: it only needs the credential files. Its telemetry
+  // runs after the header is written (capHeadersTelemetry), and Sentry
+  // loads only if there is an error to report (captureError inits on demand).
   if (!headersOnly) {
     // init Sentry early so top-level throws + unhandled
     // rejections capture before we hit the exit boundary. The function is
@@ -317,9 +326,21 @@ async function main(): Promise<void> {
     // successful parse is not always a zero exit.
     const rawExit = typeof process.exitCode === 'number' ? process.exitCode : 0;
     const commandExit = (rawExit >= 0 && rawExit <= 6 ? rawExit : 1) as CliExitCode;
+    if (headersOnly) {
+      capHeadersTelemetry(commandExit);
+      // The boot-time first-run event, moved behind the header.
+      try {
+        await maybeEmitFirstRun();
+      } catch {
+        // Fail-open, like the boot-time call.
+      }
+    }
     await emitCommandInvoked(commandExit, Date.now() - startedAt, null);
     await flushAndExit(commandExit);
   } catch (err) {
+    if (headersOnly) {
+      capHeadersTelemetry(err instanceof CommanderError && err.exitCode === 0 ? 0 : exitCodeFor(err));
+    }
     const human = resolveHuman();
     const debug = program.opts().debug ?? process.argv.includes('--debug');
     if (err instanceof CliError) {
@@ -338,14 +359,11 @@ async function main(): Promise<void> {
       // Emit cli_parse_error for non-zero parse failures BEFORE the
       // emitCommandInvoked early-return swallows the signal (invokedCommand
       // is null on parse failures because the action handler never ran).
-      // Not for mcp-headers: no PostHog on that path at all (AIT-722).
-      if (!headersOnly) {
-        const { emitParseError } = await import('./observability/posthog.js');
-        await emitParseError({
-          errorCode: err.code ?? 'commander.unknown',
-          argv: process.argv,
-        });
-      }
+      const { emitParseError } = await import('./observability/posthog.js');
+      await emitParseError({
+        errorCode: err.code ?? 'commander.unknown',
+        argv: process.argv,
+      });
       // JSON mode: route through wrapCommanderError + outputError so the
       // canonical nested envelope is the only stderr write. Human mode
       // already saw the message via configureOutput.writeErr above.
