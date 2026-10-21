@@ -7,6 +7,7 @@ import { isJsonMode } from '../output/format.js';
 import { ValidationError } from '../output/error.js';
 
 // Meta limits (AIT-290 spec). Mirrors backend channel-actions/whatsapp/groups.service.ts.
+// Limits count Unicode code points (characters), not UTF-16 units: an emoji is one.
 const SUBJECT_MAX = 128;
 const DESCRIPTION_MAX = 2048;
 const MEMBERS_MAX = 8;
@@ -38,14 +39,14 @@ function assertGroupId(id: string): string {
 }
 
 function assertSubject(subject: unknown): string {
-  if (typeof subject !== 'string' || subject.trim() === '' || subject.length > SUBJECT_MAX) {
+  if (typeof subject !== 'string' || subject.trim() === '' || [...subject].length > SUBJECT_MAX) {
     throw new ValidationError(`--subject must be 1 to ${SUBJECT_MAX} characters.`, 'INVALID_SUBJECT');
   }
   return subject;
 }
 
 function assertDescription(description: unknown): string {
-  if (typeof description !== 'string' || description.length > DESCRIPTION_MAX) {
+  if (typeof description !== 'string' || [...description].length > DESCRIPTION_MAX) {
     throw new ValidationError(`--description can be up to ${DESCRIPTION_MAX} characters.`, 'INVALID_DESCRIPTION');
   }
   return description;

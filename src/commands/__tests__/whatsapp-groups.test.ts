@@ -54,6 +54,11 @@ describe('whatsapp groups', () => {
     expect(last().body).toMatchObject({ join_approval_mode: 'auto_approve' });
   });
 
+  it('create: counts the subject in characters, 128 emoji pass and 129 fail', async () => {
+    await runWhatsappGroupsCreate({ subject: '😀'.repeat(128) });
+    await expect(runWhatsappGroupsCreate({ subject: '😀'.repeat(129) })).rejects.toBeInstanceOf(ValidationError);
+  });
+
   it('create: rejects a 129-char subject, bad description, bad approval before any call', async () => {
     await expect(runWhatsappGroupsCreate({ subject: 'x'.repeat(129) })).rejects.toBeInstanceOf(ValidationError);
     await expect(runWhatsappGroupsCreate({ subject: '' })).rejects.toBeInstanceOf(ValidationError);
