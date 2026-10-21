@@ -68,9 +68,16 @@ export interface FacebookChannel extends ChannelBase {
 export type Channel = WhatsAppChannel | InstagramChannel | FacebookChannel;
 
 /** Detail-only fields returned by GET /meta/channels/:id (not on list endpoint). */
+export interface WhatsAppGroupsAvailability {
+  available: boolean;
+  reason: 'whatsapp_business_app_number' | 'not_on_cloud_api' | 'not_official_business_account' | 'unknown' | null;
+}
+
 interface DetailExtras {
   whatsappBusinessName?: string;
   metaBusinessId?: string;
+  /** WhatsApp only. Informs, never blocks: groups commands still try the call. */
+  whatsappGroups?: WhatsAppGroupsAvailability;
 }
 
 export type ChannelDetail = Channel & DetailExtras;
@@ -197,15 +204,29 @@ export function parseChannelListItem(dto: unknown): Channel {
   }
 }
 
+const GROUPS_REASONS = ['whatsapp_business_app_number', 'not_on_cloud_api', 'not_official_business_account', 'unknown'];
+
+function parseWhatsappGroups(v: unknown): WhatsAppGroupsAvailability | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const { available, reason } = v as Record<string, unknown>;
+  if (typeof available !== 'boolean') return undefined;
+  if (reason === null || reason === undefined) return { available, reason: null };
+  return typeof reason === 'string' && GROUPS_REASONS.includes(reason)
+    ? { available, reason: reason as WhatsAppGroupsAvailability['reason'] }
+    : { available, reason: 'unknown' };
+}
+
 export function parseChannelDetail(dto: unknown): ChannelDetail {
   const base = parseChannelListItem(dto);
   if (typeof dto !== 'object' || dto === null) return base; // already threw above
   const d = dto as Record<string, unknown>;
+  const whatsappGroups = base.type === 'whatsapp' ? parseWhatsappGroups(d.whatsappGroups) : undefined;
   return {
     ...base,
     whatsappBusinessName:
       typeof d.whatsappBusinessName === 'string' ? d.whatsappBusinessName : undefined,
     metaBusinessId: typeof d.metaBusinessId === 'string' ? d.metaBusinessId : undefined,
+    ...(whatsappGroups ? { whatsappGroups } : {}),
   };
 }
 

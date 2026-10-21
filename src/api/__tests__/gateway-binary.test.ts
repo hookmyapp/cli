@@ -26,6 +26,20 @@ describe('gatewayUpload', () => {
   });
 });
 
+describe('gatewayUpload fileField', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  it('uses the given multipart field name and sends no media `type` field', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'media-')); const f = join(dir, 'img.jpg'); writeFileSync(f, Buffer.from([1,2,3]));
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }));
+    await gatewayUpload({ channel: waChannel, path: '/GROUP', file: f, type: 'image/jpeg', fileField: 'profile_picture_file' });
+    const form = fetchMock.mock.calls[0][1]!.body as FormData;
+    expect(form.get('profile_picture_file')).toBeInstanceOf(Blob);
+    expect(form.get('file')).toBeNull();
+    expect(form.get('type')).toBeNull();
+    expect(form.get('messaging_product')).toBe('whatsapp');
+  });
+});
+
 describe('gatewayDownloadToStream', () => {
   beforeEach(() => vi.restoreAllMocks());
   it('drains the body and throws an ApiError on a non-ok download response', async () => {

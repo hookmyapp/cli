@@ -117,7 +117,7 @@ export function registerWhatsappCommand(program: Command): Command {
   const whatsapp = program
     .command('whatsapp')
     .alias('wa')
-    .description('WhatsApp messaging, templates, media, and business profile');
+    .description('WhatsApp messaging, templates, media, business profile, and groups');
 
   addExamples(
     whatsapp,
@@ -129,6 +129,7 @@ EXAMPLES:
   $ hookmyapp whatsapp templates list --channel 1555
   $ hookmyapp whatsapp media upload --channel 1555 --file ./a.jpg
   $ hookmyapp whatsapp profile get --channel 1555
+  $ hookmyapp whatsapp groups list --channel 1555
 `,
   );
 

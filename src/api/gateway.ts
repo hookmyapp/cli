@@ -214,7 +214,14 @@ export async function gatewayRequest(call: GatewayCall): Promise<any> {
   return json;
 }
 
-export interface GatewayUpload { channel: Channel; path: string; file: string; type?: string; }
+export interface GatewayUpload {
+  channel: Channel;
+  path: string;
+  file: string;
+  type?: string;
+  /** Multipart field name for the bytes. Set it for non-/media uploads (group photo); default `file` keeps the /media shape. */
+  fileField?: string;
+}
 
 const MIME_BY_EXT: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
@@ -236,8 +243,8 @@ export async function gatewayUpload(up: GatewayUpload): Promise<any> {
   const mime = up.type ?? guessMime(up.file);
   const form = new FormData();
   form.set('messaging_product', 'whatsapp'); // WhatsApp-only in M1 (see scope note)
-  form.set('type', mime);                     // Meta /media requires the MIME type field
-  form.set('file', new Blob([bytes], { type: mime }), basename(up.file));
+  if (!up.fileField) form.set('type', mime);  // Meta /media requires the MIME type field
+  form.set(up.fileField ?? 'file', new Blob([bytes], { type: mime }), basename(up.file));
   let res: Response;
   try {
     // Media upload: bytes, so the generous transfer budget rather than the
