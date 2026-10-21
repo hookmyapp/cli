@@ -134,12 +134,12 @@ describe('whatsapp groups', () => {
     expect(out.join('')).toBe('https://chat.whatsapp.com/abc\n');
   });
 
-  it('remove: DELETE /{group}/participants, phones as user, others as user_id', async () => {
-    await runWhatsappGroupsRemove({}, G, ['+1 555 123 4567', '15550001111', 'US.abc123']);
+  it('remove: DELETE /{group}/participants, phones as digits-only user, others as user_id', async () => {
+    await runWhatsappGroupsRemove({}, G, ['+1 555 123 4567', '+1 (786) 534-7866', '15550001111', 'US.abc123']);
     expect(last()).toMatchObject({
       method: 'DELETE',
       path: `/${G}/participants`,
-      body: { messaging_product: 'whatsapp', participants: [{ user: '+1 555 123 4567' }, { user: '15550001111' }, { user_id: 'US.abc123' }] },
+      body: { messaging_product: 'whatsapp', participants: [{ user: '15551234567' }, { user: '17865347866' }, { user: '15550001111' }, { user_id: 'US.abc123' }] },
     });
   });
 

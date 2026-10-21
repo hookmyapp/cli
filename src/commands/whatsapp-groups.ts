@@ -52,11 +52,12 @@ function assertDescription(description: unknown): string {
   return description;
 }
 
-/** Phone numbers and wa_ids go as `user`; anything else is a BSUID, sent as `user_id` (same rule as the REST API). */
+/** Phone numbers and wa_ids go as `user`, digits only without the `+` (the wa_id form); anything else is a BSUID, sent as `user_id` (same rule as the REST API). */
 function participantOf(member: string): { user: string } | { user_id: string } {
   const m = typeof member === 'string' ? member.trim() : '';
   if (m === '') throw new ValidationError('Each member must be a phone number, WhatsApp id or user id.', 'INVALID_MEMBER');
-  return /^\+?\d+$/.test(m.replace(/[\s()-]/g, '')) ? { user: m } : { user_id: m };
+  const phone = m.replace(/[\s()-]/g, '');
+  return /^\+?\d+$/.test(phone) ? { user: phone.replace(/^\+/, '') } : { user_id: m };
 }
 
 function print(res: unknown, cmd: Command | undefined, human: () => string): void {
