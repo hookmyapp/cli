@@ -38,11 +38,13 @@ function assertGroupId(id: string): string {
   return id;
 }
 
+/** Meta trims the subject before its 128-character check, so count (and send) the trimmed value. */
 function assertSubject(subject: unknown): string {
-  if (typeof subject !== 'string' || subject.trim() === '' || [...subject].length > SUBJECT_MAX) {
+  const s = typeof subject === 'string' ? subject.trim() : '';
+  if (s === '' || [...s].length > SUBJECT_MAX) {
     throw new ValidationError(`--subject must be 1 to ${SUBJECT_MAX} characters.`, 'INVALID_SUBJECT');
   }
-  return subject;
+  return s;
 }
 
 function assertDescription(description: unknown): string {
@@ -272,6 +274,7 @@ export async function runWhatsappGroupsRemove(
 // ---- join-requests --------------------------------------------------------
 
 export interface WaGroupsJoinRequestsOpts extends ChannelOpt {
+  cursor?: string;
   approve?: string[];
   reject?: string[];
 }
@@ -292,14 +295,19 @@ export async function runWhatsappGroupsJoinRequests(
   const channel = await resolveChannelRefOrDefault(opts.channel, 'whatsapp');
   const path = `/${groupId}/join_requests`;
   if (ids === undefined) {
-    const res = await gatewayRequest({ channel, method: 'GET', path });
+    const query = opts.cursor ? `?${new URLSearchParams({ after: opts.cursor })}` : '';
+    const res = await gatewayRequest({ channel, method: 'GET', path: `${path}${query}` });
     print(res, cmd, () => {
       const rows = arr(obj(res).data);
       if (rows.length === 0) return 'No join requests.';
-      return rows.map((r) => `${str(obj(r).join_request_id) ?? ''}  ${str(obj(r).wa_id) ?? ''}`).join('\n');
+      const lines = rows.map((r) => `${str(obj(r).join_request_id) ?? ''}  ${str(obj(r).wa_id) ?? ''}`);
+      const next = nextCursor(obj(res));
+      if (next) lines.push(`More join requests: --cursor ${next}`);
+      return lines.join('\n');
     });
     return;
   }
+  if (opts.cursor !== undefined) throw new ValidationError('--cursor only applies when listing join requests.', 'CURSOR_WITH_DECISION');
   const approving = opts.approve !== undefined;
   const res = await gatewayRequest({
     channel,
@@ -421,6 +429,7 @@ EXAMPLES:
     .argument('<groupId>', 'Group id')
     .option('--approve <id...>', 'Approve these join request ids')
     .option('--reject <id...>', 'Reject these join request ids')
+    .option('--cursor <cursor>', 'Page cursor from a previous list')
     .option(CHANNEL_FLAG, CHANNEL_DESC)
     .action(async function (this: Command, groupId: string, opts: WaGroupsJoinRequestsOpts) {
       await runWhatsappGroupsJoinRequests(opts, groupId, this);

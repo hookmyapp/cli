@@ -175,6 +175,19 @@ describe('whatsapp groups', () => {
     expect(out.join('')).toBe('r1  1555\n');
   });
 
+  it('join-requests: --cursor pages the list and the human view prints the next cursor', async () => {
+    vi.mocked(gatewayRequest).mockResolvedValue({ data: [{ join_request_id: 'r1', wa_id: '1555' }], paging: { cursors: { after: 'C2' }, next: 'https://x' } });
+    await runWhatsappGroupsJoinRequests({ cursor: 'C1' }, G);
+    expect(last()).toMatchObject({ method: 'GET', path: `/${G}/join_requests?after=C1` });
+    expect(out.join('')).toBe('r1  1555\nMore join requests: --cursor C2\n');
+    await expect(runWhatsappGroupsJoinRequests({ cursor: 'C1', approve: ['r1'] }, G)).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it('create: trims the subject before counting and sends it trimmed', async () => {
+    await runWhatsappGroupsCreate({ subject: `  ${'a'.repeat(128)}  ` });
+    expect(last().body).toEqual({ messaging_product: 'whatsapp', subject: 'a'.repeat(128) });
+  });
+
   it.each([
     ['get', (id: string) => runWhatsappGroupsGet({}, id)],
     ['update', (id: string) => runWhatsappGroupsUpdate({ subject: 's' }, id)],
