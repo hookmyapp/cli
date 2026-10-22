@@ -209,7 +209,11 @@ export async function runWhatsappGroupsDelete(opts: ChannelOpt, groupId: string,
   assertGroupId(groupId);
   const channel = await resolveChannelRefOrDefault(opts.channel, 'whatsapp');
   const res = await gatewayRequest({ channel, method: 'DELETE', path: `/${groupId}` });
-  print(res, cmd, () => 'Group deleted.');
+  // Meta reports the outcome later, in a group_lifecycle_update webhook.
+  print(res, cmd, () => {
+    const id = str(obj(res).request_id);
+    return id ? `Group deletion requested. request_id=${id}` : 'Group deletion requested.';
+  });
 }
 
 // ---- invite-link ----------------------------------------------------------
