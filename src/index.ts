@@ -9,6 +9,7 @@ import { registerWhatsappCommand, registerWhatsappMessages } from './commands/wh
 import { registerWhatsappTemplates } from './commands/whatsapp-templates.js';
 import { registerWhatsappMedia } from './commands/whatsapp-media.js';
 import { registerWhatsappProfile } from './commands/whatsapp-profile.js';
+import { registerWhatsappGroups } from './commands/whatsapp-groups.js';
 import { registerInstagramCommand } from './commands/instagram.js';
 import { registerFacebookCommand } from './commands/facebook.js';
 import { channelKinds } from './config/facebook-preview.js';
@@ -187,6 +188,7 @@ registerWhatsappMessages(whatsappCmd);
 registerWhatsappTemplates(whatsappCmd);
 registerWhatsappMedia(whatsappCmd);
 registerWhatsappProfile(whatsappCmd);
+registerWhatsappGroups(whatsappCmd);
 
 // Environment / prerequisite checker (Node, npm/npx, network, login state).
 registerDoctorCommand(program);

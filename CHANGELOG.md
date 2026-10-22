@@ -2,6 +2,12 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.29 — 2026-10-22
+
+### Added
+
+- `hookmyapp whatsapp groups` (`create`, `list`, `get`, `update`, `photo`, `delete`, `invite-link`, `remove`, `join-requests`) manages WhatsApp groups on Official Business Account numbers. `hookmyapp channels show` reports whether groups are available for a WhatsApp channel (AIT-290).
+
 ## 0.14.28 — 2026-10-04
 
 ### Fixed

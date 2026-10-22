@@ -54,4 +54,42 @@ describe('runChannelsShow — type-aware detail render', () => {
     expect(combined).not.toContain('quality');
     logSpy.mockRestore();
   });
+
+  it('WA channel prints a Groups line: available, or not available with a plain reason', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([wa])
+      .mockResolvedValueOnce({ ...wa, whatsappGroups: { available: true, reason: null } });
+    await runChannelsShow('+15551234567', { json: false });
+    expect(logSpy.mock.calls.map((c) => c.join(' '))).toContain('Groups: available');
+
+    logSpy.mockClear();
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([wa])
+      .mockResolvedValueOnce({ ...wa, whatsappGroups: { available: false, reason: 'whatsapp_business_app_number' } });
+    await runChannelsShow('+15551234567', { json: false });
+    expect(logSpy.mock.calls.map((c) => c.join(' '))).toContain('Groups: not available (whatsapp_business_app_number)');
+    logSpy.mockRestore();
+  });
+
+  it('no Groups line when the backend does not report it, and none for IG', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.mocked(apiClient).mockResolvedValueOnce([wa]).mockResolvedValueOnce(wa);
+    await runChannelsShow('+15551234567', { json: false });
+    vi.mocked(apiClient).mockResolvedValueOnce([ig]).mockResolvedValueOnce(ig);
+    await runChannelsShow('@ordvir', { json: false });
+    expect(logSpy.mock.calls.map((c) => c.join(' ')).join('\n')).not.toContain('Groups');
+    logSpy.mockRestore();
+  });
+
+  it('--json includes whatsappGroups', async () => {
+    const w = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.mocked(apiClient)
+      .mockResolvedValueOnce([wa])
+      .mockResolvedValueOnce({ ...wa, whatsappGroups: { available: false, reason: 'unknown' } });
+    await runChannelsShow('+15551234567', { json: true });
+    const printed = JSON.parse(String(w.mock.calls[0][0]));
+    expect(printed.whatsappGroups).toEqual({ available: false, reason: 'unknown' });
+    w.mockRestore();
+  });
 });

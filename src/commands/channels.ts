@@ -379,6 +379,10 @@ export async function runChannelsShow(
     console.log(`Phone Number ID: ${detail.whatsappPhoneNumberId ?? '(none)'}`);
     console.log(`Phone-verified name: ${detail.whatsappVerifiedName ?? '(none)'}`);
     console.log(`Quality rating: ${detail.whatsappQualityRating ?? '(unknown)'}`);
+    const groups = detail.whatsappGroups;
+    if (groups) {
+      console.log(groups.available ? 'Groups: available' : `Groups: not available (${groups.reason ?? 'unknown'})`);
+    }
   } else if (detail.type === 'instagram') {
     console.log(`Instagram: @${detail.instagramUsername ?? '(no handle)'}`);
     console.log(`Display name: ${detail.instagramProfileName ?? '(none)'}`);
