@@ -2,7 +2,7 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
-## 0.14.29 — 2026-10-21
+## 0.14.29 — 2026-10-22
 
 ### Added
 
