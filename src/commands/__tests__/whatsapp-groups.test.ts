@@ -184,7 +184,7 @@ describe('whatsapp groups', () => {
     ['join-requests', (id: string) => runWhatsappGroupsJoinRequests({}, id)],
     ['photo', (id: string) => runWhatsappGroupsPhoto({ file: '/nope.jpg' }, id)],
   ])('%s: group id outside the grammar is rejected before any call', async (_n, run) => {
-    for (const bad of ['a/b', '', 'a b', '../x', 'x?y=1', 'a'.repeat(257)]) {
+    for (const bad of ['a/b', '', 'a b', '../x', 'x?y=1', 'a'.repeat(257), '1234567890123']) {
       await expect(run(bad)).rejects.toBeInstanceOf(ValidationError);
     }
     expect(gatewayRequest).not.toHaveBeenCalled();

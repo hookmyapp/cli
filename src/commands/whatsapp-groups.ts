@@ -12,7 +12,7 @@ const SUBJECT_MAX = 128;
 const DESCRIPTION_MAX = 2048;
 const MEMBERS_MAX = 8;
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
-const GROUP_ID = /^[A-Za-z0-9+=_-]{1,256}$/;
+const GROUP_ID = /^(?!\d+$)[A-Za-z0-9+=_-]{1,256}$/;
 const MP = { messaging_product: 'whatsapp' } as const;
 const APPROVAL_MODES: Record<string, string> = { auto: 'auto_approve', required: 'approval_required' };
 const INFO_FIELDS =
