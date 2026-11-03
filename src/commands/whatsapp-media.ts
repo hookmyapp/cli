@@ -4,10 +4,10 @@ import { addExamples } from '../output/help.js';
 import {
   gatewayRequest,
   gatewayUpload,
-  getGatewayConfig,
   gatewayDownloadToStream,
   createWriteStream,
 } from '../api/gateway.js';
+import { apiRedirectLocation } from '../api/client.js';
 import { resolveChannelRefOrDefault } from './_helpers.js';
 import { isJsonMode } from '../output/format.js';
 import { UnexpectedError, ValidationError } from '../output/error.js';
@@ -60,8 +60,10 @@ export async function runWhatsappMediaDownload(
   const meta = await gatewayRequest({ channel, method: 'GET', path: `/${mediaId}` });
   // Prefer the stable downloadUrl (authenticated, redirects); fall back to the short-lived url.
   const stable = typeof meta?.downloadUrl === 'string' && meta.downloadUrl ? meta.downloadUrl : undefined;
-  const token = stable ? (await getGatewayConfig(channel)).token : undefined;
-  const url = stable ?? meta?.url;
+  // The stable link is a HookMyApp API route: authenticate it with the login, then fetch the redirect target.
+  const url = stable
+    ? await apiRedirectLocation(new URL(stable).pathname, { workspaceId: channel.workspaceId })
+    : meta?.url;
   if (typeof url !== 'string' || !url) {
     // AIT-652: a 2xx media node without a url is a gateway/Meta contract
     // break, not user input; sev2 so it reaches Sentry. Exit code stays 2.
@@ -73,7 +75,7 @@ export async function runWhatsappMediaDownload(
   // Hop 2: stream the bytes. Caller owns the sink lifecycle.
   if (out && out !== '-') {
     const sink = createWriteStream(out);
-    const bytes = await gatewayDownloadToStream(url, sink, token);
+    const bytes = await gatewayDownloadToStream(url, sink);
     sink.end();
     await finished(sink);
     if (json) {
@@ -85,7 +87,7 @@ export async function runWhatsappMediaDownload(
   }
 
   // `--out -` or a non-TTY pipe → raw bytes to stdout. Do NOT end stdout.
-  await gatewayDownloadToStream(url, process.stdout, token);
+  await gatewayDownloadToStream(url, process.stdout);
 }
 
 export interface WaMediaDeleteOpts {
