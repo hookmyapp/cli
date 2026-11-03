@@ -268,9 +268,10 @@ export async function gatewayUpload(up: GatewayUpload): Promise<any> {
  * caller must `sink.end()` then `await finished(sink)` (node:stream/promises)
  * before reporting bytes; for `process.stdout` the caller must NOT end it.
  */
-export async function gatewayDownloadToStream(signedUrl: string, sink: Writable): Promise<number> {
+export async function gatewayDownloadToStream(signedUrl: string, sink: Writable, token?: string): Promise<number> {
   let res: Response;
-  try { res = await timedFetch(signedUrl, {}, TRANSFER_TIMEOUT_MS); } catch (err) { if (isNetworkFailure(err)) throw new NetworkError(); throw err; }
+  // token: authenticate a stable downloadUrl (fetch follows its redirect and drops the header cross-origin).
+  try { res = await timedFetch(signedUrl, token ? { headers: { Authorization: `Bearer ${token}` } } : {}, TRANSFER_TIMEOUT_MS); } catch (err) { if (isNetworkFailure(err)) throw new NetworkError(); throw err; }
   if (!res.ok || !res.body) {
     // The download target is a gateway-signed media/CDN URL, NOT a Meta Graph
     // endpoint — so the Meta `{error:{message}}` mapper does not apply. Drain

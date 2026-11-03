@@ -7,6 +7,7 @@ import { createWriteStream } from 'node:fs';
 vi.mock('../../api/gateway.js', () => ({
   gatewayUpload: vi.fn(async () => ({ id: 'media_123' })),
   gatewayRequest: vi.fn(async () => ({ url: 'https://signed.example/media.bin' })),
+  getGatewayConfig: vi.fn(async () => ({ token: 'hmat_x', baseUrl: 'https://gw.example/meta/v22.0' })),
   gatewayDownloadToStream: vi.fn(async (_url: string, sink: NodeJS.WritableStream) => {
     const bytes = Buffer.from('hello-bytes');
     await new Promise<void>((res, rej) => sink.write(bytes, (e) => (e ? rej(e) : res())));
@@ -20,7 +21,7 @@ import {
   runWhatsappMediaUpload,
   runWhatsappMediaDownload,
 } from '../whatsapp-media.js';
-import { gatewayUpload } from '../../api/gateway.js';
+import { gatewayUpload, gatewayRequest, gatewayDownloadToStream } from '../../api/gateway.js';
 
 const origIsTTY = process.stdout.isTTY;
 
@@ -44,6 +45,31 @@ describe('whatsapp media', () => {
       await runWhatsappMediaDownload({ channel: '+1', out }, 'media_123');
       expect(existsSync(out)).toBe(true);
       expect(readFileSync(out).byteLength).toBe(Buffer.from('hello-bytes').byteLength);
+    } finally {
+      if (existsSync(out)) rmSync(out);
+    }
+  });
+
+  it('prefers downloadUrl with the gateway token', async () => {
+    vi.mocked(gatewayRequest).mockResolvedValueOnce({ url: 'https://signed.example/m', downloadUrl: 'https://api.hookmyapp.com/channels/ch_a/whatsapp/media/m1/download' });
+    const out = join(tmpdir(), `wa-media-dl-${Date.now()}.bin`);
+    try {
+      await runWhatsappMediaDownload({ channel: '+1', out }, 'm1');
+      expect(gatewayDownloadToStream).toHaveBeenCalledWith(
+        'https://api.hookmyapp.com/channels/ch_a/whatsapp/media/m1/download',
+        expect.anything(),
+        'hmat_x',
+      );
+    } finally {
+      if (existsSync(out)) rmSync(out);
+    }
+  });
+
+  it('falls back to url without a token when downloadUrl is absent', async () => {
+    const out = join(tmpdir(), `wa-media-fb-${Date.now()}.bin`);
+    try {
+      await runWhatsappMediaDownload({ channel: '+1', out }, 'm1');
+      expect(gatewayDownloadToStream).toHaveBeenCalledWith('https://signed.example/media.bin', expect.anything(), undefined);
     } finally {
       if (existsSync(out)) rmSync(out);
     }

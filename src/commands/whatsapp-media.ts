@@ -4,6 +4,7 @@ import { addExamples } from '../output/help.js';
 import {
   gatewayRequest,
   gatewayUpload,
+  getGatewayConfig,
   gatewayDownloadToStream,
   createWriteStream,
 } from '../api/gateway.js';
@@ -55,9 +56,12 @@ export async function runWhatsappMediaDownload(
   }
 
   const channel = await resolveChannelRefOrDefault(opts.channel, 'whatsapp');
-  // Hop 1: read the gateway-signed url for this media node.
+  // Hop 1: read the media node.
   const meta = await gatewayRequest({ channel, method: 'GET', path: `/${mediaId}` });
-  const url = meta?.url;
+  // Prefer the stable downloadUrl (authenticated, redirects); fall back to the short-lived url.
+  const stable = typeof meta?.downloadUrl === 'string' && meta.downloadUrl ? meta.downloadUrl : undefined;
+  const token = stable ? (await getGatewayConfig(channel)).token : undefined;
+  const url = stable ?? meta?.url;
   if (typeof url !== 'string' || !url) {
     // AIT-652: a 2xx media node without a url is a gateway/Meta contract
     // break, not user input; sev2 so it reaches Sentry. Exit code stays 2.
@@ -69,7 +73,7 @@ export async function runWhatsappMediaDownload(
   // Hop 2: stream the bytes. Caller owns the sink lifecycle.
   if (out && out !== '-') {
     const sink = createWriteStream(out);
-    const bytes = await gatewayDownloadToStream(url, sink);
+    const bytes = await gatewayDownloadToStream(url, sink, token);
     sink.end();
     await finished(sink);
     if (json) {
@@ -81,7 +85,7 @@ export async function runWhatsappMediaDownload(
   }
 
   // `--out -` or a non-TTY pipe → raw bytes to stdout. Do NOT end stdout.
-  await gatewayDownloadToStream(url, process.stdout);
+  await gatewayDownloadToStream(url, process.stdout, token);
 }
 
 export interface WaMediaDeleteOpts {
@@ -98,7 +102,7 @@ export async function runWhatsappMediaDelete(
   process.stdout.write((cmd && isJsonMode(cmd) ? JSON.stringify(res) : 'Media deleted.') + '\n');
 }
 
-/** Registers `whatsapp media upload|get|download|delete`. Media is passthrough (we store nothing). */
+/** Registers `whatsapp media upload|get|download|delete`. */
 export function registerWhatsappMedia(whatsapp: Command): void {
   const media = whatsapp.command('media').description('Upload, fetch, download, and delete WhatsApp media');
 
@@ -123,7 +127,7 @@ EXAMPLES:
 
   const get = media
     .command('get')
-    .description('Get media metadata (incl. the gateway-signed download url)')
+    .description('Get media metadata (incl. url and, when available, downloadUrl)')
     .argument('<media-id>', 'Media id')
     .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .action(async function (this: Command, mediaId: string, opts: WaMediaGetOpts) {
