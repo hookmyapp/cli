@@ -2,6 +2,12 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.30 — 2026-11-05
+
+### Changed
+
+- `hookmyapp whatsapp media download` fetches the stored copy through `downloadUrl` when the media has one, using your login, so media stays downloadable after Meta's own link expires. It falls back to the Meta lookup when there is no stored copy (AIT-758).
+
 ## 0.14.29 — 2026-10-22
 
 ### Added
