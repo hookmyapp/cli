@@ -20,7 +20,7 @@ import {
   getEffectiveApiUrl,
   getEffectiveWorkosClientId,
 } from '../config/env-profiles.js';
-import { timedFetch, isNetworkFailure, readBody } from './timed-fetch.js';
+import { timedFetch, isNetworkFailure, readBody, TRANSFER_TIMEOUT_MS } from './timed-fetch.js';
 import { buildVersionHeaders } from './version-headers.js';
 import { API_KEY_ENV_VAR } from '../config/env-vars.js';
 
@@ -427,9 +427,11 @@ export async function apiClient(
 
   const { workspaceId, bearerToken: _bearerToken, ...fetchOptions } = options ?? {};
 
+  // AIT-713: for a FormData body fetch writes multipart/form-data + boundary itself.
+  const isForm = fetchOptions.body instanceof FormData;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
-    'Content-Type': 'application/json',
+    ...(isForm ? {} : { 'Content-Type': 'application/json' }),
     ...buildVersionHeaders(),
     ...(fetchOptions.headers as Record<string, string> ?? {}),
   };
@@ -445,10 +447,12 @@ export async function apiClient(
 
   let res: Response;
   try {
-    res = await timedFetch(`${baseUrl}${path}`, {
-      ...fetchOptions,
-      headers,
-    });
+    res = await timedFetch(
+      `${baseUrl}${path}`,
+      { ...fetchOptions, headers },
+      // File uploads get the transfer budget, not the 30 s JSON one.
+      isForm ? TRANSFER_TIMEOUT_MS : undefined,
+    );
   } catch (err) {
     if (isNetworkFailure(err)) {
       // Name the host + underlying cause (AIT-88) — the bare copy made
