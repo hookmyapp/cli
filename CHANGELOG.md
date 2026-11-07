@@ -2,12 +2,31 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
-## 0.14.28 — 2026-09-30
+## 0.14.31 — 2026-11-07
 
 ### Added
 
 - `whatsapp profile update --photo <path>` sets the WhatsApp business profile photo from a JPEG or PNG up to 5 MB. It works alone or with the other profile flags (AIT-713).
 - `whatsapp media upload --file <path> --handle` returns a reusable handle for a template media header instead of a media id (AIT-713).
+
+## 0.14.30 — 2026-11-05
+
+### Changed
+
+- `hookmyapp whatsapp media download` fetches the stored copy through `downloadUrl` when the media has one, using your login, so media stays downloadable after Meta's own link expires. It falls back to the Meta lookup when there is no stored copy (AIT-758).
+
+## 0.14.29 — 2026-10-22
+
+### Added
+
+- `hookmyapp whatsapp groups` (`create`, `list`, `get`, `update`, `photo`, `delete`, `invite-link`, `remove`, `join-requests`) manages WhatsApp groups on Official Business Account numbers. `hookmyapp channels show` reports whether groups are available for a WhatsApp channel (AIT-290).
+
+## 0.14.28 — 2026-10-04
+
+### Fixed
+
+- `hookmyapp mcp-headers` (run by Claude Code and Codex on every MCP connect, which give up after 10 seconds) no longer runs the update check or the notifications nudge, and loads Sentry only when it has an error to report. It prints the header first and sends its usage events afterwards, with at most about 1 second for them, so an unreachable telemetry endpoint cannot hold the agent. On Windows the boot work alone outlasted the 10 seconds, so agents lost the HookMyApp MCP tools (AIT-722).
+- A reader that closes the pipe early (an MCP client past its timeout, `| head`) now ends the CLI quietly with exit code 0 instead of an `EPIPE` crash (AIT-722).
 
 ## 0.14.27 — 2026-09-26
 

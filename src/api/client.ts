@@ -521,6 +521,42 @@ export async function apiClient(
   );
 }
 
+/**
+ * Authenticated GET of a backend route that answers with a redirect (e.g. a
+ * stored-media download). Returns the redirect target without following it, so
+ * the login credential and workspace header never reach the storage host.
+ */
+export async function apiRedirectLocation(
+  path: string,
+  options?: { workspaceId?: string },
+): Promise<string> {
+  const creds = await readCredentials();
+  if (!creds) throw new AuthError('Not logged in. Run: hookmyapp login');
+  const accessToken = await validAccessToken(creds);
+  const baseUrl = getEffectiveApiUrl();
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    ...buildVersionHeaders(),
+  };
+  const ws = options?.workspaceId ?? workspaceCtx.workspaceId;
+  if (ws) headers['X-Workspace-Id'] = ws;
+  let res: Response;
+  try {
+    res = await timedFetch(`${baseUrl}${path}`, { headers, redirect: 'manual' });
+  } catch (err) {
+    if (isNetworkFailure(err)) {
+      throw new NetworkError(
+        `Could not connect to HookMyApp API (${new URL(baseUrl).host}): ${describeFetchError(err)}. Check your internet connection or try again later.`,
+      );
+    }
+    throw err;
+  }
+  const location = res.headers.get('location');
+  if (res.status >= 300 && res.status < 400 && location) return new URL(location, baseUrl).toString();
+  if (!res.ok) throw await mapApiError(res);
+  throw new ApiError('Media download did not redirect to a file.', 502);
+}
+
 // --- money model v2 billing contract (Plan 05 Task 1) ---
 //
 // Mirrors backend/src/organizations/billing/eligibility.controller.ts.

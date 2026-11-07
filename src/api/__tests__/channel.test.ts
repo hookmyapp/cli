@@ -251,6 +251,16 @@ describe('parseChannelDetail', () => {
     expect(detail).not.toHaveProperty('accessToken');
   });
 
+  it('passes whatsappGroups through for a WhatsApp channel, and drops junk shapes', () => {
+    const ok = parseChannelDetail({ ...baseValidWa, whatsappGroups: { available: false, reason: 'not_on_cloud_api' } });
+    expect(ok.whatsappGroups).toEqual({ available: false, reason: 'not_on_cloud_api' });
+    const yes = parseChannelDetail({ ...baseValidWa, whatsappGroups: { available: true, reason: null } });
+    expect(yes.whatsappGroups).toEqual({ available: true, reason: null });
+    expect(parseChannelDetail({ ...baseValidWa }).whatsappGroups).toBeUndefined();
+    expect(parseChannelDetail({ ...baseValidWa, whatsappGroups: 'nope' }).whatsappGroups).toBeUndefined();
+    expect(parseChannelDetail({ ...baseValidIg, whatsappGroups: { available: true, reason: null } }).whatsappGroups).toBeUndefined();
+  });
+
   it('list-item shape (without detail fields) parses with detail-only fields undefined', () => {
     const detail = parseChannelDetail(baseValidIg);
     expect(detail.whatsappBusinessName).toBeUndefined();

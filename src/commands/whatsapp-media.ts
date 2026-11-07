@@ -7,6 +7,7 @@ import {
   gatewayDownloadToStream,
   createWriteStream,
 } from '../api/gateway.js';
+import { apiRedirectLocation } from '../api/client.js';
 import { resolveChannelRefOrDefault } from './_helpers.js';
 import { uploadHandle } from '../api/whatsapp-upload.js';
 import { isJsonMode } from '../output/format.js';
@@ -63,9 +64,14 @@ export async function runWhatsappMediaDownload(
   }
 
   const channel = await resolveChannelRefOrDefault(opts.channel, 'whatsapp');
-  // Hop 1: read the gateway-signed url for this media node.
+  // Hop 1: read the media node.
   const meta = await gatewayRequest({ channel, method: 'GET', path: `/${mediaId}` });
-  const url = meta?.url;
+  // Prefer the stable downloadUrl (authenticated, redirects); fall back to the short-lived url.
+  const stable = typeof meta?.downloadUrl === 'string' && meta.downloadUrl ? meta.downloadUrl : undefined;
+  // The stable link is a HookMyApp API route: authenticate it with the login, then fetch the redirect target.
+  const url = stable
+    ? await apiRedirectLocation(new URL(stable).pathname, { workspaceId: channel.workspaceId })
+    : meta?.url;
   if (typeof url !== 'string' || !url) {
     // AIT-652: a 2xx media node without a url is a gateway/Meta contract
     // break, not user input; sev2 so it reaches Sentry. Exit code stays 2.
@@ -106,7 +112,7 @@ export async function runWhatsappMediaDelete(
   process.stdout.write((cmd && isJsonMode(cmd) ? JSON.stringify(res) : 'Media deleted.') + '\n');
 }
 
-/** Registers `whatsapp media upload|get|download|delete`. Media is passthrough (we store nothing). */
+/** Registers `whatsapp media upload|get|download|delete`. */
 export function registerWhatsappMedia(whatsapp: Command): void {
   const media = whatsapp.command('media').description('Upload, fetch, download, and delete WhatsApp media');
 
@@ -132,7 +138,7 @@ EXAMPLES:
 
   const get = media
     .command('get')
-    .description('Get media metadata (incl. the gateway-signed download url)')
+    .description('Get media metadata (incl. url and, when available, downloadUrl)')
     .argument('<media-id>', 'Media id')
     .option('--channel <ref>', 'Channel: phone number, @handle, or ch_id (defaults to HOOKMYAPP_CHANNEL_ID)')
     .action(async function (this: Command, mediaId: string, opts: WaMediaGetOpts) {
