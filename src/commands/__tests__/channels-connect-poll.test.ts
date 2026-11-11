@@ -66,9 +66,7 @@ describe('pollForNewChannels — D2 acceptance criteria', () => {
       .mockResolvedValueOnce([preExisting, wa])
       .mockResolvedValueOnce([preExisting, wa])
       .mockResolvedValueOnce([preExisting, wa]);
-    const snapshot = new Map<string, string | undefined>([
-      ['ch_PRE_EXISTING', '2026-05-26T18:00:00.000Z'],
-    ]);
+    const snapshot = new Map<string, boolean>([['ch_PRE_EXISTING', true]]);
     const promise = pollForNewChannels('ws_TEST0001', snapshot);
     await vi.advanceTimersByTimeAsync(2000); // poll 1: wa is new
     await vi.advanceTimersByTimeAsync(2000); // poll 2: stable
@@ -78,49 +76,45 @@ describe('pollForNewChannels — D2 acceptance criteria', () => {
     expect(result.map((c) => c.id)).not.toContain('ch_PRE_EXISTING');
   });
 
-  it('detects re-auth of existing channel: updatedAt advanced past snapshot → returned as "interesting"', async () => {
-    const reauthed = {
-      id: 'ch_REAUTH', type: 'whatsapp', workspaceId: 'ws_TEST0001',
-      metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
-      metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-      whatsappWabaName: 'Existing WABA', whatsappDisplayPhoneNumber: '+15550000001', whatsappPhoneNumberId: '999',
-      whatsappVerifiedName: 'Existing', whatsappQualityRating: 'GREEN', whatsappQualityRatingCheckedAt: null,
-      updatedAt: '2026-05-26T18:30:00.000Z', // BUMPED past snapshot
-    };
-    vi.mocked(apiClient)
-      .mockResolvedValueOnce([reauthed])
-      .mockResolvedValueOnce([reauthed])
-      .mockResolvedValueOnce([reauthed]);
-    const snapshot = new Map<string, string | undefined>([
-      ['ch_REAUTH', '2026-05-26T18:00:00.000Z'], // PRE-OAuth value
-    ]);
-    const promise = pollForNewChannels('ws_TEST0001', snapshot);
-    await vi.advanceTimersByTimeAsync(2000); // poll 1: updatedAt advanced
-    await vi.advanceTimersByTimeAsync(2000); // poll 2: stable
-    await vi.advanceTimersByTimeAsync(2000); // poll 3: 4s stable → exit
-    const result = await promise;
-    expect(result.map((c) => c.id)).toEqual(['ch_REAUTH']);
-  });
-
-  it('legacy backend (no updatedAt on DTO): existing channel ignored even if row updated → falls back to id-diff, keeps waiting', async () => {
-    const reauthedNoTimestamp = {
-      id: 'ch_REAUTH', type: 'whatsapp', workspaceId: 'ws_TEST0001',
-      metaWabaId: '1', metaResourceId: '1', connectionType: 'cloud_api',
-      metaConnected: true, forwardingEnabled: true, webhookUrl: null, verifyToken: null,
-      whatsappWabaName: 'Existing WABA', whatsappDisplayPhoneNumber: '+15550000001', whatsappPhoneNumberId: '999',
-      whatsappVerifiedName: 'Existing', whatsappQualityRating: 'GREEN', whatsappQualityRatingCheckedAt: null,
-      // updatedAt deliberately absent (older backend)
-    };
-    vi.mocked(apiClient).mockResolvedValue([reauthedNoTimestamp]);
-    const snapshot = new Map<string, string | undefined>([
-      ['ch_REAUTH', undefined], // older snapshot had no updatedAt either
-    ]);
+  it('AIT-775: a background write to an existing connected channel of another type does NOT end the wait', async () => {
+    // Prod case: connecting WhatsApp, an Instagram channel connected months
+    // ago gets its updatedAt bumped by a background refresh mid-wait. The old
+    // poll reported it as "Connected: Instagram" and exited.
+    const existingIg = { ...ig, id: 'ch_OLD_IG', updatedAt: '2026-11-11T00:55:42.340Z' };
+    vi.mocked(apiClient).mockResolvedValue([existingIg]);
+    const snapshot = new Map<string, boolean>([['ch_OLD_IG', true]]);
     let settled = false;
     const promise = pollForNewChannels('ws_TEST0001', snapshot);
     void promise.finally(() => { settled = true; });
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(settled).toBe(false); // existing channel never reported; still polling
+    expect(settled).toBe(false);
+    vi.mocked(apiClient).mockResolvedValue([existingIg, wa]); // the real connect lands
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect((await promise).map((c) => c.id)).toEqual(['ch_NEW_WA']);
   }, 30_000);
+
+  it('AIT-775: a background write to an existing connected channel of the same type does NOT end the wait', async () => {
+    const existingWa = { ...wa, id: 'ch_OLD_WA', updatedAt: '2026-11-11T00:55:42.340Z' };
+    vi.mocked(apiClient).mockResolvedValue([existingWa]);
+    const snapshot = new Map<string, boolean>([['ch_OLD_WA', true]]);
+    let settled = false;
+    const promise = pollForNewChannels('ws_TEST0001', snapshot);
+    void promise.finally(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe(false);
+  }, 30_000);
+
+  it('reports a reconnect: existing channel that was disconnected at snapshot time is connected again', async () => {
+    const reconnected = { ...wa, id: 'ch_RECONNECT', metaConnected: true };
+    vi.mocked(apiClient).mockResolvedValue([reconnected]);
+    const snapshot = new Map<string, boolean>([['ch_RECONNECT', false]]);
+    const promise = pollForNewChannels('ws_TEST0001', snapshot);
+    await vi.advanceTimersByTimeAsync(2000); // poll 1: flipped to connected
+    await vi.advanceTimersByTimeAsync(2000); // poll 2: stable
+    await vi.advanceTimersByTimeAsync(2000); // poll 3: 4s stable → exit
+    expect((await promise).map((c) => c.id)).toEqual(['ch_RECONNECT']);
+  });
 
   it('no hard timeout (AIT-334): resolves with a channel arriving after 6 minutes instead of rejecting at 5', async () => {
     vi.mocked(apiClient).mockResolvedValue([]); // nothing new for the first 6 min

@@ -4,19 +4,20 @@ import { parseChannelListItem, type Channel } from '../api/channel.js';
 
 /**
  * D2 polling acceptance criteria (AIT-334 revision — no hard timeout):
- *   1. Caller snapshots existing {channelId -> updatedAt} BEFORE opening OAuth
- *      (race-safe — if the snapshot ran AFTER open(), a fast backend write
- *      could include the new channel in "existing" and never report it).
+ *   1. Caller snapshots existing {channelId -> metaConnected} BEFORE opening
+ *      OAuth (race-safe — if the snapshot ran AFTER open(), a fast backend
+ *      write could include the new channel in "existing" and never report it).
  *   2. Poll /meta/channels every 2s after browser launch.
  *   3. A channel is "interesting" if:
  *        (a) its id is NOT in the snapshot (truly new — first-time connect /
  *            coexistence pair), OR
- *        (b) its id IS in the snapshot AND its updatedAt advanced past
- *            the snapshot value (re-auth of existing — token rotation
- *            updates the row but creates no new id).
- *      (b) requires the backend to return `updatedAt` on the list DTO.
- *      Older backends omit it; in that case (b) is effectively disabled
- *      and we fall back to id-diff-only.
+ *        (b) its id IS in the snapshot, it was disconnected then, and it is
+ *            connected now (reconnect of that channel).
+ *      AIT-775: an existing channel's updatedAt is NOT a signal. Background
+ *      jobs (profile/follower refresh, health checks) bump it constantly, so
+ *      any routine write to ANY channel ended the wait with a false
+ *      "Connected". Re-auth of an already-connected channel is therefore not
+ *      detected; the caller prints a note telling the user to Ctrl+C then.
  *   4. Exit when: interesting.length > 0 AND no new interesting in last 4s.
  *      There is NO hard timeout — a real Meta OAuth (login + 2FA +
  *      permission screens) routinely exceeds 5 minutes, and the old
@@ -35,7 +36,7 @@ import { parseChannelListItem, type Channel } from '../api/channel.js';
  */
 export async function pollForNewChannels(
   workspaceId: string,
-  snapshot: ReadonlyMap<string, string | undefined>,
+  snapshot: ReadonlyMap<string, boolean>,
   onStillWaiting?: (elapsedMs: number) => void,
 ): Promise<Channel[]> {
   const POLL_INTERVAL_MS = 2000;
@@ -51,14 +52,9 @@ export async function pollForNewChannels(
     for (const dto of dtos) {
       const ch = parseChannelListItem(dto);
       if (seen.has(ch.id)) continue;
-      const snapUpdatedAt = snapshot.get(ch.id);
       const isNew = !snapshot.has(ch.id);
-      const isUpdated =
-        snapshot.has(ch.id) &&
-        typeof ch.updatedAt === 'string' &&
-        typeof snapUpdatedAt === 'string' &&
-        ch.updatedAt > snapUpdatedAt;
-      if (isNew || isUpdated) {
+      const isReconnected = snapshot.get(ch.id) === false && ch.metaConnected;
+      if (isNew || isReconnected) {
         seen.set(ch.id, ch);
         lastChangeAt = Date.now();
       }
