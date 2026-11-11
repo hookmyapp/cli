@@ -2,6 +2,12 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.32 — 2026-11-11
+
+### Fixed
+
+- `channels connect` no longer reports a channel you already had as newly connected and stops waiting. It now waits for a new channel, or for a disconnected one to come back. Reconnecting a channel that is still connected is not detected; press Ctrl+C once the browser says it is done (AIT-775).
+
 ## 0.14.31 — 2026-11-07
 
 ### Added

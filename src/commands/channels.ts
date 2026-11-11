@@ -213,16 +213,16 @@ export async function runChannelsConnect(
   const { getDefaultWorkspaceId } = await import('./_helpers.js');
   const workspaceId = await getDefaultWorkspaceId();
 
-  // 1. SNAPSHOT {channelId -> updatedAt} BEFORE OPENING THE BROWSER (D2).
+  // 1. SNAPSHOT {channelId -> metaConnected} BEFORE OPENING THE BROWSER (D2).
   //    Doing this AFTER open() races a fast backend write — the "new"
   //    channel could be included in the snapshot and never reported.
-  //    updatedAt lets the poll also detect re-auth of an existing channel
-  //    (token rotation bumps the row without creating a new id).
+  //    metaConnected lets the poll also detect a reconnect of a channel
+  //    that was disconnected (same id, no new row).
   const initialChannels = (
     (await apiClient('/meta/channels', { workspaceId })) as unknown[]
   ).map(parseChannelListItem);
-  const snapshot = new Map<string, string | undefined>(
-    initialChannels.map((c) => [c.id, c.updatedAt]),
+  const snapshot = new Map<string, boolean>(
+    initialChannels.map((c) => [c.id, c.metaConnected]),
   );
 
   // AIT-334: if a connected channel of this type already exists, say so up

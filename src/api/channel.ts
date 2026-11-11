@@ -16,10 +16,9 @@ interface ChannelBase {
   webhookUrl: string | null;
   verifyToken: string | null;
   /**
-   * ISO timestamp. Drives `channels connect` re-auth detection: the poll
-   * snapshots {id -> updatedAt} pre-OAuth and treats an existing id whose
-   * updatedAt advanced as "interesting" alongside truly-new ids. Absent on
-   * older backends — poll falls back to id-diff only.
+   * ISO timestamp of the row's last write. Background jobs bump it, so
+   * `channels connect` must not treat it as a connect signal (AIT-775).
+   * Absent on older backends.
    */
   updatedAt?: string;
 }
