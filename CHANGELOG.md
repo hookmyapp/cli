@@ -2,6 +2,12 @@
 
 All notable changes to `@gethookmyapp/cli` are documented here.
 
+## 0.14.33 — 2026-11-22
+
+### Fixed
+
+- When Meta rejects a request, the error now includes Meta's explanation of the cause, not only its generic message. For example, a template whose body starts or ends with a variable now fails with "Invalid parameter: Variables can't be at the start or end of the template." instead of "Invalid parameter" (AIT-795).
+
 ## 0.14.32 — 2026-11-11
 
 ### Fixed

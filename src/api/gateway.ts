@@ -117,6 +117,28 @@ function metaRestrictionMessage(subcode: number | undefined): string | undefined
     : undefined;
 }
 
+interface MetaErrorBody {
+  message?: string;
+  error_subcode?: number;
+  error_user_title?: unknown;
+  error_user_msg?: unknown;
+}
+
+/**
+ * AIT-795: Meta's `message` is often generic ("Invalid parameter"); the cause
+ * lives in `error_user_title` / `error_user_msg` (e.g. "Variables can't be at
+ * the start or end of the template"). Append them so the reader can fix the request.
+ */
+function metaErrorMessage(e: MetaErrorBody | undefined): string | null {
+  const detail = [e?.error_user_title, e?.error_user_msg]
+    .filter((s): s is string => typeof s === 'string' && s.trim() !== '' && s.trim() !== e?.message)
+    .map((s) => s.trim().replace(/\.$/, ''))
+    .filter((s, i, all) => all.indexOf(s) === i)
+    .join('. ');
+  if (!e?.message) return detail ? `${detail}.` : null;
+  return detail ? `${e.message}: ${detail}.` : e.message;
+}
+
 function mapGatewayError(status: number, body: unknown): never {
   const gatewayError =
     body &&
@@ -147,9 +169,9 @@ function mapGatewayError(status: number, body: unknown): never {
   // Meta error shape: { error: { message, code, error_subcode, type, ... } }
   const metaError =
     body && typeof body === 'object' && 'error' in body
-      ? (body as { error?: { message?: string; error_subcode?: number } }).error
+      ? (body as { error?: MetaErrorBody }).error
       : undefined;
-  const metaMsg = metaError?.message ?? null;
+  const metaMsg = metaErrorMessage(metaError);
   // Ahead of every status branch on purpose: a restriction is the real cause
   // whatever status Meta wrapped it in, and each status branch below would
   // rename it into something the reader would act on wrongly — 401 into

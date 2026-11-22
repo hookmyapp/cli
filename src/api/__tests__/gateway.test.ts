@@ -212,4 +212,44 @@ describe('gatewayRequest', () => {
 
     expect(err).toMatchObject({ code: 'META_REJECTED' });
   });
+
+  // AIT-795: the cause Meta explains in error_user_title / error_user_msg must reach the reader.
+  it("keeps Meta's readable reason next to its generic message", async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: 'Invalid parameter',
+            code: 100,
+            error_subcode: 2388299,
+            error_user_title: "Variables can't be at the start or end of the template",
+            error_user_msg: 'Variables can\'t be at the start or end of the template.',
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const err = await gatewayRequest({ channel: waChannel, method: 'POST', path: '/{waba_id}/message_templates', body: {} })
+      .then(() => null, (e: unknown) => e);
+
+    expect(err).toMatchObject({
+      code: 'META_REJECTED',
+      message: "Invalid parameter: Variables can't be at the start or end of the template.",
+    });
+  });
+
+  it('leaves the message unchanged when Meta sends no readable reason', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { message: 'Invalid parameter', code: 100 } }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const err = await gatewayRequest({ channel: waChannel, method: 'POST', path: '/{waba_id}/message_templates', body: {} })
+      .then(() => null, (e: unknown) => e);
+
+    expect(err).toMatchObject({ code: 'META_REJECTED', message: 'Invalid parameter' });
+  });
 });
